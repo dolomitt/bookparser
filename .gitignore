@@ -7,6 +7,8 @@ process.env
 # Build output
 dist/
 build/
+jmdict-eng-3.6.1.json
+jmdict-db
 
 # Logs
 npm-debug.log*

@@ -105,7 +105,7 @@ export default function ImportPage() {
 
           // Auto-save after processing
           setTimeout(() => {
-            autoSave(updatedLines);
+            autoSave(idx, lineData);
           }, 100);
 
           return updatedLines;
@@ -130,23 +130,18 @@ export default function ImportPage() {
     }));
   };
 
-  const autoSave = async (updatedProcessedLines) => {
+  const autoSave = async (lineIndex, lineData) => {
     try {
-      // Prepare the complete book data with all processed information
-      const bookData = {
-        bookname: filename,
-        originalLines: lines,
-        processedData: updatedProcessedLines,
+      // Save only the specific line that was processed
+      const saveData = {
+        lineIndex: lineIndex,
+        lineData: lineData,
         verbMergeOptions: verbMergeOptions,
-        metadata: {
-          totalLines: lines.length,
-          processedLines: Object.keys(updatedProcessedLines).length,
-          savedAt: new Date().toISOString()
-        }
+        timestamp: new Date().toISOString()
       };
 
-      await axios.post(`/api/import/${filename}/save`, bookData);
-      console.log('Auto-saved processed data');
+      await axios.post(`/api/import/${filename}/save-line`, saveData);
+      console.log(`Auto-saved line ${lineIndex}`);
     } catch (error) {
       console.error('Auto-save error:', error);
     }

@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import kuromoji from 'kuromoji';
 import OpenAI from 'openai';
+import JMDict from 'jmdict-simplified-node';
 
 // Load env vars
 dotenv.config();
@@ -27,7 +28,8 @@ const BOOKS_DIR = process.env.BOOKS_DIR || './books';
 });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Multer setup for file uploads
 const upload = multer({ dest: UPLOAD_DIR });
@@ -47,6 +49,69 @@ kuromoji.builder({ dicPath: 'node_modules/kuromoji/dict' }).build((err, _tokeniz
     console.log('Kuromoji tokenizer initialized successfully');
   }
 });
+
+// Initialize JMDict dictionary
+let jmdictDb = null;
+import { setup as setupJmdict, readingBeginning, kanjiBeginning } from 'jmdict-simplified-node';
+
+// Initialize JMDict database
+async function initializeJMDict() {
+  try {
+    console.log('Initializing JMDict dictionary...');
+    // Try to use existing database first, if that fails, parse from JSON
+    try {
+      const jmdictSetup = await setupJmdict('./jmdict-db', 'jmdict-eng-3.6.1.json');
+      jmdictDb = jmdictSetup.db;
+      console.log('JMDict dictionary initialized from existing database');
+      console.log('Dictionary date:', jmdictSetup.dictDate);
+      console.log('Dictionary version:', jmdictSetup.version);
+    } catch (dbError) {
+      console.log('Existing database not found or corrupted');
+    }
+  } catch (err) {
+    console.error('Failed to initialize JMDict dictionary:', err);
+    console.log('JMDict dictionary will be unavailable - using AI translations only');
+  }
+}
+
+// Start JMDict initialization
+initializeJMDict();
+
+// Function to lookup word in JMDict
+async function lookupInJMDict(word, reading) {
+  if (!jmdictDb) return null;
+
+  try {
+    // Search by kanji first
+    let results = await kanjiBeginning(jmdictDb, word, 3);
+
+    // If no results by kanji, try by reading
+    if (results.length === 0 && reading) {
+      results = await readingBeginning(jmdictDb, reading, 3);
+    }
+
+    if (results.length > 0) {
+      // Return the first result with English meanings
+      const result = results[0];
+      const meanings = result.sense
+        .filter(s => s.gloss && s.gloss.length > 0)
+        .map(s => s.gloss.join(', '))
+        .join('; ');
+
+      return {
+        word: word,
+        reading: reading,
+        meanings: meanings || 'No translation found',
+        partOfSpeech: result.sense[0]?.partOfSpeech || [],
+        source: 'JMDict'
+      };
+    }
+  } catch (error) {
+    console.error('Error looking up word in JMDict:', error);
+  }
+
+  return null;
+}
 
 // Function to convert katakana to hiragana
 function katakanaToHiragana(str) {
@@ -187,6 +252,52 @@ app.get('/api/import/:filename', (req, res) => {
     existingProcessedData: processedData,
     existingVerbMergeOptions: verbMergeOptions
   });
+});
+
+// Save individual processed line (for auto-save)
+app.post('/api/import/:filename/save-line', (req, res) => {
+  const filePath = path.join(UPLOAD_DIR, req.params.filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+
+  const { lineIndex, lineData, verbMergeOptions, timestamp } = req.body;
+  const bookFileName = req.params.filename;
+
+  try {
+    // Check if book file already exists
+    const bookFilePath = path.join(BOOKS_DIR, `${bookFileName}.book`);
+    let bookData = {};
+
+    if (fs.existsSync(bookFilePath)) {
+      // Load existing book data
+      try {
+        bookData = JSON.parse(fs.readFileSync(bookFilePath, 'utf-8'));
+      } catch (error) {
+        console.error('Error reading existing book file:', error);
+        bookData = {};
+      }
+    }
+
+    // Initialize book data structure if it doesn't exist
+    if (!bookData.content) bookData.content = {};
+    if (!bookData.content.processedData) bookData.content.processedData = {};
+    if (!bookData.settings) bookData.settings = {};
+    if (!bookData.metadata) bookData.metadata = {};
+
+    // Update the specific line
+    bookData.content.processedData[lineIndex] = lineData;
+    bookData.settings.verbMergeOptions = verbMergeOptions;
+    bookData.metadata.lastUpdated = timestamp;
+    bookData.metadata.originalFilename = req.params.filename;
+
+    // Save updated book data
+    fs.writeFileSync(bookFilePath, JSON.stringify(bookData, null, 2), 'utf-8');
+
+    console.log(`Auto-saved line ${lineIndex} for ${bookFileName}`);
+    res.json({ success: true, lineIndex, savedAt: timestamp });
+  } catch (error) {
+    console.error('Error saving line:', error);
+    res.status(500).json({ error: 'Failed to save line data' });
+  }
 });
 
 // Save processed file to books with all analysis data
@@ -571,14 +682,25 @@ app.post('/api/parse', async (req, res) => {
         }
       }
 
-      // Merge Kuromoji and OpenAI data
+      // Merge Kuromoji, JMDict, and OpenAI data
       const enhancedTokens = basicTokens.map((token, index) => {
         const aiData = tokenAnalysisData.find(ai => ai.surface === token.surface) || {};
+
+        // Look up in JMDict dictionary
+        const dictLookup = lookupInJMDict(token.surface, token.reading);
+
+        // Prioritize AI translation, fallback to dictionary, then 'N/A'
+        let translation = aiData.translation || 'N/A';
+        if (translation === 'N/A' && dictLookup && dictLookup.meanings) {
+          translation = dictLookup.meanings;
+        }
+
         return {
           ...token,
-          translation: aiData.translation || 'N/A',
+          translation: translation,
           contextualMeaning: aiData.contextualMeaning || 'N/A',
-          grammaticalRole: aiData.grammaticalRole || token.pos
+          grammaticalRole: aiData.grammaticalRole || token.pos,
+          dictionaryLookup: dictLookup // Include dictionary data for reference
         };
       });
 
