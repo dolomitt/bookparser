@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+console.log('VITE_ALLOWED_HOSTS:', process.env.VITE_ALLOWED_HOSTS);
+
 export default defineConfig({
   plugins: [react()],
   server: {
