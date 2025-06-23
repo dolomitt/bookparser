@@ -27,7 +27,6 @@ Thumbs.db
 
 # App data
 /books/
-/imports/
 
 # Misc
 *.log
