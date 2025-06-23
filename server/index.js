@@ -7,6 +7,11 @@ import path from 'path';
 
 // Load env vars
 dotenv.config();
+console.log('Loaded .env values:');
+console.log('PORT:', process.env.PORT);
+console.log('UPLOAD_DIR:', process.env.UPLOAD_DIR);
+console.log('BOOKS_DIR:', process.env.BOOKS_DIR);
+console.log('OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? '[set]' : '[not set]');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
