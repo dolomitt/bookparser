@@ -57,20 +57,33 @@ import { setup as setupJmdict, readingBeginning, kanjiBeginning } from 'jmdict-s
 // Initialize JMDict database
 async function initializeJMDict() {
   try {
-    console.log('Initializing JMDict dictionary...');
+    console.log('[JMDict] Initializing JMDict dictionary...');
     // Try to use existing database first, if that fails, parse from JSON
     try {
-      const jmdictSetup = await setupJmdict('./jmdict-db', 'jmdict-eng-3.6.1.json');
+      console.log('[JMDict] Attempting to load existing database...');
+      const jmdictSetup = await setupJmdict('./jmdict-db');
       jmdictDb = jmdictSetup.db;
-      console.log('JMDict dictionary initialized from existing database');
-      console.log('Dictionary date:', jmdictSetup.dictDate);
-      console.log('Dictionary version:', jmdictSetup.version);
+      console.log('[JMDict] ✅ Dictionary initialized from existing database');
+      console.log('[JMDict] Dictionary date:', jmdictSetup.dictDate);
+      console.log('[JMDict] Dictionary version:', jmdictSetup.version);
     } catch (dbError) {
-      console.log('Existing database not found or corrupted');
+      console.log('[JMDict] ⚠️ Existing database not found or corrupted, parsing from JSON file...');
+      console.log('[JMDict] This may take a few minutes...');
+      try {
+        // Parse from JSON file (this will take some time)
+        const jmdictSetup = await setupJmdict('./jmdict-db', './jmdict-db/jmdict-eng-3.6.1.json');
+        jmdictDb = jmdictSetup.db;
+        console.log('[JMDict] ✅ Dictionary initialized from JSON file');
+        console.log('[JMDict] Dictionary date:', jmdictSetup.dictDate);
+        console.log('[JMDict] Dictionary version:', jmdictSetup.version);
+      } catch (jsonError) {
+        console.error('[JMDict] ❌ Failed to parse JSON file:', jsonError);
+        throw jsonError;
+      }
     }
   } catch (err) {
-    console.error('Failed to initialize JMDict dictionary:', err);
-    console.log('JMDict dictionary will be unavailable - using AI translations only');
+    console.error('[JMDict] ❌ Failed to initialize JMDict dictionary:', err);
+    console.log('[JMDict] Dictionary will be unavailable - using AI translations only');
   }
 }
 
@@ -79,15 +92,24 @@ initializeJMDict();
 
 // Function to lookup word in JMDict
 async function lookupInJMDict(word, reading) {
-  if (!jmdictDb) return null;
+  console.log(`[JMDict] Looking up word: "${word}", reading: "${reading}"`);
+
+  if (!jmdictDb) {
+    console.log('[JMDict] Database not available - skipping lookup');
+    return null;
+  }
 
   try {
+    console.log(`[JMDict] Searching by kanji: "${word}"`);
     // Search by kanji first
     let results = await kanjiBeginning(jmdictDb, word, 3);
+    console.log(`[JMDict] Kanji search results: ${results.length} entries found`);
 
     // If no results by kanji, try by reading
     if (results.length === 0 && reading) {
+      console.log(`[JMDict] No kanji results, searching by reading: "${reading}"`);
       results = await readingBeginning(jmdictDb, reading, 3);
+      console.log(`[JMDict] Reading search results: ${results.length} entries found`);
     }
 
     if (results.length > 0) {
@@ -98,16 +120,21 @@ async function lookupInJMDict(word, reading) {
         .map(s => s.gloss.join(', '))
         .join('; ');
 
-      return {
+      const lookupResult = {
         word: word,
         reading: reading,
         meanings: meanings || 'No translation found',
         partOfSpeech: result.sense[0]?.partOfSpeech || [],
         source: 'JMDict'
       };
+
+      console.log(`[JMDict] ✅ Found translation for "${word}": "${meanings}"`);
+      return lookupResult;
+    } else {
+      console.log(`[JMDict] ❌ No results found for "${word}" (reading: "${reading}")`);
     }
   } catch (error) {
-    console.error('Error looking up word in JMDict:', error);
+    console.error(`[JMDict] ❌ Error looking up word "${word}":`, error);
   }
 
   return null;
@@ -179,7 +206,7 @@ Format as JSON object with this structure:
         }
       ],
       temperature: 0.3,
-      max_tokens: 2000
+      max_tokens: 5000
     });
 
     const response = completion.choices[0].message.content;
@@ -683,11 +710,11 @@ app.post('/api/parse', async (req, res) => {
       }
 
       // Merge Kuromoji, JMDict, and OpenAI data
-      const enhancedTokens = basicTokens.map((token, index) => {
+      const enhancedTokens = await Promise.all(basicTokens.map(async (token, index) => {
         const aiData = tokenAnalysisData.find(ai => ai.surface === token.surface) || {};
 
         // Look up in JMDict dictionary
-        const dictLookup = lookupInJMDict(token.surface, token.reading);
+        const dictLookup = await lookupInJMDict(token.surface, token.reading);
 
         // Prioritize AI translation, fallback to dictionary, then 'N/A'
         let translation = aiData.translation || 'N/A';
@@ -702,7 +729,7 @@ app.post('/api/parse', async (req, res) => {
           grammaticalRole: aiData.grammaticalRole || token.pos,
           dictionaryLookup: dictLookup // Include dictionary data for reference
         };
-      });
+      }));
 
       const analysisStatus = openaiAnalysis ? 'Processed with AI translations' : 'Processed';
 

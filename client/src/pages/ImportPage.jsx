@@ -206,35 +206,32 @@ export default function ImportPage() {
 
           // Determine token color based on type and AI analysis - only show on hover
           const hasAIData = token.translation && token.translation !== 'N/A';
-          let baseColor, hoverColor;
+          let hoverColor;
 
           if (isPunctuation) {
             // Punctuation gets no highlighting, just neutral colors
-            baseColor = 'transparent';
             hoverColor = '#333';
           } else if (isMergedVerb) {
             // Special styling for merged verbs - only on hover
-            baseColor = 'transparent';
             hoverColor = hasAIData ? '#4a7c59' : '#2d7d32';
           } else if (token.pos === '動詞') {
             // Regular verb styling - only on hover
-            baseColor = 'transparent';
             hoverColor = hasAIData ? '#6b46c1' : '#7c3aed';
           } else {
             // Default styling - only on hover
-            baseColor = 'transparent';
             hoverColor = hasAIData ? '#2b6cb0' : '#007bff';
           }
 
           const tokenContent = (
             <>
               {shouldShowRuby ? (
-                <ruby style={{ fontSize: 'inherit' }}>
+                <ruby style={{ fontSize: 'inherit', pointerEvents: 'none' }}>
                   {token.surface}
                   <rt style={{
                     fontSize: '0.75em',
                     color: '#ccc',
-                    fontWeight: 'normal'
+                    fontWeight: 'normal',
+                    pointerEvents: 'none'
                   }}>
                     {token.reading}
                   </rt>
@@ -245,6 +242,22 @@ export default function ImportPage() {
             </>
           );
 
+          const handleMouseEnter = (e) => {
+            if (!isPunctuation) {
+              // Use currentTarget to ensure we target the span element, not nested elements
+              e.currentTarget.style.backgroundColor = hoverColor;
+              e.currentTarget.style.color = 'white';
+            }
+          };
+
+          const handleMouseLeave = (e) => {
+            if (!isPunctuation) {
+              // Use currentTarget to ensure we target the span element, not nested elements
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = '#f2f2f2';
+            }
+          };
+
           return (
             <span
               key={tokenIdx}
@@ -252,28 +265,18 @@ export default function ImportPage() {
                 display: 'inline-block',
                 margin: '1px',
                 padding: '2px 4px',
-                backgroundColor: baseColor,
+                backgroundColor: 'transparent',
                 color: '#f2f2f2',
                 borderRadius: '2px',
                 cursor: isPunctuation ? 'default' : 'pointer',
                 fontSize: '0.9em',
                 border: 'none',
                 fontWeight: isMergedVerb ? 'bold' : 'normal',
-                transition: 'background-color 0.2s ease'
+                transition: 'background-color 0.2s ease, color 0.2s ease'
               }}
               title={isPunctuation ? '' : tooltipText}
-              onMouseEnter={(e) => {
-                if (!isPunctuation) {
-                  e.target.style.backgroundColor = hoverColor;
-                  e.target.style.color = 'white';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isPunctuation) {
-                  e.target.style.backgroundColor = baseColor;
-                  e.target.style.color = '#f2f2f2';
-                }
-              }}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
             >
               {tokenContent}
             </span>
