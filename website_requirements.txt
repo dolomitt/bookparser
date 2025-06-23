@@ -1,0 +1,44 @@
+# Website Requirements Document
+
+## Overview
+The website will help users read books in Japanese, providing reading support and an enhanced user experience, especially for language learners.
+
+## Functional Requirements
+1. Main page
+1.1. Users can view a list of books available for reading.
+1.2. Users can click on a book to access its content.
+1.3. Users can see the list of imports in progress.
+2. Reading Page
+2.1. Users can select a book and read its content on their mobile phone or desktop browser.
+2.2. While reading the books, Users can tap on specific expressions and see reading in Hiragana, explanations on the sentence meaning, translations.
+2.3. The website will remember the user's reading progress by saving it in cookies or local storage.
+2.4. A dark mode shall be available.
+3. Import Page
+3.1. THe user can see the list of imports in progress and click on one to access its content.
+3.2. The user can see the content of the imported file, line by line. Initially each line is the raw content of the txt file, line by line.
+3.3. By default, the system shall split the text line by line.
+3.4. The user can click on a line for processing by OpenAI API.
+3.5. The user can upload txt files.
+3.6. When clicking on a line for processing, the system shall request the OpenAI API to return supporting information such as:
+  - Readings of kanji compounds in hiragana
+  - Explanations of specific expressions
+  - Translations of specific sections
+3.6. Book parsing shall be performed line by line for accuracy and flexibility.
+3.7. The user can click on save at any time of the process and the system shall save the file into the folder books.
+
+
+## Non-Functional Requirements
+- The website shall be mobile-friendly and responsive.
+- The website shall provide a fast and smooth user experience (page load times under 2 seconds).
+- User data (such as progress) shall be stored securely and comply with privacy best practices.
+- The website shall support modern browsers (latest Chrome, Firefox, Safari, Edge).
+- Background import and parsing shall not block the main UI and should provide progress feedback if possible.
+
+## Technical Considerations
+- Use Node.js as backend
+- Use scalable and maintainable technologies (e.g., React/Vue frontend, Python backend).
+- Easy deployment and updates.
+- OpenAI API key shall be kept in the environment.
+
+---
+*This document will evolve as requirements are refined or new needs are discovered.*
