@@ -61,7 +61,7 @@ async function initializeJMDict() {
     // Try to use existing database first, if that fails, parse from JSON
     try {
       console.log('[JMDict] Attempting to load existing database...');
-      const jmdictSetup = await setupJmdict('./jmdict-db');
+      const jmdictSetup = await setupJmdict('./jmdict-db', './jmdict-db/jmdict-eng-3.6.1.json');
       jmdictDb = jmdictSetup.db;
       console.log('[JMDict] ✅ Dictionary initialized from existing database');
       console.log('[JMDict] Dictionary date:', jmdictSetup.dictDate);
