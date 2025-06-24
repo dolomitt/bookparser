@@ -78,23 +78,70 @@ nav a:hover {
 }
 
 .import-line {
-  display: flex;
-  flex-direction: column;
   margin-bottom: 1em;
-  background: #262626;
-  border-radius: 4px;
-  padding: 0.7em;
+  padding: 1em;
+  border: 1px solid #444;
+  border-radius: 5px;
+  background-color: #1a1a1a;
 }
 
 .import-line-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
   margin-bottom: 0.5em;
 }
 
 .import-line-content {
-  flex: 1;
-  margin-right: 1em;
+  font-size: 1.1em;
+  line-height: 1.5;
+}
+
+/* Mobile-friendly improvements */
+@media (max-width: 768px) {
+  .import-line {
+    padding: 12px;
+    margin-bottom: 16px;
+  }
+  
+  .import-line-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .btn-small {
+    min-height: 44px !important;
+    padding: 10px 16px !important;
+    font-size: 0.9em !important;
+    touch-action: manipulation;
+  }
+  
+  /* Improve touch targets for tokens */
+  .token-popup {
+    font-size: 1em !important;
+    padding: 16px !important;
+    max-width: 90vw !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    top: 20px !important;
+    position: fixed !important;
+  }
+}
+
+/* Prevent text selection on tokens for better mobile experience */
+.tokenized-text * {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Ensure buttons are touch-friendly */
+button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Home Page Styles */
@@ -426,4 +473,67 @@ nav a:hover {
     margin-right: 0;
     margin-bottom: 1rem;
   }
+
+  /* Mobile-specific styles for token popup */
+  .token-popup {
+    max-width: 90vw !important;
+    min-width: 250px !important;
+    font-size: 0.95em !important;
+  }
+
+  /* Ensure buttons are touch-friendly on mobile */
+  .btn-small {
+    min-height: 48px !important;
+    padding: 12px 16px !important;
+    font-size: 0.95em !important;
+  }
+
+  /* Import line styling for mobile */
+  .import-line {
+    padding: 12px !important;
+  }
+}
+
+/* Additional mobile touch improvements */
+@media (max-width: 768px) {
+  .token-popup {
+    padding: 16px !important;
+    border-radius: 12px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  /* Better touch targets for tokens */
+  .import-line-content span {
+    min-height: 32px !important;
+    min-width: 20px !important;
+    padding: 3px 4px !important;
+  }
+}
+
+/* Ensure popup is always visible */
+.token-popup {
+  position: fixed !important;
+  z-index: 999999 !important;
+  pointer-events: auto !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Ensure container doesn't clip popups */
+.container {
+  overflow: visible !important;
+}
+
+.import-line {
+  overflow: visible !important;
+}
+
+.import-line-content {
+  overflow: visible !important;
+}
+
+/* Debug styles - remove these after testing */
+.token-popup {
+  border: 3px solid #ff0000 !important; /* Red border to make popup visible during debugging */
 }

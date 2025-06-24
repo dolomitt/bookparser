@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 export default function ImportPage() {
   const { filename } = useParams();
+  const navigate = useNavigate();
   const [lines, setLines] = useState([]);
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -23,20 +24,26 @@ export default function ImportPage() {
   const [showVerbOptions, setShowVerbOptions] = useState(false);
   const fileInput = useRef();
 
+  // Separate useEffect for initial load only
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  
   useEffect(() => {
-    if (filename) {
+    if (filename && !initialLoadComplete) {
+      console.log('Initial load for:', filename);
       axios.get(`/api/import/${filename}`).then(res => {
+        console.log('File data loaded:', res.data);
         setLines(res.data.lines);
 
         // Load existing processed data if available
         if (res.data.existingProcessedData && Object.keys(res.data.existingProcessedData).length > 0) {
+          console.log('Loading existing processed data:', res.data.existingProcessedData);
           setProcessedLines(res.data.existingProcessedData);
           console.log(`Loaded ${Object.keys(res.data.existingProcessedData).length} previously processed lines`);
 
-          // Set success messages for previously processed lines
+          // Clear any existing messages for previously processed lines
           const messages = {};
           Object.keys(res.data.existingProcessedData).forEach(lineIndex => {
-            messages[lineIndex] = 'Previously processed';
+            messages[lineIndex] = '';
           });
           setLineMessages(messages);
         }
@@ -49,9 +56,14 @@ export default function ImportPage() {
           }));
           console.log('Loaded existing verb merge options:', res.data.existingVerbMergeOptions);
         }
+        
+        setInitialLoadComplete(true);
+      }).catch(error => {
+        console.error('Error loading file data:', error);
+        setInitialLoadComplete(true); // Set to true even on error to prevent infinite retries
       });
     }
-  }, [filename]);
+  }, [filename, initialLoadComplete]);
 
   const handleFileChange = e => setFile(e.target.files[0]);
 
@@ -63,7 +75,7 @@ export default function ImportPage() {
     try {
       const res = await axios.post('/api/import', formData);
       setMessage(`Uploaded: ${res.data.originalname}`);
-      window.location.href = `/import/${res.data.filename}`;
+      navigate(`/import/${res.data.filename}`);
     } catch (err) {
       setMessage('Upload failed');
     } finally {
@@ -94,8 +106,8 @@ export default function ImportPage() {
       const response = await axios.post('/api/parse', requestData);
       console.log('Received response:', response.data);
 
-      // Set success message for this specific line
-      setLineMessages(prev => ({ ...prev, [idx]: response.data.result }));
+      // Clear message for this specific line after successful processing
+      setLineMessages(prev => ({ ...prev, [idx]: '' }));
 
       // Store the processed tokens and full line translation for interactive display
       if (response.data.analysis && response.data.analysis.tokens) {
@@ -104,25 +116,38 @@ export default function ImportPage() {
           fullLineTranslation: response.data.fullLineTranslation || 'N/A',
           processingType: useRemoteProcessing ? 'remote' : 'local'
         };
+        
+        console.log('Setting processed line data for index:', idx, lineData);
+        
         setProcessedLines(prev => {
           const updatedLines = { ...prev, [idx]: lineData };
-
-          // Auto-save after processing
-          setTimeout(() => {
-            autoSave(idx, lineData);
-          }, 100);
-
+          console.log('Updated processed lines state:', updatedLines);
           return updatedLines;
         });
+
+        // Auto-save after processing with a longer delay to ensure state is set
+        setTimeout(() => {
+          console.log('Auto-saving line:', idx);
+          autoSave(idx, lineData);
+        }, 500);
       }
     } catch (error) {
       console.error('Processing error:', error);
       console.error('Error response:', error.response?.data);
 
-      // Set error message for this specific line
+      // Set error message for this specific line with better network error handling
+      let errorMessage = 'Unknown error';
+      if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+        errorMessage = 'Server not running. Please start the server with "npm run dev" in the bookparser directory.';
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else {
+        errorMessage = error.message;
+      }
+
       setLineMessages(prev => ({
         ...prev,
-        [idx]: `Error: ${error.response?.data?.error || error.message}`
+        [idx]: `Error: ${errorMessage}`
       }));
     }
   };
@@ -188,42 +213,104 @@ export default function ImportPage() {
     return text.split('').some(char => isKanji(char));
   };
 
-  // Component to render tokenized text with hover functionality and ruby text
+  // Component to render tokenized text with mobile-friendly popup functionality and ruby text
   const TokenizedText = ({ tokens }) => {
+    const [activePopup, setActivePopup] = useState(null);
+    const [popupPosition, setPopupPosition] = useState({ x: 0, y: 0 });
+
+    const handleTokenClick = (e, token, tokenIdx) => {
+      console.log('Token clicked:', token, 'Index:', tokenIdx);
+      
+      if (token.pos === '記号') {
+        console.log('Skipping punctuation token');
+        return; // Skip punctuation
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Calculate popup position with better viewport handling
+      const rect = e.currentTarget.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      
+      // Calculate initial position
+      let x = rect.left + (rect.width / 2);
+      let y = rect.top - 10;
+      
+      // Adjust for viewport boundaries
+      const popupWidth = 320; // max-width from CSS
+      const popupHeight = 150; // estimated height
+      
+      // Keep popup within horizontal bounds
+      if (x - popupWidth/2 < 10) {
+        x = popupWidth/2 + 10;
+      } else if (x + popupWidth/2 > viewportWidth - 10) {
+        x = viewportWidth - popupWidth/2 - 10;
+      }
+      
+      // Keep popup within vertical bounds
+      if (y - popupHeight < 10) {
+        y = rect.bottom + 10; // Show below token if not enough space above
+      }
+
+      console.log('Popup position:', { x, y });
+      console.log('Current activePopup:', activePopup);
+      console.log('Viewport:', { viewportWidth, viewportHeight });
+      console.log('Token rect:', rect);
+
+      setPopupPosition({ x, y });
+      const newActivePopup = activePopup === tokenIdx ? null : tokenIdx;
+      console.log('Setting activePopup to:', newActivePopup);
+      setActivePopup(newActivePopup);
+    };
+
+    const closePopup = () => {
+      console.log('Closing popup');
+      setActivePopup(null);
+    };
+
+    // Close popup when clicking outside
+    React.useEffect(() => {
+      const handleClickOutside = (e) => {
+        if (activePopup !== null && !e.target.closest('.token-popup') && !e.target.closest('[data-token]')) {
+          console.log('Clicking outside popup, closing');
+          closePopup();
+        }
+      };
+
+      if (activePopup !== null) {
+        document.addEventListener('click', handleClickOutside, true);
+        document.addEventListener('touchstart', handleClickOutside, true);
+      }
+
+      return () => {
+        document.removeEventListener('click', handleClickOutside, true);
+        document.removeEventListener('touchstart', handleClickOutside, true);
+      };
+    }, [activePopup]);
+
     return (
-      <div style={{ marginTop: '5px', padding: '5px', backgroundColor: '#191919', borderRadius: '3px' }}>
+      <div style={{ marginTop: '5px', padding: '5px', backgroundColor: '#191919', borderRadius: '3px', position: 'relative' }}>
         {tokens.map((token, tokenIdx) => {
           // Check if this is a merged verb (from server-side processing)
           const isMergedVerb = token.pos === '動詞' && (token.pos_detail === 'compound' || token.pos_detail === 'inflected');
           const isPunctuation = token.pos === '記号';
           const shouldShowRuby = hasKanji(token.surface) && token.reading && token.reading !== token.surface;
-
-          // Create enhanced tooltip with OpenAI data and merge info (no POS)
-          const tooltipText = [
-            `Surface: ${token.surface}`,
-            `Reading: ${token.reading || 'N/A'}`,
-            isMergedVerb ? '🔗 Merged Verb Token' : '',
-            token.translation && token.translation !== 'N/A' ? `Translation: ${token.translation}` : '',
-            token.contextualMeaning && token.contextualMeaning !== 'N/A' ? `Context: ${token.contextualMeaning}` : '',
-            token.grammaticalRole && token.grammaticalRole !== token.pos ? `Grammar: ${token.grammaticalRole}` : ''
-          ].filter(Boolean).join('\n');
-
-          // Determine token color based on type and AI analysis - only show on hover
           const hasAIData = token.translation && token.translation !== 'N/A';
-          let hoverColor;
 
-          if (isPunctuation) {
-            // Punctuation gets no highlighting, just neutral colors
-            hoverColor = '#333';
-          } else if (isMergedVerb) {
-            // Special styling for merged verbs - only on hover
-            hoverColor = hasAIData ? '#4a7c59' : '#2d7d32';
-          } else if (token.pos === '動詞') {
-            // Regular verb styling - only on hover
-            hoverColor = hasAIData ? '#6b46c1' : '#7c3aed';
-          } else {
-            // Default styling - only on hover
-            hoverColor = hasAIData ? '#2b6cb0' : '#007bff';
+          // Determine token color based on type and AI analysis
+          let tokenColor = '#f2f2f2';
+          let activeColor;
+
+          if (!isPunctuation) {
+            if (isMergedVerb) {
+              activeColor = hasAIData ? '#4a7c59' : '#2d7d32';
+            } else if (token.pos === '動詞') {
+              activeColor = hasAIData ? '#6b46c1' : '#7c3aed';
+            } else {
+              activeColor = hasAIData ? '#2b6cb0' : '#007bff';
+            }
           }
 
           const tokenContent = (
@@ -246,46 +333,125 @@ export default function ImportPage() {
             </>
           );
 
-          const handleMouseEnter = (e) => {
-            if (!isPunctuation) {
-              // Use currentTarget to ensure we target the span element, not nested elements
-              e.currentTarget.style.backgroundColor = hoverColor;
-              e.currentTarget.style.color = 'white';
-            }
-          };
-
-          const handleMouseLeave = (e) => {
-            if (!isPunctuation) {
-              // Use currentTarget to ensure we target the span element, not nested elements
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.color = '#f2f2f2';
-            }
-          };
+          const isActive = activePopup === tokenIdx;
 
           return (
             <span
               key={tokenIdx}
+              data-token={tokenIdx}
               style={{
-                display: 'inline-block',
-                margin: '1px',
-                padding: '2px 4px',
-                backgroundColor: 'transparent',
-                color: '#f2f2f2',
+                display: 'inline-flex',
+                margin: '0px 1px', // Reduced margin for better readability
+                padding: '2px 3px', // Reduced padding to match original text size
+                backgroundColor: isActive && !isPunctuation ? activeColor : 'transparent',
+                color: isActive && !isPunctuation ? 'white' : tokenColor,
                 borderRadius: '2px',
                 cursor: isPunctuation ? 'default' : 'pointer',
-                fontSize: '0.9em',
+                fontSize: '1.1em', // Increased to match original text size
                 border: 'none',
-                fontWeight: isMergedVerb ? 'bold' : 'normal',
-                transition: 'background-color 0.2s ease, color 0.2s ease'
+                fontWeight: 'normal',
+                transition: 'background-color 0.2s ease, color 0.2s ease',
+                minHeight: '28px', // Adjusted for better touch targets while keeping text size
+                minWidth: '16px',
+                alignItems: 'center',
+                justifyContent: 'center',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                WebkitTouchCallout: 'none',
+                lineHeight: '1.5' // Match original text line height
               }}
-              title={isPunctuation ? '' : tooltipText}
-              onMouseEnter={handleMouseEnter}
-              onMouseLeave={handleMouseLeave}
+              onClick={(e) => handleTokenClick(e, token, tokenIdx)}
+              onTouchStart={(e) => {
+                // Prevent default touch behavior that might interfere
+                if (!isPunctuation) {
+                  e.preventDefault();
+                }
+              }}
             >
               {tokenContent}
             </span>
           );
         })}
+
+        {/* Token popup for both mobile and desktop */}
+        {activePopup !== null && tokens[activePopup] && (
+          <div
+            className="token-popup"
+            style={{
+              position: 'fixed',
+              left: `${popupPosition.x}px`,
+              top: `${popupPosition.y - 80}px`,
+              transform: 'translateX(-50%)',
+              backgroundColor: '#1a1a1a',
+              border: '3px solid #4fc3f7',
+              borderRadius: '8px',
+              padding: '16px',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.8)',
+              zIndex: 99999,
+              maxWidth: '320px',
+              minWidth: '220px',
+              fontSize: '0.95em',
+              color: '#f2f2f2',
+              lineHeight: '1.5',
+              pointerEvents: 'auto',
+              display: 'block',
+              visibility: 'visible'
+            }}
+          >
+            <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#4fc3f7' }}>
+              {tokens[activePopup].surface}
+            </div>
+            
+            {tokens[activePopup].reading && tokens[activePopup].reading !== tokens[activePopup].surface && (
+              <div style={{ marginBottom: '6px', color: '#ccc', fontSize: '0.85em' }}>
+                <strong>Reading:</strong> {tokens[activePopup].reading}
+              </div>
+            )}
+
+            {tokens[activePopup].pos === '動詞' && (tokens[activePopup].pos_detail === 'compound' || tokens[activePopup].pos_detail === 'inflected') && (
+              <div style={{ marginBottom: '6px', color: '#4a7c59', fontSize: '0.8em' }}>
+                🔗 Merged Verb Token
+              </div>
+            )}
+
+            {tokens[activePopup].translation && tokens[activePopup].translation !== 'N/A' && (
+              <div style={{ marginBottom: '6px' }}>
+                <strong>Translation:</strong> {tokens[activePopup].translation}
+              </div>
+            )}
+
+            {tokens[activePopup].contextualMeaning && tokens[activePopup].contextualMeaning !== 'N/A' && (
+              <div style={{ marginBottom: '6px' }}>
+                <strong>Context:</strong> {tokens[activePopup].contextualMeaning}
+              </div>
+            )}
+
+            {tokens[activePopup].grammaticalRole && tokens[activePopup].grammaticalRole !== tokens[activePopup].pos && (
+              <div style={{ marginBottom: '6px' }}>
+                <strong>Grammar:</strong> {tokens[activePopup].grammaticalRole}
+              </div>
+            )}
+
+            {/* Close button for mobile */}
+            <button
+              onClick={closePopup}
+              style={{
+                position: 'absolute',
+                top: '4px',
+                right: '4px',
+                background: 'none',
+                border: 'none',
+                color: '#888',
+                fontSize: '16px',
+                cursor: 'pointer',
+                padding: '4px',
+                lineHeight: '1'
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -426,86 +592,134 @@ export default function ImportPage() {
 
           <div className="import-lines">
             {lines.map((line, idx) => (
-              <div key={idx} className="import-line">
-                <div className="import-line-header">
-                  <div className="import-line-content">
-                    <span>{line}</span>
-                  </div>
-                  {line.trim() && (
-                    <div style={{ display: 'flex', gap: '5px' }}>
-                      <button 
-                        onClick={() => handleLineProcess(idx, false)} 
-                        className="btn-small"
-                        style={{ backgroundColor: '#28a745', borderColor: '#28a745' }}
-                        title="Process using local dictionary only (JMDict)"
-                      >
-                        Local Process
-                      </button>
-                      <button 
-                        onClick={() => handleLineProcess(idx, true)} 
-                        className="btn-small"
-                        style={{ backgroundColor: '#007bff', borderColor: '#007bff' }}
-                        title="Process using OpenAI for enhanced translations"
-                      >
-                        Remote Process
-                      </button>
-                    </div>
-                  )}
-                  {lineMessages[idx] && (
-                    <span style={{ marginLeft: '10px', fontSize: '0.9em', color: lineMessages[idx].startsWith('Error') ? '#dc3545' : '#28a745' }}>
-                      {lineMessages[idx]}
+              <div key={idx} className="import-line" style={{ marginBottom: '20px', border: '1px solid #444', borderRadius: '8px', padding: '15px', backgroundColor: '#1a1a1a' }}>
+                {/* Line number and controls section - always at top */}
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  marginBottom: '10px',
+                  paddingBottom: '10px',
+                  borderBottom: '1px solid #333'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '0.9em', color: '#888', fontWeight: 'bold' }}>
+                      Line {idx + 1}
                     </span>
-                  )}
-                </div>
-                {processedLines[idx] && (
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', marginTop: '5px', marginBottom: '5px' }}>
+                    
+                    {/* Action buttons - next to line number */}
+                    {line.trim() && (
+                      <div style={{ display: 'flex', gap: '2px' }}>
+                        <button 
+                          onClick={() => handleLineProcess(idx, false)} 
+                          className="btn-small"
+                          style={{ 
+                            backgroundColor: '#28a745', 
+                            borderColor: '#28a745',
+                            padding: '6px 8px',
+                            fontSize: '1em',
+                            minHeight: '32px',
+                            minWidth: '32px',
+                            borderRadius: '4px'
+                          }}
+                          title="Process using local dictionary only (JMDict)"
+                        >
+                          📚
+                        </button>
+                        <button 
+                          onClick={() => handleLineProcess(idx, true)} 
+                          className="btn-small"
+                          style={{ 
+                            backgroundColor: '#007bff', 
+                            borderColor: '#007bff',
+                            padding: '6px 8px',
+                            fontSize: '1em',
+                            minHeight: '32px',
+                            minWidth: '32px',
+                            borderRadius: '4px'
+                          }}
+                          title="Process using OpenAI for enhanced translations"
+                        >
+                          🌐
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Processing status and type indicator */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {processedLines[idx] && (
                       <span style={{
                         fontSize: '0.75em',
                         padding: '2px 6px',
                         borderRadius: '3px',
                         backgroundColor: processedLines[idx].processingType === 'remote' ? '#007bff' : '#28a745',
-                        color: 'white',
-                        marginRight: '8px'
+                        color: 'white'
                       }}>
                         {processedLines[idx].processingType === 'remote' ? '🌐 AI' : '📚 Local'}
                       </span>
-                      <span style={{ fontSize: '0.8em', color: '#888' }}>
-                        {processedLines[idx].processingType === 'remote' 
-                          ? 'Processed with OpenAI + Dictionary' 
-                          : 'Processed with local dictionary only'}
-                      </span>
-                    </div>
-                    <TokenizedText tokens={processedLines[idx].tokens || processedLines[idx]} />
-                    {processedLines[idx].fullLineTranslation && processedLines[idx].fullLineTranslation !== 'N/A' && (
-                      <div style={{
-                        marginTop: '10px',
-                        padding: '10px',
-                        backgroundColor: '#2a2a2a',
-                        borderRadius: '5px',
-                        border: '1px solid #444',
-                        borderLeft: processedLines[idx].processingType === 'remote' ? '4px solid #4fc3f7' : '4px solid #28a745'
+                    )}
+                    
+                    {lineMessages[idx] && (
+                      <span style={{ 
+                        fontSize: '0.8em', 
+                        color: lineMessages[idx].startsWith('Error') ? '#dc3545' : '#28a745',
+                        fontWeight: 'bold'
                       }}>
-                        <div style={{
-                          fontSize: '0.8em',
-                          color: '#888',
-                          marginBottom: '5px',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px'
-                        }}>
-                          Translation
-                        </div>
-                        <div style={{
-                          color: '#f2f2f2',
-                          fontSize: '1em',
-                          lineHeight: '1.4'
-                        }}>
-                          {processedLines[idx].fullLineTranslation}
-                        </div>
-                      </div>
+                        {lineMessages[idx]}
+                      </span>
                     )}
                   </div>
-                )}
+                </div>
+
+                {/* Content section - show original line OR processed tokens */}
+                <div className="import-line-content">
+                  {processedLines[idx] ? (
+                    // Show processed tokens instead of original line
+                    <div>
+                      <TokenizedText tokens={processedLines[idx].tokens || processedLines[idx]} />
+                      {processedLines[idx].fullLineTranslation && processedLines[idx].fullLineTranslation !== 'N/A' && (
+                        <div style={{
+                          marginTop: '15px',
+                          padding: '12px',
+                          backgroundColor: '#2a2a2a',
+                          borderRadius: '6px',
+                          border: '1px solid #444',
+                          borderLeft: processedLines[idx].processingType === 'remote' ? '4px solid #4fc3f7' : '4px solid #28a745'
+                        }}>
+                          <div style={{
+                            fontSize: '0.8em',
+                            color: '#888',
+                            marginBottom: '8px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px'
+                          }}>
+                            Translation
+                          </div>
+                          <div style={{
+                            color: '#f2f2f2',
+                            fontSize: '1em',
+                            lineHeight: '1.4'
+                          }}>
+                            {processedLines[idx].fullLineTranslation}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    // Show original line text
+                    <div style={{
+                      padding: '10px',
+                      backgroundColor: '#2a2a2a',
+                      borderRadius: '4px',
+                      fontSize: '1.1em',
+                      lineHeight: '1.5',
+                      color: '#f2f2f2'
+                    }}>
+                      {line}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>

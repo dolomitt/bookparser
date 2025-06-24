@@ -31,6 +31,16 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Add request logging middleware
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  console.log('Request headers:', req.headers);
+  if (req.body && Object.keys(req.body).length > 0) {
+    console.log('Request body keys:', Object.keys(req.body));
+  }
+  next();
+});
+
 // Multer setup for file uploads
 const upload = multer({ dest: UPLOAD_DIR });
 
@@ -115,9 +125,26 @@ async function lookupInJMDict(word, reading) {
     if (results.length > 0) {
       // Return the first result with English meanings
       const result = results[0];
+      
+      // Debug: log the structure of the first sense to understand the data
+      console.log(`[DEBUG] First sense structure:`, JSON.stringify(result.sense[0], null, 2));
+      
       const meanings = result.sense
         .filter(s => s.gloss && s.gloss.length > 0)
-        .map(s => s.gloss.join(', '))
+        .map(s => {
+          // Handle different possible structures of gloss
+          return s.gloss.map(g => {
+            if (typeof g === 'string') {
+              return g;
+            } else if (g && typeof g === 'object' && g.text) {
+              return g.text;
+            } else if (g && typeof g === 'object' && g.value) {
+              return g.value;
+            } else {
+              return String(g);
+            }
+          }).join(', ');
+        })
         .join('; ');
 
       const lookupResult = {
@@ -151,13 +178,20 @@ function katakanaToHiragana(str) {
 
 // Function to get OpenAI analysis for tokens
 async function getOpenAIAnalysis(originalText, tokens, contextLines = {}) {
+  console.log('[OpenAI] Starting OpenAI analysis...');
+  console.log('[OpenAI] Original text:', originalText);
+  console.log('[OpenAI] Number of tokens:', tokens.length);
+  
   if (!openai) {
-    console.log('OpenAI not configured, skipping AI analysis');
+    console.log('[OpenAI] ❌ OpenAI not configured, skipping AI analysis');
     return null;
   }
 
+  console.log('[OpenAI] ✅ OpenAI client is configured');
+
   try {
     const tokenList = tokens.map(token => token.surface).join(' | ');
+    console.log('[OpenAI] Token list for analysis:', tokenList);
 
     // Build context with previous and next lines
     let contextText = '';
@@ -168,6 +202,8 @@ async function getOpenAIAnalysis(originalText, tokens, contextLines = {}) {
     if (contextLines.nextLine) {
       contextText += `\nNext line: "${contextLines.nextLine}"`;
     }
+
+    console.log('[OpenAI] Context text:', contextText);
 
     const prompt = `Analyze this Japanese sentence and provide translations and contextual explanations for each token, plus a full line translation:
 
@@ -193,6 +229,12 @@ Format as JSON object with this structure:
   ]
 }`;
 
+    console.log('[OpenAI] 🚀 Sending request to OpenAI API...');
+    console.log('[OpenAI] Using model: gpt-4');
+    console.log('[OpenAI] Prompt length:', prompt.length, 'characters');
+
+    const startTime = Date.now();
+    
     const completion = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [
@@ -209,19 +251,42 @@ Format as JSON object with this structure:
       max_tokens: 5000
     });
 
+    const endTime = Date.now();
+    console.log('[OpenAI] ✅ Received response from OpenAI API');
+    console.log('[OpenAI] Response time:', endTime - startTime, 'ms');
+    console.log('[OpenAI] Usage:', completion.usage);
+
     const response = completion.choices[0].message.content;
-    console.log('OpenAI response:', response);
+    console.log('[OpenAI] Raw response content:', response);
 
     // Try to parse JSON response
     try {
-      return JSON.parse(response);
+      const parsedResponse = JSON.parse(response);
+      console.log('[OpenAI] ✅ Successfully parsed JSON response');
+      console.log('[OpenAI] Full line translation:', parsedResponse.fullLineTranslation);
+      console.log('[OpenAI] Number of token analyses:', parsedResponse.tokens?.length || 0);
+      return parsedResponse;
     } catch (parseError) {
-      console.error('Failed to parse OpenAI JSON response:', parseError);
+      console.error('[OpenAI] ❌ Failed to parse OpenAI JSON response:', parseError);
+      console.error('[OpenAI] Raw response that failed to parse:', response);
       return null;
     }
   } catch (error) {
-    console.error('OpenAI API error:', error);
-    return null;
+    console.error('[OpenAI] ❌ OpenAI API error:', error);
+    console.error('[OpenAI] Error type:', error.constructor.name);
+    console.error('[OpenAI] Error message:', error.message);
+    
+    if (error.response) {
+      console.error('[OpenAI] HTTP status:', error.response.status);
+      console.error('[OpenAI] Response data:', error.response.data);
+    }
+    
+    if (error.code) {
+      console.error('[OpenAI] Error code:', error.code);
+    }
+    
+    // Re-throw the error so it can be caught by the calling function
+    throw error;
   }
 }
 
@@ -511,7 +576,8 @@ function mergeVerbTokens(tokens, options = {}) {
         // Merge specific particles that attach to verbs
         else if (mergeVerbParticles && nextToken.pos === '助詞') {
           // Only merge particles that are commonly part of verb constructions
-          if (['て', 'で', 'た', 'だ', 'ば', 'と', 'ても', 'でも', 'ながら', 'つつ'].includes(nextToken.surface_form)) {
+          // Exclude と as it's a quotative/conjunctive particle that should remain separate
+          if (['て', 'で', 'た', 'だ', 'ば', 'ても', 'でも', 'ながら', 'つつ'].includes(nextToken.surface_form)) {
             shouldMerge = true;
           }
         }
@@ -696,7 +762,14 @@ app.post('/api/parse', async (req, res) => {
       let openaiAnalysis = null;
       if (useRemoteProcessing) {
         console.log('Calling OpenAI for enhanced analysis...');
-        openaiAnalysis = await getOpenAIAnalysis(text, basicTokens, contextLines);
+        try {
+          openaiAnalysis = await getOpenAIAnalysis(text, basicTokens, contextLines);
+          console.log('[OpenAI] Analysis completed successfully');
+        } catch (openaiError) {
+          console.error('[OpenAI] Analysis failed:', openaiError);
+          // Don't throw the error, just log it and continue with local processing
+          console.log('[OpenAI] Falling back to local dictionary processing only');
+        }
       } else {
         console.log('Skipping OpenAI analysis - using local processing only');
       }
@@ -722,18 +795,37 @@ app.post('/api/parse', async (req, res) => {
         // Look up in JMDict dictionary
         const dictLookup = await lookupInJMDict(token.surface, token.reading);
 
+        // Debug logging to see what we're getting from dictionary
+        if (dictLookup) {
+          console.log(`[DEBUG] Dictionary lookup for "${token.surface}":`, JSON.stringify(dictLookup, null, 2));
+        }
+
         // For local processing, prioritize dictionary, for remote processing prioritize AI
         let translation = 'N/A';
         if (useRemoteProcessing) {
           // Remote processing: prioritize AI translation, fallback to dictionary
           translation = aiData.translation || 'N/A';
           if (translation === 'N/A' && dictLookup && dictLookup.meanings) {
-            translation = dictLookup.meanings;
+            // Ensure we extract string properly
+            if (typeof dictLookup.meanings === 'string') {
+              translation = dictLookup.meanings;
+            } else if (Array.isArray(dictLookup.meanings)) {
+              translation = dictLookup.meanings.join('; ');
+            } else {
+              translation = String(dictLookup.meanings);
+            }
           }
         } else {
           // Local processing: use dictionary only
           if (dictLookup && dictLookup.meanings) {
-            translation = dictLookup.meanings;
+            // Ensure we extract string properly
+            if (typeof dictLookup.meanings === 'string') {
+              translation = dictLookup.meanings;
+            } else if (Array.isArray(dictLookup.meanings)) {
+              translation = dictLookup.meanings.join('; ');
+            } else {
+              translation = String(dictLookup.meanings);
+            }
           }
         }
 
@@ -742,7 +834,8 @@ app.post('/api/parse', async (req, res) => {
           translation: translation,
           contextualMeaning: aiData.contextualMeaning || 'N/A',
           grammaticalRole: aiData.grammaticalRole || token.pos,
-          dictionaryLookup: dictLookup // Include dictionary data for reference
+          // Only include safe dictionary data, not the full object
+          dictionarySource: dictLookup ? dictLookup.source : null
         };
       }));
 
