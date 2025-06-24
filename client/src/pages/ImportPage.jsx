@@ -71,20 +71,23 @@ export default function ImportPage() {
     }
   };
 
-  const handleLineProcess = async (idx) => {
+  const handleLineProcess = async (idx, useRemoteProcessing = true) => {
     console.log('Process button clicked for line index:', idx);
     console.log('Line text:', lines[idx]);
     console.log('Verb merge options:', verbMergeOptions);
+    console.log('Use remote processing (OpenAI):', useRemoteProcessing);
 
     // Set processing message for this specific line
-    setLineMessages(prev => ({ ...prev, [idx]: 'Processing...' }));
+    const processingMessage = useRemoteProcessing ? 'Processing with AI...' : 'Processing locally...';
+    setLineMessages(prev => ({ ...prev, [idx]: processingMessage }));
 
     try {
       const requestData = {
         text: lines[idx],
         lineIndex: idx,
         verbMergeOptions: verbMergeOptions,
-        allLines: lines
+        allLines: lines,
+        useRemoteProcessing: useRemoteProcessing
       };
       console.log('Sending request to /api/parse with data:', requestData);
 
@@ -98,7 +101,8 @@ export default function ImportPage() {
       if (response.data.analysis && response.data.analysis.tokens) {
         const lineData = {
           tokens: response.data.analysis.tokens,
-          fullLineTranslation: response.data.fullLineTranslation || 'N/A'
+          fullLineTranslation: response.data.fullLineTranslation || 'N/A',
+          processingType: useRemoteProcessing ? 'remote' : 'local'
         };
         setProcessedLines(prev => {
           const updatedLines = { ...prev, [idx]: lineData };
@@ -428,7 +432,24 @@ export default function ImportPage() {
                     <span>{line}</span>
                   </div>
                   {line.trim() && (
-                    <button onClick={() => handleLineProcess(idx)} className="btn-small">Process</button>
+                    <div style={{ display: 'flex', gap: '5px' }}>
+                      <button 
+                        onClick={() => handleLineProcess(idx, false)} 
+                        className="btn-small"
+                        style={{ backgroundColor: '#28a745', borderColor: '#28a745' }}
+                        title="Process using local dictionary only (JMDict)"
+                      >
+                        Local Process
+                      </button>
+                      <button 
+                        onClick={() => handleLineProcess(idx, true)} 
+                        className="btn-small"
+                        style={{ backgroundColor: '#007bff', borderColor: '#007bff' }}
+                        title="Process using OpenAI for enhanced translations"
+                      >
+                        Remote Process
+                      </button>
+                    </div>
                   )}
                   {lineMessages[idx] && (
                     <span style={{ marginLeft: '10px', fontSize: '0.9em', color: lineMessages[idx].startsWith('Error') ? '#dc3545' : '#28a745' }}>
@@ -438,6 +459,23 @@ export default function ImportPage() {
                 </div>
                 {processedLines[idx] && (
                   <div>
+                    <div style={{ display: 'flex', alignItems: 'center', marginTop: '5px', marginBottom: '5px' }}>
+                      <span style={{
+                        fontSize: '0.75em',
+                        padding: '2px 6px',
+                        borderRadius: '3px',
+                        backgroundColor: processedLines[idx].processingType === 'remote' ? '#007bff' : '#28a745',
+                        color: 'white',
+                        marginRight: '8px'
+                      }}>
+                        {processedLines[idx].processingType === 'remote' ? '🌐 AI' : '📚 Local'}
+                      </span>
+                      <span style={{ fontSize: '0.8em', color: '#888' }}>
+                        {processedLines[idx].processingType === 'remote' 
+                          ? 'Processed with OpenAI + Dictionary' 
+                          : 'Processed with local dictionary only'}
+                      </span>
+                    </div>
                     <TokenizedText tokens={processedLines[idx].tokens || processedLines[idx]} />
                     {processedLines[idx].fullLineTranslation && processedLines[idx].fullLineTranslation !== 'N/A' && (
                       <div style={{
@@ -446,7 +484,7 @@ export default function ImportPage() {
                         backgroundColor: '#2a2a2a',
                         borderRadius: '5px',
                         border: '1px solid #444',
-                        borderLeft: '4px solid #4fc3f7'
+                        borderLeft: processedLines[idx].processingType === 'remote' ? '4px solid #4fc3f7' : '4px solid #28a745'
                       }}>
                         <div style={{
                           fontSize: '0.8em',

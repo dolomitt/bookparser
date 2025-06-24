@@ -620,7 +620,7 @@ app.post('/api/parse', async (req, res) => {
   console.log('Received /api/parse request');
   console.log('Request body:', req.body);
 
-  const { text, lineIndex, verbMergeOptions = {}, allLines = [] } = req.body;
+  const { text, lineIndex, verbMergeOptions = {}, allLines = [], useRemoteProcessing = true } = req.body;
 
   if (!text) {
     console.log('Error: No text provided for processing');
@@ -628,10 +628,11 @@ app.post('/api/parse', async (req, res) => {
   }
 
   console.log(`Processing line ${lineIndex}: "${text.substring(0, 50)}..."`);
+  console.log(`Using remote processing (OpenAI): ${useRemoteProcessing}`);
 
-  // Prepare context lines for OpenAI
+  // Prepare context lines for OpenAI (only if using remote processing)
   const contextLines = {};
-  if (allLines && allLines.length > 0) {
+  if (useRemoteProcessing && allLines && allLines.length > 0) {
     if (lineIndex > 0) {
       contextLines.previousLine = allLines[lineIndex - 1];
     }
@@ -691,9 +692,14 @@ app.post('/api/parse', async (req, res) => {
         pos_detail: token.pos_detail_1
       }));
 
-      // Get OpenAI analysis for enhanced translations and explanations
-      console.log('Calling OpenAI for enhanced analysis...');
-      const openaiAnalysis = await getOpenAIAnalysis(text, basicTokens, contextLines);
+      // Get OpenAI analysis for enhanced translations and explanations (only if using remote processing)
+      let openaiAnalysis = null;
+      if (useRemoteProcessing) {
+        console.log('Calling OpenAI for enhanced analysis...');
+        openaiAnalysis = await getOpenAIAnalysis(text, basicTokens, contextLines);
+      } else {
+        console.log('Skipping OpenAI analysis - using local processing only');
+      }
 
       // Extract full line translation and token data from OpenAI response
       let fullLineTranslation = 'N/A';
@@ -716,10 +722,19 @@ app.post('/api/parse', async (req, res) => {
         // Look up in JMDict dictionary
         const dictLookup = await lookupInJMDict(token.surface, token.reading);
 
-        // Prioritize AI translation, fallback to dictionary, then 'N/A'
-        let translation = aiData.translation || 'N/A';
-        if (translation === 'N/A' && dictLookup && dictLookup.meanings) {
-          translation = dictLookup.meanings;
+        // For local processing, prioritize dictionary, for remote processing prioritize AI
+        let translation = 'N/A';
+        if (useRemoteProcessing) {
+          // Remote processing: prioritize AI translation, fallback to dictionary
+          translation = aiData.translation || 'N/A';
+          if (translation === 'N/A' && dictLookup && dictLookup.meanings) {
+            translation = dictLookup.meanings;
+          }
+        } else {
+          // Local processing: use dictionary only
+          if (dictLookup && dictLookup.meanings) {
+            translation = dictLookup.meanings;
+          }
         }
 
         return {
@@ -731,7 +746,9 @@ app.post('/api/parse', async (req, res) => {
         };
       }));
 
-      const analysisStatus = openaiAnalysis ? 'Processed with AI translations' : 'Processed';
+      const analysisStatus = useRemoteProcessing 
+        ? (openaiAnalysis ? 'Processed with AI translations' : 'Processed with dictionary only (AI unavailable)')
+        : 'Processed with local dictionary';
 
       result = {
         result: analysisStatus,
