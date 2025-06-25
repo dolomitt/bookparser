@@ -86,11 +86,11 @@ export default function ImportPage() {
         setSentences(allSentences);
         console.log(`Split ${res.data.lines.length} lines into ${allSentences.length} sentences`);
 
-        // Load existing processed data if available (convert from line-based to sentence-based)
-        if (res.data.existingProcessedData && Object.keys(res.data.existingProcessedData).length > 0) {
-          console.log('Loading existing processed data:', res.data.existingProcessedData);
-          // For now, we'll start fresh with sentence-based processing
-          // TODO: Could implement migration from line-based to sentence-based data
+        // Load existing processed sentences if available
+        if (res.data.existingProcessedSentences && Object.keys(res.data.existingProcessedSentences).length > 0) {
+          console.log('Loading existing processed sentences:', res.data.existingProcessedSentences);
+          setProcessedSentences(res.data.existingProcessedSentences);
+          console.log(`Loaded ${Object.keys(res.data.existingProcessedSentences).length} previously processed sentences`);
         }
 
         // Load existing verb merge options if available
@@ -470,17 +470,34 @@ export default function ImportPage() {
   };
 
   const autoProcessAllSentences = async (allSentences) => {
-    console.log('Starting automatic local processing for all sentences...');
-    setMessage('Auto-processing sentences with local dictionary...');
+    console.log('Starting automatic local processing for unprocessed sentences...');
     
     let processedCount = 0;
+    let skippedCount = 0;
     const totalSentences = allSentences.filter(s => !s.isLineBreak).length;
+    
+    // Check how many sentences are already processed
+    const alreadyProcessedCount = Object.keys(processedSentences).length;
+    
+    if (alreadyProcessedCount > 0) {
+      console.log(`Found ${alreadyProcessedCount} already processed sentences, skipping auto-processing for those`);
+      setMessage(`Found ${alreadyProcessedCount} already processed sentences. Processing remaining sentences...`);
+    } else {
+      setMessage('Auto-processing sentences with local dictionary...');
+    }
     
     for (let i = 0; i < allSentences.length; i++) {
       const sentence = allSentences[i];
       
       // Skip line breaks
       if (sentence.isLineBreak) continue;
+      
+      // Skip already processed sentences
+      if (processedSentences[i]) {
+        skippedCount++;
+        console.log(`Skipping sentence ${i} - already processed`);
+        continue;
+      }
       
       try {
         console.log(`Auto-processing sentence ${i}: "${sentence.text.substring(0, 30)}..."`);
@@ -513,7 +530,8 @@ export default function ImportPage() {
           processedCount++;
           
           // Update progress message
-          setMessage(`Auto-processing: ${processedCount}/${totalSentences} sentences completed`);
+          const totalProcessed = skippedCount + processedCount;
+          setMessage(`Auto-processing: ${totalProcessed}/${totalSentences} sentences completed (${processedCount} new, ${skippedCount} existing)`);
         }
         
         // Small delay to prevent overwhelming the server
@@ -525,8 +543,14 @@ export default function ImportPage() {
       }
     }
     
-    console.log(`Auto-processing completed: ${processedCount}/${totalSentences} sentences processed`);
-    setMessage(`Auto-processing completed: ${processedCount}/${totalSentences} sentences processed with local dictionary`);
+    const totalProcessed = skippedCount + processedCount;
+    console.log(`Auto-processing completed: ${totalProcessed}/${totalSentences} sentences total (${processedCount} newly processed, ${skippedCount} already existed)`);
+    
+    if (processedCount > 0) {
+      setMessage(`Auto-processing completed: ${processedCount} new sentences processed with local dictionary (${skippedCount} already existed)`);
+    } else {
+      setMessage(`All ${totalSentences} sentences were already processed - no new processing needed`);
+    }
     
     // Clear the message after 5 seconds
     setTimeout(() => {

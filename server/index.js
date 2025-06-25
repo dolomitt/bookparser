@@ -349,14 +349,16 @@ app.get('/api/import/:filename', (req, res) => {
   // Check if there's a corresponding .book file with processed data
   const bookFilePath = path.join(BOOKS_DIR, `${req.params.filename}.book`);
   let processedData = {};
+  let processedSentences = {};
   let verbMergeOptions = {};
 
   if (fs.existsSync(bookFilePath)) {
     try {
       const bookData = JSON.parse(fs.readFileSync(bookFilePath, 'utf-8'));
       processedData = bookData.content?.processedData || {};
+      processedSentences = bookData.content?.processedSentences || {};
       verbMergeOptions = bookData.settings?.verbMergeOptions || {};
-      console.log(`Found existing processed data for ${req.params.filename} with ${Object.keys(processedData).length} processed lines`);
+      console.log(`Found existing processed data for ${req.params.filename} with ${Object.keys(processedData).length} processed lines and ${Object.keys(processedSentences).length} processed sentences`);
     } catch (error) {
       console.error('Error reading book file:', error);
     }
@@ -365,6 +367,7 @@ app.get('/api/import/:filename', (req, res) => {
   res.json({
     lines,
     existingProcessedData: processedData,
+    existingProcessedSentences: processedSentences,
     existingVerbMergeOptions: verbMergeOptions
   });
 });
