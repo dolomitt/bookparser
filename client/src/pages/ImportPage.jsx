@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import './ImportPage.css';
 
 export default function ImportPage() {
   const { filename } = useParams();
@@ -30,6 +31,10 @@ export default function ImportPage() {
   });
   const [showTtsOptions, setShowTtsOptions] = useState(false);
   const fileInput = useRef();
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sentencesPerPage] = useState(50); // Show 50 sentences per page
 
   // Separate useEffect for initial load only
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
@@ -973,6 +978,65 @@ export default function ImportPage() {
     );
   };
 
+  // Pagination calculations
+  const totalSentences = sentences.filter(s => !s.isLineBreak).length;
+  const totalPages = Math.ceil(totalSentences / sentencesPerPage);
+  
+  // Get sentences for current page
+  const getPaginatedSentences = () => {
+    let sentenceCount = 0;
+    let startIndex = -1;
+    let endIndex = -1;
+    
+    // Find start index for current page
+    for (let i = 0; i < sentences.length; i++) {
+      if (!sentences[i].isLineBreak) {
+        sentenceCount++;
+        if (sentenceCount === (currentPage - 1) * sentencesPerPage + 1) {
+          startIndex = i;
+          break;
+        }
+      }
+    }
+    
+    // Find end index for current page
+    sentenceCount = 0;
+    for (let i = 0; i < sentences.length; i++) {
+      if (!sentences[i].isLineBreak) {
+        sentenceCount++;
+        if (sentenceCount === currentPage * sentencesPerPage) {
+          endIndex = i;
+          break;
+        }
+      }
+    }
+    
+    // If we didn't find an end index, use the last sentence
+    if (endIndex === -1) {
+      endIndex = sentences.length - 1;
+    }
+    
+    // Include line breaks that fall within our range
+    const result = [];
+    for (let i = startIndex; i <= endIndex; i++) {
+      if (i >= 0 && i < sentences.length) {
+        result.push({ ...sentences[i], originalIndex: i });
+      }
+    }
+    
+    return result;
+  };
+
+  const paginatedSentences = sentences.length > 0 ? getPaginatedSentences() : [];
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+      // Scroll to top when changing pages
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   return (
     <div className="container">
       <h2>Import Books</h2>
@@ -987,40 +1051,32 @@ export default function ImportPage() {
       {filename && (
         <div>
           <h3>File: {filename}</h3>
-          <div style={{ marginBottom: '20px' }}>
+          <div className="controls-section">
             <button onClick={handleSave} className="btn">Save to Books</button>
             <button
               onClick={() => setShowTtsOptions(!showTtsOptions)}
               className="btn"
-              style={{ marginLeft: '10px' }}
             >
               {showTtsOptions ? 'Hide' : 'Show'} TTS Options
             </button>
             <button
               onClick={() => setShowVerbOptions(!showVerbOptions)}
               className="btn"
-              style={{ marginLeft: '10px' }}
             >
               {showVerbOptions ? 'Hide' : 'Show'} Verb Options
             </button>
           </div>
 
           {showTtsOptions && (
-            <div style={{
-              marginBottom: '20px',
-              padding: '15px',
-              backgroundColor: '#2a2a2a',
-              borderRadius: '5px',
-              border: '1px solid #444'
-            }}>
-              <h4 style={{ marginTop: '0', color: '#fff' }}>Text-to-Speech Options</h4>
-              <p style={{ fontSize: '0.9em', color: '#ccc', marginBottom: '15px' }}>
+            <div className="options-panel">
+              <h4>Text-to-Speech Options</h4>
+              <p>
                 Configure VOICEVOX speech synthesis settings:
               </p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', alignItems: 'center' }}>
-                <div>
-                  <label style={{ display: 'block', color: '#fff', marginBottom: '5px' }}>
+              <div className="tts-options-grid">
+                <div className="tts-option-group">
+                  <label>
                     Speech Speed
                   </label>
                   <input
@@ -1030,28 +1086,19 @@ export default function ImportPage() {
                     step="0.1"
                     value={ttsOptions.speed}
                     onChange={(e) => handleTtsOptionChange('speed', parseFloat(e.target.value))}
-                    style={{ width: '100%' }}
                   />
-                  <div style={{ color: '#ccc', fontSize: '0.8em', textAlign: 'center' }}>
+                  <div className="tts-option-value">
                     {ttsOptions.speed}x
                   </div>
                 </div>
 
-                <div>
-                  <label style={{ display: 'block', color: '#fff', marginBottom: '5px' }}>
+                <div className="tts-option-group">
+                  <label>
                     Speaker Voice
                   </label>
                   <select
                     value={ttsOptions.speaker}
                     onChange={(e) => handleTtsOptionChange('speaker', parseInt(e.target.value))}
-                    style={{
-                      width: '100%',
-                      padding: '5px',
-                      backgroundColor: '#444',
-                      color: '#fff',
-                      border: '1px solid #666',
-                      borderRadius: '3px'
-                    }}
                   >
                     <option value={1}>Speaker 1 (四国めたん)</option>
                     <option value={2}>Speaker 2 (ずんだもん)</option>
@@ -1061,8 +1108,8 @@ export default function ImportPage() {
                   </select>
                 </div>
 
-                <div>
-                  <label style={{ display: 'block', color: '#fff', marginBottom: '5px' }}>
+                <div className="tts-option-group">
+                  <label>
                     Volume
                   </label>
                   <input
@@ -1072,15 +1119,14 @@ export default function ImportPage() {
                     step="0.1"
                     value={ttsOptions.volume}
                     onChange={(e) => handleTtsOptionChange('volume', parseFloat(e.target.value))}
-                    style={{ width: '100%' }}
                   />
-                  <div style={{ color: '#ccc', fontSize: '0.8em', textAlign: 'center' }}>
+                  <div className="tts-option-value">
                     {Math.round(ttsOptions.volume * 100)}%
                   </div>
                 </div>
               </div>
 
-              <div style={{ marginTop: '10px', fontSize: '0.8em', color: '#888' }}>
+              <div className="note">
                 <strong>Note:</strong> Speed and volume settings will be applied to future speech generation. 
                 Speaker selection requires VOICEVOX engine to support the selected voice.
               </div>
@@ -1088,95 +1134,81 @@ export default function ImportPage() {
           )}
 
           {showVerbOptions && (
-            <div style={{
-              marginBottom: '20px',
-              padding: '15px',
-              backgroundColor: '#2a2a2a',
-              borderRadius: '5px',
-              border: '1px solid #444'
-            }}>
-              <h4 style={{ marginTop: '0', color: '#fff' }}>Japanese Verb Tokenization Options</h4>
-              <p style={{ fontSize: '0.9em', color: '#ccc', marginBottom: '15px' }}>
+            <div className="options-panel">
+              <h4>Japanese Verb Tokenization Options</h4>
+              <p>
                 Configure how Japanese verbs are merged to keep them as single tokens:
               </p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', color: '#fff' }}>
+              <div className="verb-options-grid">
+                <label className="verb-option-label">
                   <input
                     type="checkbox"
                     checked={verbMergeOptions.mergeAuxiliaryVerbs}
                     onChange={(e) => handleVerbOptionChange('mergeAuxiliaryVerbs', e.target.checked)}
-                    style={{ marginRight: '8px' }}
                   />
                   Merge Auxiliary Verbs (助動詞)
                 </label>
 
-                <label style={{ display: 'flex', alignItems: 'center', color: '#fff' }}>
+                <label className="verb-option-label">
                   <input
                     type="checkbox"
                     checked={verbMergeOptions.mergeVerbParticles}
                     onChange={(e) => handleVerbOptionChange('mergeVerbParticles', e.target.checked)}
-                    style={{ marginRight: '8px' }}
                   />
                   Merge Verb Particles (助詞)
                 </label>
 
-                <label style={{ display: 'flex', alignItems: 'center', color: '#fff' }}>
+                <label className="verb-option-label">
                   <input
                     type="checkbox"
                     checked={verbMergeOptions.mergeVerbSuffixes}
                     onChange={(e) => handleVerbOptionChange('mergeVerbSuffixes', e.target.checked)}
-                    style={{ marginRight: '8px' }}
                   />
                   Merge Verb Suffixes (接尾)
                 </label>
 
-                <label style={{ display: 'flex', alignItems: 'center', color: '#fff' }}>
+                <label className="verb-option-label">
                   <input
                     type="checkbox"
                     checked={verbMergeOptions.mergeTeForm}
                     onChange={(e) => handleVerbOptionChange('mergeTeForm', e.target.checked)}
-                    style={{ marginRight: '8px' }}
                   />
                   Merge Te-form (て/で)
                 </label>
 
-                <label style={{ display: 'flex', alignItems: 'center', color: '#fff' }}>
+                <label className="verb-option-label">
                   <input
                     type="checkbox"
                     checked={verbMergeOptions.mergeMasuForm}
                     onChange={(e) => handleVerbOptionChange('mergeMasuForm', e.target.checked)}
-                    style={{ marginRight: '8px' }}
                   />
                   Merge Masu-form (ます/ました)
                 </label>
 
-                <label style={{ display: 'flex', alignItems: 'center', color: '#fff' }}>
+                <label className="verb-option-label">
                   <input
                     type="checkbox"
                     checked={verbMergeOptions.mergeAllInflections}
                     onChange={(e) => handleVerbOptionChange('mergeAllInflections', e.target.checked)}
-                    style={{ marginRight: '8px' }}
                   />
                   Merge ALL Inflections (Complete)
                 </label>
 
-                <label style={{ display: 'flex', alignItems: 'center', color: '#fff' }}>
+                <label className="verb-option-label">
                   <input
                     type="checkbox"
                     checked={verbMergeOptions.mergePunctuation}
                     onChange={(e) => handleVerbOptionChange('mergePunctuation', e.target.checked)}
-                    style={{ marginRight: '8px' }}
                   />
                   Merge Punctuation (記号)
                 </label>
 
-                <label style={{ display: 'flex', alignItems: 'center', color: '#fff' }}>
+                <label className="verb-option-label">
                   <input
                     type="checkbox"
                     checked={verbMergeOptions.useCompoundDetection}
                     onChange={(e) => handleVerbOptionChange('useCompoundDetection', e.target.checked)}
-                    style={{ marginRight: '8px' }}
                   />
                   Detect Compound Verbs
                 </label>
@@ -1184,17 +1216,78 @@ export default function ImportPage() {
             </div>
           )}
 
+          {/* Pagination info and controls - TOP */}
+          {totalPages > 1 && (
+            <>
+              <div className="pagination-info">
+                <span>
+                  Page {currentPage} of {totalPages} ({totalSentences} total sentences)
+                </span>
+              </div>
+              
+              <div className="pagination-controls">
+                <button 
+                  onClick={() => handlePageChange(1)}
+                  disabled={currentPage === 1}
+                  className="btn pagination-btn"
+                >
+                  First
+                </button>
+                <button 
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="btn pagination-btn"
+                >
+                  Previous
+                </button>
+                
+                <span className="pagination-pages">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`btn pagination-btn ${currentPage === pageNum ? 'active' : ''}`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </span>
+                
+                <button 
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="btn pagination-btn"
+                >
+                  Next
+                </button>
+                <button 
+                  onClick={() => handlePageChange(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="btn pagination-btn"
+                >
+                  Last
+                </button>
+              </div>
+            </>
+          )}
+
           <div className="import-content">
-            <div style={{
-              padding: '20px',
-              backgroundColor: '#1a1a1a',
-              borderRadius: '8px',
-              border: '1px solid #444',
-              fontSize: '1.1em',
-              lineHeight: '1.8',
-              color: '#f2f2f2'
-            }}>
-              {sentences.map((sentence, sentenceIndex) => {
+              {paginatedSentences.map((sentence, index) => {
+                const sentenceIndex = sentence.originalIndex;
+                
                 if (sentence.isLineBreak) {
                   return <br key={sentenceIndex} />;
                 }
@@ -1204,47 +1297,27 @@ export default function ImportPage() {
                   isProcessed.fullSentenceTranslation && isProcessed.fullSentenceTranslation !== 'N/A';
 
                 return (
-                  <span key={sentenceIndex} style={{ position: 'relative', display: 'inline' }}>
+                  <span key={sentenceIndex} className="sentence-container">
                     {isProcessed ? (
                       <span data-sentence={sentenceIndex}>
                         <TokenizedText tokens={isProcessed.tokens} sentenceIndex={sentenceIndex} />
                       </span>
                     ) : (
-                      <span data-sentence={sentenceIndex} style={{ color: '#f2f2f2' }}>{sentence.text}</span>
+                      <span data-sentence={sentenceIndex} className="sentence-text">{sentence.text}</span>
                     )}
                     
                     {/* Processing buttons - inline after sentence */}
-                    <span style={{ marginLeft: '8px', display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
+                    <span className="sentence-controls">
                       <button 
                         onClick={() => handleSentenceProcess(sentenceIndex, false)} 
-                        style={{ 
-                          backgroundColor: '#28a745', 
-                          border: 'none',
-                          color: 'white',
-                          padding: '4px 6px',
-                          fontSize: '0.8em',
-                          borderRadius: '3px',
-                          cursor: 'pointer',
-                          minWidth: '24px',
-                          minHeight: '24px'
-                        }}
+                        className="sentence-btn local"
                         title="Process using local dictionary only (JMDict)"
                       >
                         L
                       </button>
                       <button 
                         onClick={() => handleSentenceProcess(sentenceIndex, true)} 
-                        style={{ 
-                          backgroundColor: '#007bff', 
-                          border: 'none',
-                          color: 'white',
-                          padding: '4px 6px',
-                          fontSize: '0.8em',
-                          borderRadius: '3px',
-                          cursor: 'pointer',
-                          minWidth: '24px',
-                          minHeight: '24px'
-                        }}
+                        className="sentence-btn remote"
                         title="Process using OpenAI for enhanced translations"
                       >
                         R
@@ -1253,17 +1326,7 @@ export default function ImportPage() {
                       {/* Text-to-speech with timing button */}
                       <button 
                         onClick={() => handleTextToSpeech(sentenceIndex, true)} 
-                        style={{ 
-                          backgroundColor: '#ff6b35', 
-                          border: 'none',
-                          color: 'white',
-                          padding: '4px 6px',
-                          fontSize: '0.8em',
-                          borderRadius: '3px',
-                          cursor: 'pointer',
-                          minWidth: '24px',
-                          minHeight: '24px'
-                        }}
+                        className="sentence-btn tts"
                         title="Generate speech with real-time highlighting using VOICEVOX"
                       >
                         🔊
@@ -1278,17 +1341,7 @@ export default function ImportPage() {
                               popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
                             }
                           }}
-                          style={{ 
-                            backgroundColor: '#6c757d', 
-                            border: 'none',
-                            color: 'white',
-                            padding: '4px 6px',
-                            fontSize: '0.8em',
-                            borderRadius: '3px',
-                            cursor: 'pointer',
-                            minWidth: '24px',
-                            minHeight: '24px'
-                          }}
+                          className="sentence-btn translation"
                           title="Show sentence translation"
                         >
                           💬
@@ -1298,12 +1351,7 @@ export default function ImportPage() {
 
                     {/* Processing status message */}
                     {sentenceMessages[sentenceIndex] && (
-                      <span style={{ 
-                        marginLeft: '8px',
-                        fontSize: '0.8em', 
-                        color: sentenceMessages[sentenceIndex].startsWith('Error') ? '#dc3545' : '#28a745',
-                        fontWeight: 'bold'
-                      }}>
+                      <span className={`sentence-status ${sentenceMessages[sentenceIndex].startsWith('Error') ? 'error' : 'success'}`}>
                         {sentenceMessages[sentenceIndex]}
                       </span>
                     )}
@@ -1312,31 +1360,9 @@ export default function ImportPage() {
                     {hasRemoteTranslation && (
                       <div
                         id={`translation-popup-${sentenceIndex}`}
-                        style={{
-                          display: 'none',
-                          position: 'absolute',
-                          top: '100%',
-                          left: '0',
-                          marginTop: '8px',
-                          padding: '12px',
-                          backgroundColor: '#2a2a2a',
-                          border: '2px solid #4fc3f7',
-                          borderRadius: '6px',
-                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.6)',
-                          zIndex: 1000,
-                          maxWidth: '400px',
-                          fontSize: '0.9em',
-                          color: '#f2f2f2',
-                          lineHeight: '1.4'
-                        }}
+                        className="translation-popup"
                       >
-                        <div style={{
-                          fontSize: '0.8em',
-                          color: '#888',
-                          marginBottom: '8px',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px'
-                        }}>
+                        <div className="translation-popup-label">
                           Translation
                         </div>
                         <div>
@@ -1346,18 +1372,7 @@ export default function ImportPage() {
                           onClick={() => {
                             document.getElementById(`translation-popup-${sentenceIndex}`).style.display = 'none';
                           }}
-                          style={{
-                            position: 'absolute',
-                            top: '4px',
-                            right: '4px',
-                            background: 'none',
-                            border: 'none',
-                            color: '#888',
-                            fontSize: '16px',
-                            cursor: 'pointer',
-                            padding: '4px',
-                            lineHeight: '1'
-                          }}
+                          className="translation-popup-close"
                         >
                           ×
                         </button>
@@ -1368,11 +1383,70 @@ export default function ImportPage() {
                   </span>
                 );
               })}
-            </div>
           </div>
+
+          {/* Pagination controls */}
+          {totalPages > 1 && (
+            <div className="pagination-controls">
+              <button 
+                onClick={() => handlePageChange(1)}
+                disabled={currentPage === 1}
+                className="btn pagination-btn"
+              >
+                First
+              </button>
+              <button 
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="btn pagination-btn"
+              >
+                Previous
+              </button>
+              
+              <span className="pagination-pages">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      className={`btn pagination-btn ${currentPage === pageNum ? 'active' : ''}`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </span>
+              
+              <button 
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="btn pagination-btn"
+              >
+                Next
+              </button>
+              <button 
+                onClick={() => handlePageChange(totalPages)}
+                disabled={currentPage === totalPages}
+                className="btn pagination-btn"
+              >
+                Last
+              </button>
+            </div>
+          )}
         </div>
       )}
-      {message && <div style={{ marginTop: '1em', color: '#007bff' }}>{message}</div>}
+      {message && <div className="message">{message}</div>}
     </div>
   );
 }
