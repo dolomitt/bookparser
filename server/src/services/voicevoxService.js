@@ -1,4 +1,5 @@
 import { config } from '../config/index.js';
+import mfaService from './mfaService.js';
 
 class VoicevoxService {
   constructor() {
@@ -243,6 +244,153 @@ class VoicevoxService {
       const chr = match.charCodeAt(0) - 0x60;
       return String.fromCharCode(chr);
     });
+  }
+
+  // Enhanced speech generation with MFA alignment
+  async generateSpeechWithMFA(text, options = {}) {
+    const { 
+      speaker = this.defaultSpeaker, 
+      speed = 1.0, 
+      volume = 1.0,
+      useMFA = true,
+      language = 'japanese_mfa'
+    } = options;
+
+    console.log('[VOICEVOX+MFA] Starting enhanced speech generation with MFA alignment');
+
+    try {
+      // Step 1: Generate audio with VoiceVox (always include timings for MFA processing)
+      const voiceVoxResult = await this.generateSpeech(text, {
+        speaker,
+        includeTimings: true,
+        speed,
+        volume
+      });
+
+      if (!voiceVoxResult.audio || !voiceVoxResult.timings) {
+        throw new Error('Failed to generate VoiceVox audio with timings');
+      }
+
+      // Step 2: Convert base64 audio back to buffer for MFA processing
+      const audioBuffer = Buffer.from(voiceVoxResult.audio, 'base64');
+
+      // Step 3: Use MFA for enhanced alignment if requested
+      let enhancedTimings = voiceVoxResult.timings;
+      let alignmentMethod = 'voicevox';
+      let alignmentStats = {};
+
+      if (useMFA) {
+        console.log('[VOICEVOX+MFA] Running MFA alignment...');
+        
+        const mfaResult = await mfaService.alignVoiceVoxAudio(audioBuffer, text, {
+          filename: `voicevox_${Date.now()}`,
+          language: language,
+          useVoiceVoxTimings: true,
+          voiceVoxTimings: voiceVoxResult.timings,
+          audioDuration: this.calculateAudioDuration(voiceVoxResult.timings)
+        });
+
+        if (mfaResult.success && mfaResult.timingData.length > 0) {
+          enhancedTimings = mfaResult.timingData;
+          alignmentMethod = mfaResult.method;
+          alignmentStats = mfaService.getAlignmentStats(enhancedTimings);
+          console.log('[VOICEVOX+MFA] MFA alignment successful');
+        } else {
+          console.warn('[VOICEVOX+MFA] MFA alignment failed, using VoiceVox timings');
+          alignmentStats = this.getVoiceVoxAlignmentStats(voiceVoxResult.timings);
+        }
+      } else {
+        alignmentStats = this.getVoiceVoxAlignmentStats(voiceVoxResult.timings);
+      }
+
+      // Step 4: Return enhanced result
+      return {
+        audio: voiceVoxResult.audio,
+        timings: enhancedTimings,
+        audioFormat: voiceVoxResult.audioFormat,
+        sampleRate: voiceVoxResult.sampleRate,
+        alignment: {
+          method: alignmentMethod,
+          stats: alignmentStats,
+          originalVoiceVoxTimings: voiceVoxResult.timings.length,
+          enhancedTimings: enhancedTimings.length
+        }
+      };
+
+    } catch (error) {
+      console.error('[VOICEVOX+MFA] Enhanced speech generation failed:', error);
+      
+      // Fallback to regular VoiceVox generation
+      console.log('[VOICEVOX+MFA] Falling back to regular VoiceVox generation');
+      try {
+        const fallbackResult = await this.generateSpeech(text, {
+          speaker,
+          includeTimings: true,
+          speed,
+          volume
+        });
+
+        return {
+          ...fallbackResult,
+          alignment: {
+            method: 'voicevox_fallback',
+            stats: this.getVoiceVoxAlignmentStats(fallbackResult.timings),
+            error: error.message
+          }
+        };
+      } catch (fallbackError) {
+        console.error('[VOICEVOX+MFA] Fallback also failed:', fallbackError);
+        throw fallbackError;
+      }
+    }
+  }
+
+  // Calculate audio duration from VoiceVox timings
+  calculateAudioDuration(timings) {
+    if (!timings || timings.length === 0) return 0;
+    return Math.max(...timings.map(t => t.endTime));
+  }
+
+  // Get alignment statistics for VoiceVox timings
+  getVoiceVoxAlignmentStats(timings) {
+    if (!timings || timings.length === 0) {
+      return { totalMoras: 0, totalDuration: 0, averageMoraDuration: 0 };
+    }
+
+    const totalMoras = timings.length;
+    const totalDuration = this.calculateAudioDuration(timings);
+    const averageMoraDuration = totalDuration / totalMoras;
+
+    return {
+      totalMoras,
+      totalDuration,
+      averageMoraDuration,
+      type: 'mora-level'
+    };
+  }
+
+  // Utility method to compare timing alignments
+  compareAlignments(voiceVoxTimings, mfaTimings) {
+    const comparison = {
+      voiceVox: {
+        count: voiceVoxTimings.length,
+        duration: this.calculateAudioDuration(voiceVoxTimings),
+        type: 'mora-level'
+      },
+      mfa: {
+        count: mfaTimings.length,
+        duration: mfaTimings.length > 0 ? Math.max(...mfaTimings.map(t => t.endTime)) : 0,
+        type: 'word-level'
+      }
+    };
+
+    comparison.improvement = {
+      granularityChange: comparison.voiceVox.count - comparison.mfa.count,
+      durationDifference: Math.abs(comparison.voiceVox.duration - comparison.mfa.duration),
+      recommended: comparison.mfa.count > 0 ? 'mfa' : 'voicevox'
+    };
+
+    return comparison;
   }
 }
 

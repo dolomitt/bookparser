@@ -19,7 +19,8 @@ A comprehensive web application designed to help users read Japanese books with 
 
 ### 🎧 Audio Features
 - **VOICEVOX Integration**: High-quality Japanese text-to-speech
-- **Timing Synchronization**: Word-level audio timing for enhanced learning
+- **Montreal Forced Aligner (MFA)**: Enhanced audio-text timing alignment
+- **Dual Timing Methods**: Mora-level (VoiceVox) and word-level (MFA) synchronization
 - **Multiple Speakers**: Configurable voice options
 - **Audio Controls**: Play, pause, and seek functionality
 
@@ -177,6 +178,8 @@ VOICEVOX_DEFAULT_SPEAKER=1
 ### Text Processing
 - `POST /api/parse` - Process Japanese text with full analysis
 - `POST /api/text-to-speech` - Generate audio with timing data
+- `POST /api/text-to-speech/enhanced` - Enhanced TTS with MFA alignment
+- `POST /api/text-to-speech/compare-alignment` - Compare alignment methods
 
 ### File Operations
 - `POST /api/import` - Upload new text file
@@ -230,6 +233,15 @@ Consider containerizing the application for easier deployment:
 ## 📄 License
 
 This project is private and proprietary. See license file for details.
+
+## 🎯 Advanced Features
+
+### Montreal Forced Aligner Integration
+For enhanced audio-text timing alignment, see the detailed [MFA Integration Guide](./MFA_INTEGRATION.md) which covers:
+- Installation and setup of Montreal Forced Aligner
+- Enhanced API endpoints for improved timing
+- Comparison between VoiceVox and MFA alignment methods
+- Troubleshooting and performance considerations
 
 ---
 

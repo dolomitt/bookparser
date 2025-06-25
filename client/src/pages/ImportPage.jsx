@@ -230,17 +230,29 @@ export default function ImportPage() {
 
     try {
       if (withTimings) {
-        // Request audio with timing data using TTS options
-        const response = await axios.post('/api/text-to-speech', {
+        // Request audio with MFA-enhanced timing data using TTS options
+        const response = await axios.post('/api/text-to-speech/enhanced', {
           text: sentence.text,
-          includeTimings: true,
           speaker: ttsOptions.speaker,
           speed: ttsOptions.speed,
-          volume: ttsOptions.volume
+          volume: ttsOptions.volume,
+          useMFA: true,
+          language: 'japanese_mfa'
         });
 
         console.log('Received audio and timing response from server');
-        const { audio, timings, audioFormat, sampleRate } = response.data;
+        const { audio, timings, audioFormat, sampleRate, alignment } = response.data;
+        
+        // Log alignment method for debugging
+        if (alignment) {
+          console.log(`[MFA] Using alignment method: ${alignment.method}`);
+          console.log(`[MFA] Timing points: ${timings.length} (${alignment.stats?.type || 'unknown'})`);
+          if (alignment.method === 'mfa') {
+            setSentenceMessages(prev => ({ ...prev, [sentenceIndex]: '🎯 Using MFA enhanced timing...' }));
+          } else {
+            setSentenceMessages(prev => ({ ...prev, [sentenceIndex]: '🔊 Using VoiceVox timing...' }));
+          }
+        }
 
         // Convert base64 audio to blob
         const audioData = atob(audio);
