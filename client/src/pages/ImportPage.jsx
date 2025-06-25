@@ -103,6 +103,11 @@ export default function ImportPage() {
         }
         
         setInitialLoadComplete(true);
+        
+        // Auto-process all sentences with local processing
+        setTimeout(() => {
+          autoProcessAllSentences(allSentences);
+        }, 100);
       }).catch(error => {
         console.error('Error loading file data:', error);
         setInitialLoadComplete(true);
@@ -128,39 +133,214 @@ export default function ImportPage() {
     }
   };
 
-  const handleTextToSpeech = async (sentenceIndex) => {
+  const handleTextToSpeech = async (sentenceIndex, withTimings = false) => {
     const sentence = sentences[sentenceIndex];
     if (!sentence || sentence.isLineBreak) return;
 
     console.log('Text-to-speech button clicked for sentence index:', sentenceIndex);
     console.log('Sentence text:', sentence.text);
+    console.log('With timings:', withTimings);
 
     // Set processing message for this specific sentence
     setSentenceMessages(prev => ({ ...prev, [sentenceIndex]: 'Generating speech...' }));
 
     try {
-      // Call server-side text-to-speech endpoint
-      const response = await axios.post('/api/text-to-speech', {
-        text: sentence.text,
-        speaker: 1
-      }, {
-        responseType: 'blob' // Important: tell axios to expect binary data
-      });
+      if (withTimings) {
+        // Request audio with timing data
+        const response = await axios.post('/api/text-to-speech', {
+          text: sentence.text,
+          includeTimings: true
+        });
 
-      console.log('Received audio response from server');
+        console.log('Received audio and timing response from server');
+        const { audio, timings, audioFormat, sampleRate } = response.data;
 
-      // Create audio blob and play it
-      const audioBlob = new Blob([response.data], { type: 'audio/wav' });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      
-      // Create and play audio element
-      const audio = new Audio(audioUrl);
-      audio.play();
+        // Convert base64 audio to blob
+        const audioData = atob(audio);
+        const audioArray = new Uint8Array(audioData.length);
+        for (let i = 0; i < audioData.length; i++) {
+          audioArray[i] = audioData.charCodeAt(i);
+        }
+        const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        // Create and play audio element
+        const audioElement = new Audio(audioUrl);
+        
+        // Set up timing-based text highlighting
+        let highlightTimeouts = [];
+        let currentHighlight = null;
+        
+        const clearHighlights = () => {
+          highlightTimeouts.forEach(timeout => clearTimeout(timeout));
+          highlightTimeouts = [];
+          if (currentHighlight) {
+            currentHighlight.style.backgroundColor = 'transparent';
+            currentHighlight = null;
+          }
+        };
 
-      // Clean up the object URL after playing
-      audio.addEventListener('ended', () => {
-        URL.revokeObjectURL(audioUrl);
-      });
+        // Get the processed sentence data to access tokens
+        let processedSentence = processedSentences[sentenceIndex];
+        if (!processedSentence || !processedSentence.tokens) {
+          console.log('No processed tokens available, running local processing first...');
+          
+          try {
+            // Run local processing automatically
+            const requestData = {
+              text: sentence.text,
+              sentenceIndex: sentenceIndex,
+              verbMergeOptions: verbMergeOptions,
+              allSentences: sentences.map(s => s.text),
+              useRemoteProcessing: false // Use local processing
+            };
+
+            const response = await axios.post('/api/parse', requestData);
+            
+            if (response.data.analysis && response.data.analysis.tokens) {
+              const sentenceData = {
+                tokens: response.data.analysis.tokens,
+                fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
+                processingType: 'local'
+              };
+              
+              // Update the processed sentences state
+              setProcessedSentences(prev => ({ ...prev, [sentenceIndex]: sentenceData }));
+              
+              // Auto-save the processed data
+              setTimeout(() => {
+                autoSave(sentenceIndex, sentenceData);
+              }, 100);
+              
+              // Use the newly processed sentence data
+              processedSentence = sentenceData;
+              console.log('Local processing completed, proceeding with highlighting');
+            } else {
+              console.warn('Local processing failed, playing audio without highlighting');
+              audioElement.play();
+              audioElement.addEventListener('ended', () => {
+                URL.revokeObjectURL(audioUrl);
+              });
+              return;
+            }
+          } catch (error) {
+            console.error('Auto-processing error:', error);
+            console.warn('Auto-processing failed, playing audio without highlighting');
+            audioElement.play();
+            audioElement.addEventListener('ended', () => {
+              URL.revokeObjectURL(audioUrl);
+            });
+            return;
+          }
+        }
+
+        // Map timing data to tokens based on text positions
+        const mapTimingsToTokens = (timings, tokens) => {
+          const tokenTimings = [];
+          let currentTextPos = 0;
+          
+          tokens.forEach((token, tokenIndex) => {
+            const tokenStart = currentTextPos;
+            const tokenEnd = currentTextPos + token.surface.length;
+            
+            // Find all timing points that overlap with this token
+            const overlappingTimings = timings.filter(timing => 
+              timing.textStart < tokenEnd && timing.textEnd > tokenStart
+            );
+            
+            if (overlappingTimings.length > 0) {
+              // Use the earliest start time and latest end time for this token
+              const startTime = Math.min(...overlappingTimings.map(t => t.startTime));
+              const endTime = Math.max(...overlappingTimings.map(t => t.endTime));
+              
+              tokenTimings.push({
+                tokenIndex,
+                startTime,
+                endTime,
+                token: token.surface
+              });
+            }
+            
+            currentTextPos = tokenEnd;
+          });
+          
+          return tokenTimings;
+        };
+
+        const tokenTimings = mapTimingsToTokens(timings, processedSentence.tokens);
+        console.log('Token timings:', tokenTimings);
+
+        // Schedule highlighting for each token
+        tokenTimings.forEach((tokenTiming) => {
+          const timeout = setTimeout(() => {
+            // Clear previous highlight
+            if (currentHighlight) {
+              currentHighlight.style.backgroundColor = 'transparent';
+              currentHighlight.style.color = '';
+            }
+            
+            // Find the specific token to highlight
+            const tokenElement = document.querySelector(`[data-token="${sentenceIndex}-${tokenTiming.tokenIndex}"]`);
+            if (tokenElement) {
+              tokenElement.style.backgroundColor = '#ffeb3b';
+              tokenElement.style.color = '#000';
+              tokenElement.style.transition = 'background-color 0.1s ease, color 0.1s ease';
+              tokenElement.style.borderRadius = '4px';
+              // Don't change padding to avoid text movement
+              currentHighlight = tokenElement;
+            }
+          }, tokenTiming.startTime * 1000); // Convert to milliseconds
+          
+          highlightTimeouts.push(timeout);
+          
+          // Schedule clearing of this specific highlight
+          const clearTimeout = setTimeout(() => {
+            const tokenElement = document.querySelector(`[data-token="${sentenceIndex}-${tokenTiming.tokenIndex}"]`);
+            if (tokenElement) {
+              tokenElement.style.backgroundColor = 'transparent';
+              tokenElement.style.color = '';
+            }
+          }, tokenTiming.endTime * 1000);
+          
+          highlightTimeouts.push(clearTimeout);
+        });
+
+        // Clear highlights when audio ends
+        audioElement.addEventListener('ended', () => {
+          clearHighlights();
+          URL.revokeObjectURL(audioUrl);
+        });
+
+        // Clear highlights if audio is paused/stopped
+        audioElement.addEventListener('pause', clearHighlights);
+        audioElement.addEventListener('abort', clearHighlights);
+
+        audioElement.play();
+
+      } else {
+        // Original behavior - audio only
+        const response = await axios.post('/api/text-to-speech', {
+          text: sentence.text,
+          includeTimings: false
+        }, {
+          responseType: 'blob'
+        });
+
+        console.log('Received audio response from server');
+
+        // Create audio blob and play it
+        const audioBlob = new Blob([response.data], { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        // Create and play audio element
+        const audio = new Audio(audioUrl);
+        audio.play();
+
+        // Clean up the object URL after playing
+        audio.addEventListener('ended', () => {
+          URL.revokeObjectURL(audioUrl);
+        });
+      }
 
       // Clear message after successful generation
       setSentenceMessages(prev => ({ ...prev, [sentenceIndex]: '' }));
@@ -172,7 +352,7 @@ export default function ImportPage() {
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
         errorMessage = 'Server not running. Please start the server with "npm run dev" in the bookparser directory.';
       } else if (error.response?.status === 503) {
-        errorMessage = 'Cannot connect to VOICEVOX engine at 192.168.1.43:50021';
+        errorMessage = 'Cannot connect to VOICEVOX engine';
       } else if (error.response?.status === 502) {
         errorMessage = 'VOICEVOX engine error';
       } else if (error.response?.data?.error) {
@@ -287,6 +467,71 @@ export default function ImportPage() {
     } catch (error) {
       console.error('Auto-save error:', error);
     }
+  };
+
+  const autoProcessAllSentences = async (allSentences) => {
+    console.log('Starting automatic local processing for all sentences...');
+    setMessage('Auto-processing sentences with local dictionary...');
+    
+    let processedCount = 0;
+    const totalSentences = allSentences.filter(s => !s.isLineBreak).length;
+    
+    for (let i = 0; i < allSentences.length; i++) {
+      const sentence = allSentences[i];
+      
+      // Skip line breaks
+      if (sentence.isLineBreak) continue;
+      
+      try {
+        console.log(`Auto-processing sentence ${i}: "${sentence.text.substring(0, 30)}..."`);
+        
+        const requestData = {
+          text: sentence.text,
+          sentenceIndex: i,
+          verbMergeOptions: verbMergeOptions,
+          allSentences: allSentences.map(s => s.text),
+          useRemoteProcessing: false // Use local processing only
+        };
+
+        const response = await axios.post('/api/parse', requestData);
+        
+        if (response.data.analysis && response.data.analysis.tokens) {
+          const sentenceData = {
+            tokens: response.data.analysis.tokens,
+            fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
+            processingType: 'local'
+          };
+          
+          // Update the processed sentences state
+          setProcessedSentences(prev => ({ ...prev, [i]: sentenceData }));
+          
+          // Auto-save the processed data
+          setTimeout(() => {
+            autoSave(i, sentenceData);
+          }, 50);
+          
+          processedCount++;
+          
+          // Update progress message
+          setMessage(`Auto-processing: ${processedCount}/${totalSentences} sentences completed`);
+        }
+        
+        // Small delay to prevent overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+      } catch (error) {
+        console.error(`Error auto-processing sentence ${i}:`, error);
+        // Continue with next sentence even if one fails
+      }
+    }
+    
+    console.log(`Auto-processing completed: ${processedCount}/${totalSentences} sentences processed`);
+    setMessage(`Auto-processing completed: ${processedCount}/${totalSentences} sentences processed with local dictionary`);
+    
+    // Clear the message after 5 seconds
+    setTimeout(() => {
+      setMessage('');
+    }, 5000);
   };
 
   const handleSave = async () => {
@@ -719,9 +964,11 @@ export default function ImportPage() {
                 return (
                   <span key={sentenceIndex} style={{ position: 'relative', display: 'inline' }}>
                     {isProcessed ? (
-                      <TokenizedText tokens={isProcessed.tokens} sentenceIndex={sentenceIndex} />
+                      <span data-sentence={sentenceIndex}>
+                        <TokenizedText tokens={isProcessed.tokens} sentenceIndex={sentenceIndex} />
+                      </span>
                     ) : (
-                      <span style={{ color: '#f2f2f2' }}>{sentence.text}</span>
+                      <span data-sentence={sentenceIndex} style={{ color: '#f2f2f2' }}>{sentence.text}</span>
                     )}
                     
                     {/* Processing buttons - inline after sentence */}
@@ -761,9 +1008,9 @@ export default function ImportPage() {
                         R
                       </button>
                       
-                      {/* Text-to-speech button */}
+                      {/* Text-to-speech with timing button */}
                       <button 
-                        onClick={() => handleTextToSpeech(sentenceIndex)} 
+                        onClick={() => handleTextToSpeech(sentenceIndex, true)} 
                         style={{ 
                           backgroundColor: '#ff6b35', 
                           border: 'none',
@@ -775,7 +1022,7 @@ export default function ImportPage() {
                           minWidth: '24px',
                           minHeight: '24px'
                         }}
-                        title="Generate speech using VOICEVOX"
+                        title="Generate speech with real-time highlighting using VOICEVOX"
                       >
                         🔊
                       </button>

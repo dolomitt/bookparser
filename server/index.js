@@ -15,6 +15,9 @@ console.log('PORT:', process.env.PORT);
 console.log('UPLOAD_DIR:', process.env.UPLOAD_DIR);
 console.log('BOOKS_DIR:', process.env.BOOKS_DIR);
 console.log('OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? '[set]' : '[not set]');
+console.log('VOICEVOX_HOST:', process.env.VOICEVOX_HOST);
+console.log('VOICEVOX_PORT:', process.env.VOICEVOX_PORT);
+console.log('VOICEVOX_DEFAULT_SPEAKER:', process.env.VOICEVOX_DEFAULT_SPEAKER);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -34,7 +37,6 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Add request logging middleware
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  console.log('Request headers:', req.headers);
   if (req.body && Object.keys(req.body).length > 0) {
     console.log('Request body keys:', Object.keys(req.body));
   }
@@ -951,23 +953,32 @@ app.post('/api/parse', async (req, res) => {
   }
 });
 
-// Text-to-speech endpoint using VOICEVOX
+// Text-to-speech endpoint using VOICEVOX with timing data
 app.post('/api/text-to-speech', async (req, res) => {
   console.log('Received /api/text-to-speech request');
   
-  const { text, speaker = 1 } = req.body;
+  const { text, speaker, includeTimings = false } = req.body;
+  
+  // Use environment variables for VOICEVOX configuration
+  const voicevoxHost = process.env.VOICEVOX_HOST || '192.168.1.43';
+  const voicevoxPort = process.env.VOICEVOX_PORT || '50021';
+  const defaultSpeaker = process.env.VOICEVOX_DEFAULT_SPEAKER || '1';
+  const finalSpeaker = speaker || defaultSpeaker;
+  const voicevoxBaseUrl = `http://${voicevoxHost}:${voicevoxPort}`;
 
   if (!text) {
     console.log('Error: No text provided for text-to-speech');
     return res.status(400).json({ error: 'No text provided for text-to-speech' });
   }
 
-  console.log(`Generating speech for text: "${text.substring(0, 50)}..." with speaker ${speaker}`);
+  console.log(`Generating speech for text: "${text.substring(0, 50)}..." with speaker ${finalSpeaker}`);
+  console.log(`Using VOICEVOX at: ${voicevoxBaseUrl}, includeTimings: ${includeTimings}`);
 
   try {
     // Step 1: Get audio query from VOICEVOX
     console.log('[VOICEVOX] Requesting audio query...');
-    const audioQueryResponse = await fetch(`http://192.168.1.43:50021/audio_query?text=${encodeURIComponent(text)}&speaker=${speaker}`, {
+    const audioQueryUrl = `${voicevoxBaseUrl}/audio_query?text=${encodeURIComponent(text)}&speaker=${finalSpeaker}`;
+    const audioQueryResponse = await fetch(audioQueryUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -983,7 +994,8 @@ app.post('/api/text-to-speech', async (req, res) => {
 
     // Step 2: Generate synthesis audio
     console.log('[VOICEVOX] Requesting audio synthesis...');
-    const synthesisResponse = await fetch(`http://192.168.1.43:50021/synthesis?speaker=${speaker}`, {
+    const synthesisUrl = `${voicevoxBaseUrl}/synthesis?speaker=${finalSpeaker}`;
+    const synthesisResponse = await fetch(synthesisUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -997,19 +1009,38 @@ app.post('/api/text-to-speech', async (req, res) => {
 
     console.log('[VOICEVOX] Audio synthesis successful');
 
-    // Step 3: Return audio data to client
-    const audioBuffer = await synthesisResponse.arrayBuffer();
-    
-    // Set appropriate headers for audio response
-    res.set({
-      'Content-Type': 'audio/wav',
-      'Content-Length': audioBuffer.byteLength,
-      'Cache-Control': 'no-cache'
-    });
+    // Step 3: Process timing data if requested
+    if (includeTimings) {
+      // Extract timing information from audio query
+      const timingData = extractTimingData(audioQuery, text);
+      
+      // Return JSON response with both audio and timing data
+      const audioBuffer = await synthesisResponse.arrayBuffer();
+      const audioBase64 = Buffer.from(audioBuffer).toString('base64');
+      
+      res.json({
+        audio: audioBase64,
+        timings: timingData,
+        audioFormat: 'wav',
+        sampleRate: audioQuery.outputSamplingRate || 24000
+      });
+      
+      console.log(`[VOICEVOX] Audio and timing data sent to client (${audioBuffer.byteLength} bytes audio, ${timingData.length} timing points)`);
+    } else {
+      // Return audio data only (original behavior)
+      const audioBuffer = await synthesisResponse.arrayBuffer();
+      
+      // Set appropriate headers for audio response
+      res.set({
+        'Content-Type': 'audio/wav',
+        'Content-Length': audioBuffer.byteLength,
+        'Cache-Control': 'no-cache'
+      });
 
-    // Send the audio data
-    res.send(Buffer.from(audioBuffer));
-    console.log(`[VOICEVOX] Audio sent to client (${audioBuffer.byteLength} bytes)`);
+      // Send the audio data
+      res.send(Buffer.from(audioBuffer));
+      console.log(`[VOICEVOX] Audio sent to client (${audioBuffer.byteLength} bytes)`);
+    }
 
   } catch (error) {
     console.error('[VOICEVOX] Text-to-speech error:', error);
@@ -1018,7 +1049,7 @@ app.post('/api/text-to-speech', async (req, res) => {
     let statusCode = 500;
     
     if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
-      errorMessage = 'Cannot connect to VOICEVOX engine at 192.168.1.43:50021';
+      errorMessage = `Cannot connect to VOICEVOX engine at ${voicevoxBaseUrl}`;
       statusCode = 503;
     } else if (error.message.includes('Audio query failed') || error.message.includes('Synthesis failed')) {
       errorMessage = `VOICEVOX error: ${error.message}`;
@@ -1031,6 +1062,92 @@ app.post('/api/text-to-speech', async (req, res) => {
     });
   }
 });
+
+// Helper function to extract timing data from VOICEVOX audio query
+function extractTimingData(audioQuery, originalText) {
+  console.log('[VOICEVOX] Extracting timing data...');
+  
+  const timings = [];
+  let currentTime = 0;
+  let textIndex = 0;
+  
+  // VOICEVOX audio query contains accent_phrases with moras
+  if (audioQuery.accent_phrases) {
+    audioQuery.accent_phrases.forEach((phrase, phraseIndex) => {
+      if (phrase.moras) {
+        phrase.moras.forEach((mora, moraIndex) => {
+          // Each mora has a vowel_length (and consonant_length if applicable)
+          const consonantLength = mora.consonant_length || 0;
+          const vowelLength = mora.vowel_length || 0;
+          
+          // Calculate timing for this mora
+          const startTime = currentTime;
+          const endTime = currentTime + consonantLength + vowelLength;
+          
+          // Try to map mora to original text characters
+          const moraText = mora.text || '';
+          
+          // Better text alignment - find the mora text in the remaining original text
+          let textLength = 0;
+          let matchedText = '';
+          
+          if (textIndex < originalText.length) {
+            const remainingText = originalText.substring(textIndex);
+            
+            // Try exact match first
+            if (remainingText.startsWith(moraText)) {
+              textLength = moraText.length;
+              matchedText = moraText;
+            } else {
+              // Try to find similar characters (handling hiragana/katakana variations)
+              for (let i = 1; i <= Math.min(3, remainingText.length); i++) {
+                const candidate = remainingText.substring(0, i);
+                if (candidate && (candidate === moraText || 
+                    katakanaToHiragana(candidate) === katakanaToHiragana(moraText))) {
+                  textLength = i;
+                  matchedText = candidate;
+                  break;
+                }
+              }
+              
+              // Fallback: advance by 1 character if no match found
+              if (textLength === 0) {
+                textLength = 1;
+                matchedText = remainingText.charAt(0);
+              }
+            }
+          }
+          
+          // Only add timing if we have a valid time duration
+          if (endTime > startTime) {
+            timings.push({
+              startTime: startTime,
+              endTime: endTime,
+              textStart: textIndex,
+              textEnd: textIndex + textLength,
+              text: matchedText,
+              mora: moraText,
+              phraseIndex: phraseIndex,
+              moraIndex: moraIndex
+            });
+          }
+          
+          currentTime = endTime;
+          textIndex += textLength;
+        });
+      }
+      
+      // Add pause after phrase if specified
+      if (phrase.pause_mora && phrase.pause_mora.vowel_length) {
+        currentTime += phrase.pause_mora.vowel_length;
+      }
+    });
+  }
+  
+  console.log(`[VOICEVOX] Extracted ${timings.length} timing points`);
+  console.log(`[VOICEVOX] Text coverage: ${textIndex}/${originalText.length} characters`);
+  return timings;
+}
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
