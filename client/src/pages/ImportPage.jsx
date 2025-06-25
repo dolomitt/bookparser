@@ -234,13 +234,12 @@ export default function ImportPage() {
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
       
-      // Calculate initial position
+      // Calculate initial position - bottom of popup should be 20 pixels above the click
       let x = rect.left + (rect.width / 2);
-      let y = rect.top - 10;
+      let y = rect.top - 20; // Position so bottom of popup is 20px above click
       
       // Adjust for viewport boundaries
       const popupWidth = 320; // max-width from CSS
-      const popupHeight = 150; // estimated height
       
       // Keep popup within horizontal bounds
       if (x - popupWidth/2 < 10) {
@@ -249,9 +248,9 @@ export default function ImportPage() {
         x = viewportWidth - popupWidth/2 - 10;
       }
       
-      // Keep popup within vertical bounds
-      if (y - popupHeight < 10) {
-        y = rect.bottom + 10; // Show below token if not enough space above
+      // Keep popup within vertical bounds - if not enough space above, show below
+      if (y < 10) {
+        y = rect.bottom + 20; // Show below token with 20px gap if not enough space above
       }
 
       console.log('Popup position:', { x, y });
@@ -380,7 +379,7 @@ export default function ImportPage() {
             style={{
               position: 'fixed',
               left: `${popupPosition.x}px`,
-              top: `${popupPosition.y - 80}px`,
+              bottom: `${window.innerHeight - popupPosition.y}px`,
               transform: 'translateX(-50%)',
               backgroundColor: '#1a1a1a',
               border: '3px solid #4fc3f7',
