@@ -6,6 +6,8 @@ process.env
 
 *.sh
 
+temp_mfa
+
 # Build output
 dist/
 build/
