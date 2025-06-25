@@ -5,7 +5,6 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import kuromoji from 'kuromoji';
-import OpenAI from 'openai';
 import JMDict from 'jmdict-simplified-node';
 
 // Load env vars
@@ -14,7 +13,9 @@ console.log('Loaded .env values:');
 console.log('PORT:', process.env.PORT);
 console.log('UPLOAD_DIR:', process.env.UPLOAD_DIR);
 console.log('BOOKS_DIR:', process.env.BOOKS_DIR);
-console.log('OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? '[set]' : '[not set]');
+console.log('OLLAMA_HOST:', process.env.OLLAMA_HOST);
+console.log('OLLAMA_PORT:', process.env.OLLAMA_PORT);
+console.log('OLLAMA_MODEL:', process.env.OLLAMA_MODEL);
 console.log('VOICEVOX_HOST:', process.env.VOICEVOX_HOST);
 console.log('VOICEVOX_PORT:', process.env.VOICEVOX_PORT);
 console.log('VOICEVOX_DEFAULT_SPEAKER:', process.env.VOICEVOX_DEFAULT_SPEAKER);
@@ -46,10 +47,41 @@ app.use((req, res, next) => {
 // Multer setup for file uploads
 const upload = multer({ dest: UPLOAD_DIR });
 
-// Initialize OpenAI
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-}) : null;
+// Initialize Ollama configuration
+const ollamaHost = process.env.OLLAMA_HOST || '192.168.1.43';
+const ollamaPort = process.env.OLLAMA_PORT || '11434';
+const ollamaModel = process.env.OLLAMA_MODEL || 'gemma3:12b';
+const ollamaBaseUrl = `http://${ollamaHost}:${ollamaPort}`;
+
+console.log(`Ollama configured at: ${ollamaBaseUrl} with model: ${ollamaModel}`);
+
+// Test Ollama connection and list available models
+async function testOllamaConnection() {
+  try {
+    console.log('[Ollama] Testing connection to Ollama server...');
+    const response = await fetch(`${ollamaBaseUrl}/api/tags`);
+    if (response.ok) {
+      const data = await response.json();
+      console.log('[Ollama] ✅ Connected to Ollama server');
+      console.log('[Ollama] Available models:', data.models?.map(m => m.name) || 'No models found');
+      
+      // Check if our configured model exists
+      const modelExists = data.models?.some(m => m.name === ollamaModel);
+      if (modelExists) {
+        console.log(`[Ollama] ✅ Model "${ollamaModel}" is available`);
+      } else {
+        console.log(`[Ollama] ⚠️ Model "${ollamaModel}" not found. Available models:`, data.models?.map(m => m.name));
+      }
+    } else {
+      console.log(`[Ollama] ❌ Failed to connect: ${response.status} ${response.statusText}`);
+    }
+  } catch (error) {
+    console.log(`[Ollama] ❌ Connection test failed:`, error.message);
+  }
+}
+
+// Test connection on startup
+testOllamaConnection();
 
 // Initialize Kuromoji tokenizer
 let tokenizer = null;
@@ -178,36 +210,29 @@ function katakanaToHiragana(str) {
   });
 }
 
-// Function to get OpenAI analysis for tokens
-async function getOpenAIAnalysis(originalText, tokens, contextLines = {}) {
-  console.log('[OpenAI] Starting OpenAI analysis...');
-  console.log('[OpenAI] Original text:', originalText);
-  console.log('[OpenAI] Number of tokens:', tokens.length);
-  
-  if (!openai) {
-    console.log('[OpenAI] ❌ OpenAI not configured, skipping AI analysis');
-    return null;
-  }
-
-  console.log('[OpenAI] ✅ OpenAI client is configured');
+// Function to get Ollama analysis for tokens
+async function getOllamaAnalysis(originalText, tokens, contextLines = {}) {
+  console.log('[Ollama] Starting Ollama analysis...');
+  console.log('[Ollama] Original text:', originalText);
+  console.log('[Ollama] Number of tokens:', tokens.length);
 
   try {
     const tokenList = tokens.map(token => token.surface).join(' | ');
-    console.log('[OpenAI] Token list for analysis:', tokenList);
+    console.log('[Ollama] Token list for analysis:', tokenList);
 
     // Build context with previous and next lines
     let contextText = '';
-    if (contextLines.previousLine) {
-      contextText += `Previous line: "${contextLines.previousLine}"\n`;
+    if (contextLines.previousSentence) {
+      contextText += `Previous sentence: "${contextLines.previousSentence}"\n`;
     }
-    contextText += `Current line: "${originalText}"`;
-    if (contextLines.nextLine) {
-      contextText += `\nNext line: "${contextLines.nextLine}"`;
+    contextText += `Current sentence: "${originalText}"`;
+    if (contextLines.nextSentence) {
+      contextText += `\nNext sentence: "${contextLines.nextSentence}"`;
     }
 
-    console.log('[OpenAI] Context text:', contextText);
+    console.log('[Ollama] Context text:', contextText);
 
-    const prompt = `Analyze this Japanese sentence and provide translations and contextual explanations for each token, plus a full line translation:
+    const prompt = `Analyze this Japanese sentence and provide translations and contextual explanations for each token, plus a full sentence translation.
 
 Context:
 ${contextText}
@@ -215,10 +240,10 @@ ${contextText}
 Tokens to analyze: ${tokenList}
 
 Please provide:
-1. A complete, natural English translation of the entire line
+1. A complete, natural English translation of the entire sentence
 2. Individual token analysis with translations and contextual explanations
 
-Format as JSON object with this structure:
+Respond with ONLY a JSON object in this exact format:
 {
   "fullLineTranslation": "Complete natural English translation of the entire sentence",
   "tokens": [
@@ -231,81 +256,98 @@ Format as JSON object with this structure:
   ]
 }`;
 
-    console.log('[OpenAI] 🚀 Sending request to OpenAI API...');
-    console.log('[OpenAI] Using model: gpt-4');
-    console.log('[OpenAI] Prompt length:', prompt.length, 'characters');
+    console.log('[Ollama] 🚀 Sending request to Ollama API...');
+    console.log('[Ollama] Using model:', ollamaModel);
+    console.log('[Ollama] Prompt length:', prompt.length, 'characters');
 
     const startTime = Date.now();
     
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        {
-          role: "system",
-          content: "You are a Japanese language expert. Provide accurate translations and contextual explanations for Japanese tokens."
-        },
-        {
-          role: "user",
-          content: prompt
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+    const response = await fetch(`${ollamaBaseUrl}/api/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: ollamaModel,
+        prompt: prompt,
+        stream: false,
+        options: {
+          temperature: 0.3,
+          top_p: 0.9,
+          top_k: 40,
+          num_predict: 1000, // Limit response length
+          stop: ["\n\n"] // Stop on double newline
         }
-      ],
-      temperature: 0.3,
-      max_tokens: 5000
+      }),
+      signal: controller.signal
     });
 
-    const endTime = Date.now();
-    console.log('[OpenAI] ✅ Received response from OpenAI API');
-    console.log('[OpenAI] Response time:', endTime - startTime, 'ms');
-    console.log('[OpenAI] Usage:', completion.usage);
+    clearTimeout(timeoutId);
 
-    const response = completion.choices[0].message.content;
-    console.log('[OpenAI] Raw response content:', response);
+    console.log(`[Ollama] Response status: ${response.status} ${response.statusText}`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log(`[Ollama] Error response body:`, errorText);
+      throw new Error(`Ollama API error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const endTime = Date.now();
+    
+    console.log('[Ollama] ✅ Received response from Ollama API');
+    console.log('[Ollama] Response time:', endTime - startTime, 'ms');
+
+    const responseText = data.response;
+    console.log('[Ollama] Raw response content:', responseText);
 
     // Try to parse JSON response - handle cases where there's text before the JSON
     try {
       // First try to parse the response directly
-      const parsedResponse = JSON.parse(response);
-      console.log('[OpenAI] ✅ Successfully parsed JSON response');
-      console.log('[OpenAI] Full line translation:', parsedResponse.fullLineTranslation);
-      console.log('[OpenAI] Number of token analyses:', parsedResponse.tokens?.length || 0);
+      const parsedResponse = JSON.parse(responseText);
+      console.log('[Ollama] ✅ Successfully parsed JSON response');
+      console.log('[Ollama] Full line translation:', parsedResponse.fullLineTranslation);
+      console.log('[Ollama] Number of token analyses:', parsedResponse.tokens?.length || 0);
       return parsedResponse;
     } catch (parseError) {
-      console.log('[OpenAI] Direct JSON parse failed, trying to extract JSON from response...');
+      console.log('[Ollama] Direct JSON parse failed, trying to extract JSON from response...');
       
       // Try to find JSON object in the response
       try {
         // Look for JSON object starting with { and ending with }
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const jsonString = jsonMatch[0];
           const parsedResponse = JSON.parse(jsonString);
-          console.log('[OpenAI] ✅ Successfully extracted and parsed JSON from response');
-          console.log('[OpenAI] Full line translation:', parsedResponse.fullLineTranslation);
-          console.log('[OpenAI] Number of token analyses:', parsedResponse.tokens?.length || 0);
+          console.log('[Ollama] ✅ Successfully extracted and parsed JSON from response');
+          console.log('[Ollama] Full line translation:', parsedResponse.fullLineTranslation);
+          console.log('[Ollama] Number of token analyses:', parsedResponse.tokens?.length || 0);
           return parsedResponse;
         } else {
-          console.error('[OpenAI] ❌ No JSON object found in response');
-          console.error('[OpenAI] Raw response:', response);
+          console.error('[Ollama] ❌ No JSON object found in response');
+          console.error('[Ollama] Raw response:', responseText);
           return null;
         }
       } catch (extractError) {
-        console.error('[OpenAI] ❌ Failed to extract and parse JSON from response:', extractError);
-        console.error('[OpenAI] Raw response that failed to parse:', response);
+        console.error('[Ollama] ❌ Failed to extract and parse JSON from response:', extractError);
+        console.error('[Ollama] Raw response that failed to parse:', responseText);
         return null;
       }
     }
   } catch (error) {
-    console.error('[OpenAI] ❌ OpenAI API error:', error);
-    console.error('[OpenAI] Error type:', error.constructor.name);
-    console.error('[OpenAI] Error message:', error.message);
+    console.error('[Ollama] ❌ Ollama API error:', error);
+    console.error('[Ollama] Error type:', error.constructor.name);
+    console.error('[Ollama] Error message:', error.message);
     
-    if (error.response) {
-      console.error('[OpenAI] HTTP status:', error.response.status);
-      console.error('[OpenAI] Response data:', error.response.data);
-    }
-    
-    if (error.code) {
-      console.error('[OpenAI] Error code:', error.code);
+    if (error.code === 'ECONNREFUSED') {
+      console.error('[Ollama] Cannot connect to Ollama server at:', ollamaBaseUrl);
+    } else if (error.name === 'AbortError') {
+      console.error('[Ollama] Request timed out after 30 seconds');
+      throw new Error('Ollama request timed out - try using local processing instead');
     }
     
     // Re-throw the error so it can be caught by the calling function
@@ -923,7 +965,7 @@ app.post('/api/parse', async (req, res) => {
   }
 
   console.log(`Processing sentence ${sentenceIndex}: "${text.substring(0, 50)}..."`);
-  console.log(`Using remote processing (OpenAI): ${useRemoteProcessing}`);
+  console.log(`Using remote processing (Ollama): ${useRemoteProcessing}`);
 
   // Prepare context sentences for OpenAI (only if using remote processing)
   const contextSentences = {};
@@ -987,37 +1029,37 @@ app.post('/api/parse', async (req, res) => {
         pos_detail: token.pos_detail_1
       }));
 
-        // Get OpenAI analysis for enhanced translations and explanations (only if using remote processing)
-        let openaiAnalysis = null;
+        // Get Ollama analysis for enhanced translations and explanations (only if using remote processing)
+        let ollamaAnalysis = null;
         if (useRemoteProcessing) {
-          console.log('Calling OpenAI for enhanced analysis...');
+          console.log('Calling Ollama for enhanced analysis...');
           try {
-            openaiAnalysis = await getOpenAIAnalysis(text, basicTokens, contextSentences);
-            console.log('[OpenAI] Analysis completed successfully');
-          } catch (openaiError) {
-            console.error('[OpenAI] Analysis failed:', openaiError);
+            ollamaAnalysis = await getOllamaAnalysis(text, basicTokens, contextSentences);
+            console.log('[Ollama] Analysis completed successfully');
+          } catch (ollamaError) {
+            console.error('[Ollama] Analysis failed:', ollamaError);
             // Don't throw the error, just log it and continue with local processing
-            console.log('[OpenAI] Falling back to local dictionary processing only');
+            console.log('[Ollama] Falling back to local dictionary processing only');
           }
         } else {
-          console.log('Skipping OpenAI analysis - using local processing only');
+          console.log('Skipping Ollama analysis - using local processing only');
         }
 
-      // Extract full line translation and token data from OpenAI response
+      // Extract full line translation and token data from Ollama response
       let fullLineTranslation = 'N/A';
       let tokenAnalysisData = [];
 
-      if (openaiAnalysis) {
-        if (openaiAnalysis.fullLineTranslation) {
-          fullLineTranslation = openaiAnalysis.fullLineTranslation;
-          tokenAnalysisData = openaiAnalysis.tokens || [];
-        } else if (Array.isArray(openaiAnalysis)) {
+      if (ollamaAnalysis) {
+        if (ollamaAnalysis.fullLineTranslation) {
+          fullLineTranslation = ollamaAnalysis.fullLineTranslation;
+          tokenAnalysisData = ollamaAnalysis.tokens || [];
+        } else if (Array.isArray(ollamaAnalysis)) {
           // Fallback for old format
-          tokenAnalysisData = openaiAnalysis;
+          tokenAnalysisData = ollamaAnalysis;
         }
       }
 
-      // Merge Kuromoji, JMDict, and OpenAI data
+      // Merge Kuromoji, JMDict, and Ollama data
       const enhancedTokens = await Promise.all(basicTokens.map(async (token, index) => {
         const aiData = tokenAnalysisData.find(ai => ai.surface === token.surface) || {};
 
@@ -1069,7 +1111,7 @@ app.post('/api/parse', async (req, res) => {
       }));
 
       const analysisStatus = useRemoteProcessing 
-        ? (openaiAnalysis ? 'Processed with AI translations' : 'Processed with dictionary only (AI unavailable)')
+        ? (ollamaAnalysis ? 'Processed with AI translations' : 'Processed with dictionary only (AI unavailable)')
         : 'Processed with local dictionary';
 
         result = {
@@ -1085,7 +1127,7 @@ app.post('/api/parse', async (req, res) => {
             verbs: verbs.length,
             characters: text.length,
             tokens: enhancedTokens,
-            hasAIAnalysis: !!openaiAnalysis
+            hasAIAnalysis: !!ollamaAnalysis
           }
         };
     } else {
