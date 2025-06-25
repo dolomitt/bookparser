@@ -1,5 +1,4 @@
 import { config } from '../config/index.js';
-import mfaService from './mfaService.js';
 
 class VoicevoxService {
   constructor() {
@@ -135,11 +134,11 @@ class VoicevoxService {
     const textForMapping = originalText || filteredText;
     
     console.log('[VOICEVOX] Extracting timing data...');
-    console.log(`[VOICEVOX] Filtered text: "${filteredText}"`);
-    if (originalText) {
-      console.log(`[VOICEVOX] Original text: "${originalText}"`);
-    }
-    console.log('[VOICEVOX] Audio query structure:', JSON.stringify(audioQuery, null, 2));
+    //console.log(`[VOICEVOX] Filtered text: "${filteredText}"`);
+    //if (originalText) {
+      //console.log(`[VOICEVOX] Original text: "${originalText}"`);
+    //}
+    //console.log('[VOICEVOX] Audio query structure:', JSON.stringify(audioQuery, null, 2));
     
     const timings = [];
     let currentTime = 0;
@@ -147,16 +146,16 @@ class VoicevoxService {
     
     // VOICEVOX audio query contains accent_phrases with moras
     if (audioQuery.accent_phrases && Array.isArray(audioQuery.accent_phrases)) {
-      console.log(`[VOICEVOX] Found ${audioQuery.accent_phrases.length} accent phrases`);
+      //console.log(`[VOICEVOX] Found ${audioQuery.accent_phrases.length} accent phrases`);
       
       audioQuery.accent_phrases.forEach((phrase, phraseIndex) => {
-        console.log(`[VOICEVOX] Processing phrase ${phraseIndex}:`, JSON.stringify(phrase, null, 2));
+        //console.log(`[VOICEVOX] Processing phrase ${phraseIndex}:`, JSON.stringify(phrase, null, 2));
         
         if (phrase.moras && Array.isArray(phrase.moras)) {
-          console.log(`[VOICEVOX] Phrase ${phraseIndex} has ${phrase.moras.length} moras`);
+          //console.log(`[VOICEVOX] Phrase ${phraseIndex} has ${phrase.moras.length} moras`);
           
           phrase.moras.forEach((mora, moraIndex) => {
-            console.log(`[VOICEVOX] Processing mora ${moraIndex}:`, JSON.stringify(mora, null, 2));
+            //console.log(`[VOICEVOX] Processing mora ${moraIndex}:`, JSON.stringify(mora, null, 2));
             
             // Each mora has a vowel_length (and consonant_length if applicable)
             const consonantLength = mora.consonant_length || 0;
@@ -168,7 +167,7 @@ class VoicevoxService {
             
             // Get mora text - try different possible fields
             const moraText = mora.text || mora.phoneme || mora.vowel || '';
-            console.log(`[VOICEVOX] Mora text: "${moraText}", consonant: ${consonantLength}, vowel: ${vowelLength}`);
+            //console.log(`[VOICEVOX] Mora text: "${moraText}", consonant: ${consonantLength}, vowel: ${vowelLength}`);
             
             // Map mora to text characters (use filtered text for processing)
             let textLength = 1; // Default to 1 character
@@ -212,7 +211,7 @@ class VoicevoxService {
               };
               
               timings.push(timingEntry);
-              console.log(`[VOICEVOX] Added timing: ${JSON.stringify(timingEntry)}`);
+              //console.log(`[VOICEVOX] Added timing: ${JSON.stringify(timingEntry)}`);
             }
             
             currentTime = endTime;
@@ -222,7 +221,7 @@ class VoicevoxService {
         
         // Add pause after phrase if specified
         if (phrase.pause_mora && phrase.pause_mora.vowel_length) {
-          console.log(`[VOICEVOX] Adding pause: ${phrase.pause_mora.vowel_length}s`);
+          //console.log(`[VOICEVOX] Adding pause: ${phrase.pause_mora.vowel_length}s`);
           currentTime += phrase.pause_mora.vowel_length;
         }
       });
@@ -230,9 +229,9 @@ class VoicevoxService {
       console.log('[VOICEVOX] No accent_phrases found in audio query');
     }
     
-    console.log(`[VOICEVOX] Extracted ${timings.length} timing points`);
-    console.log(`[VOICEVOX] Text coverage: ${textIndex}/${filteredText.length} characters`);
-    console.log(`[VOICEVOX] Total duration: ${currentTime}s`);
+    //console.log(`[VOICEVOX] Extracted ${timings.length} timing points`);
+    //console.log(`[VOICEVOX] Text coverage: ${textIndex}/${filteredText.length} characters`);
+    //console.log(`[VOICEVOX] Total duration: ${currentTime}s`);
     
     return timings;
   }
@@ -244,105 +243,6 @@ class VoicevoxService {
       const chr = match.charCodeAt(0) - 0x60;
       return String.fromCharCode(chr);
     });
-  }
-
-  // Enhanced speech generation with MFA alignment
-  async generateSpeechWithMFA(text, options = {}) {
-    const { 
-      speaker = this.defaultSpeaker, 
-      speed = 1.0, 
-      volume = 1.0,
-      useMFA = true,
-      language = 'japanese_mfa'
-    } = options;
-
-    console.log('[VOICEVOX+MFA] Starting enhanced speech generation with MFA alignment');
-
-    try {
-      // Step 1: Generate audio with VoiceVox (always include timings for MFA processing)
-      const voiceVoxResult = await this.generateSpeech(text, {
-        speaker,
-        includeTimings: true,
-        speed,
-        volume
-      });
-
-      if (!voiceVoxResult.audio || !voiceVoxResult.timings) {
-        throw new Error('Failed to generate VoiceVox audio with timings');
-      }
-
-      // Step 2: Convert base64 audio back to buffer for MFA processing
-      const audioBuffer = Buffer.from(voiceVoxResult.audio, 'base64');
-
-      // Step 3: Use MFA for enhanced alignment if requested
-      let enhancedTimings = voiceVoxResult.timings;
-      let alignmentMethod = 'voicevox';
-      let alignmentStats = {};
-
-      if (useMFA) {
-        console.log('[VOICEVOX+MFA] Running MFA alignment...');
-        
-        const mfaResult = await mfaService.alignVoiceVoxAudio(audioBuffer, text, {
-          filename: `voicevox_${Date.now()}`,
-          language: language,
-          useVoiceVoxTimings: true,
-          voiceVoxTimings: voiceVoxResult.timings,
-          audioDuration: this.calculateAudioDuration(voiceVoxResult.timings)
-        });
-
-        if (mfaResult.success && mfaResult.timingData.length > 0) {
-          enhancedTimings = mfaResult.timingData;
-          alignmentMethod = mfaResult.method;
-          alignmentStats = mfaService.getAlignmentStats(enhancedTimings);
-          console.log('[VOICEVOX+MFA] MFA alignment successful');
-        } else {
-          console.warn('[VOICEVOX+MFA] MFA alignment failed, using VoiceVox timings');
-          alignmentStats = this.getVoiceVoxAlignmentStats(voiceVoxResult.timings);
-        }
-      } else {
-        alignmentStats = this.getVoiceVoxAlignmentStats(voiceVoxResult.timings);
-      }
-
-      // Step 4: Return enhanced result
-      return {
-        audio: voiceVoxResult.audio,
-        timings: enhancedTimings,
-        audioFormat: voiceVoxResult.audioFormat,
-        sampleRate: voiceVoxResult.sampleRate,
-        alignment: {
-          method: alignmentMethod,
-          stats: alignmentStats,
-          originalVoiceVoxTimings: voiceVoxResult.timings.length,
-          enhancedTimings: enhancedTimings.length
-        }
-      };
-
-    } catch (error) {
-      console.error('[VOICEVOX+MFA] Enhanced speech generation failed:', error);
-      
-      // Fallback to regular VoiceVox generation
-      console.log('[VOICEVOX+MFA] Falling back to regular VoiceVox generation');
-      try {
-        const fallbackResult = await this.generateSpeech(text, {
-          speaker,
-          includeTimings: true,
-          speed,
-          volume
-        });
-
-        return {
-          ...fallbackResult,
-          alignment: {
-            method: 'voicevox_fallback',
-            stats: this.getVoiceVoxAlignmentStats(fallbackResult.timings),
-            error: error.message
-          }
-        };
-      } catch (fallbackError) {
-        console.error('[VOICEVOX+MFA] Fallback also failed:', fallbackError);
-        throw fallbackError;
-      }
-    }
   }
 
   // Calculate audio duration from VoiceVox timings
@@ -367,30 +267,6 @@ class VoicevoxService {
       averageMoraDuration,
       type: 'mora-level'
     };
-  }
-
-  // Utility method to compare timing alignments
-  compareAlignments(voiceVoxTimings, mfaTimings) {
-    const comparison = {
-      voiceVox: {
-        count: voiceVoxTimings.length,
-        duration: this.calculateAudioDuration(voiceVoxTimings),
-        type: 'mora-level'
-      },
-      mfa: {
-        count: mfaTimings.length,
-        duration: mfaTimings.length > 0 ? Math.max(...mfaTimings.map(t => t.endTime)) : 0,
-        type: 'word-level'
-      }
-    };
-
-    comparison.improvement = {
-      granularityChange: comparison.voiceVox.count - comparison.mfa.count,
-      durationDifference: Math.abs(comparison.voiceVox.duration - comparison.mfa.duration),
-      recommended: comparison.mfa.count > 0 ? 'mfa' : 'voicevox'
-    };
-
-    return comparison;
   }
 }
 

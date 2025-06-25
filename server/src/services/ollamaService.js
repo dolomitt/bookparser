@@ -110,7 +110,7 @@ Return JSON only:
               top_p: 0.9,
               top_k: 40,
               num_predict: fixedNumPredict, // Fixed response length
-              stop: ["}\n", "}\r\n"] // Stop after JSON object closes with newline
+              stop: ["}\r\n"] // Stop after JSON object closes with newline
             }
           }),
           signal: controller.signal

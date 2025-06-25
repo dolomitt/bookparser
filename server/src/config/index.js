@@ -27,14 +27,6 @@ export const config = {
     get baseUrl() {
       return `http://${this.host}:${this.port}`;
     }
-  },
-  
-  mfa: {
-    language: process.env.MFA_LANGUAGE || 'japanese_mfa',
-    tempDir: process.env.MFA_TEMP_DIR || './temp_mfa',
-    modelsDir: process.env.MFA_MODELS_DIR || '/root/Documents/MFA/pretrained_models',
-    condaPath: process.env.MFA_CONDA_PATH || '/root/miniconda3/bin/mfa',
-    useConda: process.env.MFA_USE_CONDA === 'true'
   }
 };
 
