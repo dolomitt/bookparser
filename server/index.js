@@ -259,17 +259,38 @@ Format as JSON object with this structure:
     const response = completion.choices[0].message.content;
     console.log('[OpenAI] Raw response content:', response);
 
-    // Try to parse JSON response
+    // Try to parse JSON response - handle cases where there's text before the JSON
     try {
+      // First try to parse the response directly
       const parsedResponse = JSON.parse(response);
       console.log('[OpenAI] ✅ Successfully parsed JSON response');
       console.log('[OpenAI] Full line translation:', parsedResponse.fullLineTranslation);
       console.log('[OpenAI] Number of token analyses:', parsedResponse.tokens?.length || 0);
       return parsedResponse;
     } catch (parseError) {
-      console.error('[OpenAI] ❌ Failed to parse OpenAI JSON response:', parseError);
-      console.error('[OpenAI] Raw response that failed to parse:', response);
-      return null;
+      console.log('[OpenAI] Direct JSON parse failed, trying to extract JSON from response...');
+      
+      // Try to find JSON object in the response
+      try {
+        // Look for JSON object starting with { and ending with }
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const jsonString = jsonMatch[0];
+          const parsedResponse = JSON.parse(jsonString);
+          console.log('[OpenAI] ✅ Successfully extracted and parsed JSON from response');
+          console.log('[OpenAI] Full line translation:', parsedResponse.fullLineTranslation);
+          console.log('[OpenAI] Number of token analyses:', parsedResponse.tokens?.length || 0);
+          return parsedResponse;
+        } else {
+          console.error('[OpenAI] ❌ No JSON object found in response');
+          console.error('[OpenAI] Raw response:', response);
+          return null;
+        }
+      } catch (extractError) {
+        console.error('[OpenAI] ❌ Failed to extract and parse JSON from response:', extractError);
+        console.error('[OpenAI] Raw response that failed to parse:', response);
+        return null;
+      }
     }
   } catch (error) {
     console.error('[OpenAI] ❌ OpenAI API error:', error);
@@ -389,6 +410,52 @@ app.post('/api/import/:filename/save-line', (req, res) => {
   } catch (error) {
     console.error('Error saving line:', error);
     res.status(500).json({ error: 'Failed to save line data' });
+  }
+});
+
+// Save individual processed sentence (for auto-save)
+app.post('/api/import/:filename/save-sentence', (req, res) => {
+  const filePath = path.join(UPLOAD_DIR, req.params.filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+
+  const { sentenceIndex, sentenceData, verbMergeOptions, timestamp } = req.body;
+  const bookFileName = req.params.filename;
+
+  try {
+    // Check if book file already exists
+    const bookFilePath = path.join(BOOKS_DIR, `${bookFileName}.book`);
+    let bookData = {};
+
+    if (fs.existsSync(bookFilePath)) {
+      // Load existing book data
+      try {
+        bookData = JSON.parse(fs.readFileSync(bookFilePath, 'utf-8'));
+      } catch (error) {
+        console.error('Error reading existing book file:', error);
+        bookData = {};
+      }
+    }
+
+    // Initialize book data structure if it doesn't exist
+    if (!bookData.content) bookData.content = {};
+    if (!bookData.content.processedSentences) bookData.content.processedSentences = {};
+    if (!bookData.settings) bookData.settings = {};
+    if (!bookData.metadata) bookData.metadata = {};
+
+    // Update the specific sentence
+    bookData.content.processedSentences[sentenceIndex] = sentenceData;
+    bookData.settings.verbMergeOptions = verbMergeOptions;
+    bookData.metadata.lastUpdated = timestamp;
+    bookData.metadata.originalFilename = req.params.filename;
+
+    // Save updated book data
+    fs.writeFileSync(bookFilePath, JSON.stringify(bookData, null, 2), 'utf-8');
+
+    console.log(`Auto-saved sentence ${sentenceIndex} for ${bookFileName}`);
+    res.json({ success: true, sentenceIndex, savedAt: timestamp });
+  } catch (error) {
+    console.error('Error saving sentence:', error);
+    res.status(500).json({ error: 'Failed to save sentence data' });
   }
 });
 
@@ -686,24 +753,24 @@ app.post('/api/parse', async (req, res) => {
   console.log('Received /api/parse request');
   console.log('Request body:', req.body);
 
-  const { text, lineIndex, verbMergeOptions = {}, allLines = [], useRemoteProcessing = true } = req.body;
+  const { text, sentenceIndex, verbMergeOptions = {}, allSentences = [], useRemoteProcessing = true } = req.body;
 
   if (!text) {
     console.log('Error: No text provided for processing');
     return res.status(400).json({ error: 'No text provided for processing' });
   }
 
-  console.log(`Processing line ${lineIndex}: "${text.substring(0, 50)}..."`);
+  console.log(`Processing sentence ${sentenceIndex}: "${text.substring(0, 50)}..."`);
   console.log(`Using remote processing (OpenAI): ${useRemoteProcessing}`);
 
-  // Prepare context lines for OpenAI (only if using remote processing)
-  const contextLines = {};
-  if (useRemoteProcessing && allLines && allLines.length > 0) {
-    if (lineIndex > 0) {
-      contextLines.previousLine = allLines[lineIndex - 1];
+  // Prepare context sentences for OpenAI (only if using remote processing)
+  const contextSentences = {};
+  if (useRemoteProcessing && allSentences && allSentences.length > 0) {
+    if (sentenceIndex > 0) {
+      contextSentences.previousSentence = allSentences[sentenceIndex - 1];
     }
-    if (lineIndex < allLines.length - 1) {
-      contextLines.nextLine = allLines[lineIndex + 1];
+    if (sentenceIndex < allSentences.length - 1) {
+      contextSentences.nextSentence = allSentences[sentenceIndex + 1];
     }
   }
 
@@ -758,21 +825,21 @@ app.post('/api/parse', async (req, res) => {
         pos_detail: token.pos_detail_1
       }));
 
-      // Get OpenAI analysis for enhanced translations and explanations (only if using remote processing)
-      let openaiAnalysis = null;
-      if (useRemoteProcessing) {
-        console.log('Calling OpenAI for enhanced analysis...');
-        try {
-          openaiAnalysis = await getOpenAIAnalysis(text, basicTokens, contextLines);
-          console.log('[OpenAI] Analysis completed successfully');
-        } catch (openaiError) {
-          console.error('[OpenAI] Analysis failed:', openaiError);
-          // Don't throw the error, just log it and continue with local processing
-          console.log('[OpenAI] Falling back to local dictionary processing only');
+        // Get OpenAI analysis for enhanced translations and explanations (only if using remote processing)
+        let openaiAnalysis = null;
+        if (useRemoteProcessing) {
+          console.log('Calling OpenAI for enhanced analysis...');
+          try {
+            openaiAnalysis = await getOpenAIAnalysis(text, basicTokens, contextSentences);
+            console.log('[OpenAI] Analysis completed successfully');
+          } catch (openaiError) {
+            console.error('[OpenAI] Analysis failed:', openaiError);
+            // Don't throw the error, just log it and continue with local processing
+            console.log('[OpenAI] Falling back to local dictionary processing only');
+          }
+        } else {
+          console.log('Skipping OpenAI analysis - using local processing only');
         }
-      } else {
-        console.log('Skipping OpenAI analysis - using local processing only');
-      }
 
       // Extract full line translation and token data from OpenAI response
       let fullLineTranslation = 'N/A';
@@ -843,33 +910,33 @@ app.post('/api/parse', async (req, res) => {
         ? (openaiAnalysis ? 'Processed with AI translations' : 'Processed with dictionary only (AI unavailable)')
         : 'Processed with local dictionary';
 
-      result = {
-        result: analysisStatus,
-        processed: true,
-        originalText: text,
-        lineIndex: lineIndex,
-        fullLineTranslation: fullLineTranslation,
-        analysis: {
-          totalTokens: tokens.length,
-          words: words.length,
-          nouns: nouns.length,
-          verbs: verbs.length,
-          characters: text.length,
-          tokens: enhancedTokens,
-          hasAIAnalysis: !!openaiAnalysis
-        }
-      };
+        result = {
+          result: analysisStatus,
+          processed: true,
+          originalText: text,
+          sentenceIndex: sentenceIndex,
+          fullSentenceTranslation: fullLineTranslation,
+          analysis: {
+            totalTokens: tokens.length,
+            words: words.length,
+            nouns: nouns.length,
+            verbs: verbs.length,
+            characters: text.length,
+            tokens: enhancedTokens,
+            hasAIAnalysis: !!openaiAnalysis
+          }
+        };
     } else {
       // Fallback to basic analysis if Kuromoji isn't ready
       const wordCount = text.trim().split(/\s+/).length;
       const charCount = text.length;
 
-      result = {
-        result: `Basic analysis - Words: ${wordCount}, Characters: ${charCount} (Kuromoji not ready)`,
-        processed: true,
-        originalText: text,
-        lineIndex: lineIndex
-      };
+        result = {
+          result: `Basic analysis - Words: ${wordCount}, Characters: ${charCount} (Kuromoji not ready)`,
+          processed: true,
+          originalText: text,
+          sentenceIndex: sentenceIndex
+        };
     }
 
     console.log('Sending response:', result);
@@ -879,6 +946,87 @@ app.post('/api/parse', async (req, res) => {
     console.error('Error processing text:', error);
     res.status(500).json({
       error: 'Failed to process text',
+      details: error.message
+    });
+  }
+});
+
+// Text-to-speech endpoint using VOICEVOX
+app.post('/api/text-to-speech', async (req, res) => {
+  console.log('Received /api/text-to-speech request');
+  
+  const { text, speaker = 1 } = req.body;
+
+  if (!text) {
+    console.log('Error: No text provided for text-to-speech');
+    return res.status(400).json({ error: 'No text provided for text-to-speech' });
+  }
+
+  console.log(`Generating speech for text: "${text.substring(0, 50)}..." with speaker ${speaker}`);
+
+  try {
+    // Step 1: Get audio query from VOICEVOX
+    console.log('[VOICEVOX] Requesting audio query...');
+    const audioQueryResponse = await fetch(`http://192.168.1.43:50021/audio_query?text=${encodeURIComponent(text)}&speaker=${speaker}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!audioQueryResponse.ok) {
+      throw new Error(`Audio query failed: ${audioQueryResponse.status} ${audioQueryResponse.statusText}`);
+    }
+
+    const audioQuery = await audioQueryResponse.json();
+    console.log('[VOICEVOX] Audio query successful');
+
+    // Step 2: Generate synthesis audio
+    console.log('[VOICEVOX] Requesting audio synthesis...');
+    const synthesisResponse = await fetch(`http://192.168.1.43:50021/synthesis?speaker=${speaker}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(audioQuery),
+    });
+
+    if (!synthesisResponse.ok) {
+      throw new Error(`Synthesis failed: ${synthesisResponse.status} ${synthesisResponse.statusText}`);
+    }
+
+    console.log('[VOICEVOX] Audio synthesis successful');
+
+    // Step 3: Return audio data to client
+    const audioBuffer = await synthesisResponse.arrayBuffer();
+    
+    // Set appropriate headers for audio response
+    res.set({
+      'Content-Type': 'audio/wav',
+      'Content-Length': audioBuffer.byteLength,
+      'Cache-Control': 'no-cache'
+    });
+
+    // Send the audio data
+    res.send(Buffer.from(audioBuffer));
+    console.log(`[VOICEVOX] Audio sent to client (${audioBuffer.byteLength} bytes)`);
+
+  } catch (error) {
+    console.error('[VOICEVOX] Text-to-speech error:', error);
+    
+    let errorMessage = 'Speech generation failed';
+    let statusCode = 500;
+    
+    if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
+      errorMessage = 'Cannot connect to VOICEVOX engine at 192.168.1.43:50021';
+      statusCode = 503;
+    } else if (error.message.includes('Audio query failed') || error.message.includes('Synthesis failed')) {
+      errorMessage = `VOICEVOX error: ${error.message}`;
+      statusCode = 502;
+    }
+
+    res.status(statusCode).json({
+      error: errorMessage,
       details: error.message
     });
   }
