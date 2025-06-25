@@ -3,6 +3,30 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './ImportPage.css';
 
+// Cookie utility functions
+const setCookie = (name, value, days = 30) => {
+  const expires = new Date();
+  expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+  document.cookie = `${name}=${JSON.stringify(value)};expires=${expires.toUTCString()};path=/`;
+};
+
+const getCookie = (name) => {
+  const nameEQ = name + "=";
+  const ca = document.cookie.split(';');
+  for (let i = 0; i < ca.length; i++) {
+    let c = ca[i];
+    while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+    if (c.indexOf(nameEQ) === 0) {
+      try {
+        return JSON.parse(c.substring(nameEQ.length, c.length));
+      } catch (e) {
+        return null;
+      }
+    }
+  }
+  return null;
+};
+
 export default function ImportPage() {
   const { filename } = useParams();
   const navigate = useNavigate();
@@ -13,23 +37,39 @@ export default function ImportPage() {
   const [message, setMessage] = useState('');
   const [sentenceMessages, setSentenceMessages] = useState({});
   const [processedSentences, setProcessedSentences] = useState({});
-  const [verbMergeOptions, setVerbMergeOptions] = useState({
-    mergeAuxiliaryVerbs: true,
-    mergeVerbParticles: true,
-    mergeVerbSuffixes: true,
-    mergeTeForm: true,
-    mergeMasuForm: true,
-    mergeAllInflections: true,
-    mergePunctuation: true,
-    useCompoundDetection: false
+  // Load settings from cookies with fallback to defaults
+  const [verbMergeOptions, setVerbMergeOptions] = useState(() => {
+    const saved = getCookie('verbMergeOptions');
+    return saved || {
+      mergeAuxiliaryVerbs: true,
+      mergeVerbParticles: true,
+      mergeVerbSuffixes: true,
+      mergeTeForm: true,
+      mergeMasuForm: true,
+      mergeAllInflections: true,
+      mergePunctuation: true,
+      useCompoundDetection: false
+    };
   });
-  const [showVerbOptions, setShowVerbOptions] = useState(false);
-  const [ttsOptions, setTtsOptions] = useState({
-    speed: 1.0,
-    speaker: 1,
-    volume: 1.0
+  
+  const [showVerbOptions, setShowVerbOptions] = useState(() => {
+    const saved = getCookie('showVerbOptions');
+    return saved !== null ? saved : false;
   });
-  const [showTtsOptions, setShowTtsOptions] = useState(false);
+  
+  const [ttsOptions, setTtsOptions] = useState(() => {
+    const saved = getCookie('ttsOptions');
+    return saved || {
+      speed: 1.0,
+      speaker: 1,
+      volume: 1.0
+    };
+  });
+  
+  const [showTtsOptions, setShowTtsOptions] = useState(() => {
+    const saved = getCookie('showTtsOptions');
+    return saved !== null ? saved : false;
+  });
   const fileInput = useRef();
 
   // Pagination state
@@ -38,6 +78,23 @@ export default function ImportPage() {
 
   // Separate useEffect for initial load only
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  
+  // Save settings to cookies when they change
+  useEffect(() => {
+    setCookie('verbMergeOptions', verbMergeOptions);
+  }, [verbMergeOptions]);
+  
+  useEffect(() => {
+    setCookie('showVerbOptions', showVerbOptions);
+  }, [showVerbOptions]);
+  
+  useEffect(() => {
+    setCookie('ttsOptions', ttsOptions);
+  }, [ttsOptions]);
+  
+  useEffect(() => {
+    setCookie('showTtsOptions', showTtsOptions);
+  }, [showTtsOptions]);
   
   // Function to split text into sentences using Japanese dot (。)
   const splitIntoSentences = (text) => {
