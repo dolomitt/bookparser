@@ -6,6 +6,26 @@ class VoicevoxService {
     this.defaultSpeaker = config.voicevox.defaultSpeaker;
   }
 
+  // Filter text to remove problematic characters for TTS
+  filterTextForTTS(text) {
+    if (!text) return text;
+    
+    // Remove or replace problematic characters
+    let filteredText = text
+      // Remove middle dot (・) which causes TTS issues
+      .replace(/・/g, '')
+      // Remove other problematic punctuation that might cause issues
+      .replace(/[…]/g, '...')  // Replace ellipsis with regular dots
+      .replace(/[〜]/g, '～')   // Normalize wave dash
+      .replace(/[―]/g, '—')    // Normalize em dash
+      // Remove excessive whitespace
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    console.log(`[VOICEVOX] Text filtering: "${text}" -> "${filteredText}"`);
+    return filteredText;
+  }
+
   // Generate text-to-speech audio
   async generateSpeech(text, options = {}) {
     const { 
@@ -15,13 +35,16 @@ class VoicevoxService {
       volume = 1.0 
     } = options;
 
-    console.log(`Generating speech for text: "${text.substring(0, 50)}..." with speaker ${speaker}`);
+    // Filter text to remove problematic characters
+    const filteredText = this.filterTextForTTS(text);
+
+    console.log(`Generating speech for text: "${filteredText.substring(0, 50)}..." with speaker ${speaker}`);
     console.log(`Using VOICEVOX at: ${this.baseUrl}, includeTimings: ${includeTimings}`);
 
     try {
       // Step 1: Get audio query from VOICEVOX
       console.log('[VOICEVOX] Requesting audio query...');
-      const audioQueryUrl = `${this.baseUrl}/audio_query?text=${encodeURIComponent(text)}&speaker=${speaker}`;
+      const audioQueryUrl = `${this.baseUrl}/audio_query?text=${encodeURIComponent(filteredText)}&speaker=${speaker}`;
       const audioQueryResponse = await fetch(audioQueryUrl, {
         method: 'POST',
         headers: {
@@ -67,7 +90,8 @@ class VoicevoxService {
       // Step 3: Process timing data if requested
       if (includeTimings) {
         // Extract timing information from audio query
-        const timingData = this.extractTimingData(audioQuery, text);
+        // Use filtered text for processing but include original text for reference
+        const timingData = this.extractTimingData(audioQuery, filteredText, text);
         
         // Return JSON response with both audio and timing data
         const audioBuffer = await synthesisResponse.arrayBuffer();
@@ -105,8 +129,15 @@ class VoicevoxService {
   }
 
   // Helper function to extract timing data from VOICEVOX audio query
-  extractTimingData(audioQuery, originalText) {
+  extractTimingData(audioQuery, filteredText, originalText = null) {
+    // If originalText is not provided, use filteredText for both
+    const textForMapping = originalText || filteredText;
+    
     console.log('[VOICEVOX] Extracting timing data...');
+    console.log(`[VOICEVOX] Filtered text: "${filteredText}"`);
+    if (originalText) {
+      console.log(`[VOICEVOX] Original text: "${originalText}"`);
+    }
     console.log('[VOICEVOX] Audio query structure:', JSON.stringify(audioQuery, null, 2));
     
     const timings = [];
@@ -138,12 +169,12 @@ class VoicevoxService {
             const moraText = mora.text || mora.phoneme || mora.vowel || '';
             console.log(`[VOICEVOX] Mora text: "${moraText}", consonant: ${consonantLength}, vowel: ${vowelLength}`);
             
-            // Map mora to original text characters
+            // Map mora to text characters (use filtered text for processing)
             let textLength = 1; // Default to 1 character
             let matchedText = '';
             
-            if (textIndex < originalText.length) {
-              const remainingText = originalText.substring(textIndex);
+            if (textIndex < filteredText.length) {
+              const remainingText = filteredText.substring(textIndex);
               matchedText = remainingText.charAt(0); // Default to next character
               
               // Try to match mora text if available
@@ -199,7 +230,7 @@ class VoicevoxService {
     }
     
     console.log(`[VOICEVOX] Extracted ${timings.length} timing points`);
-    console.log(`[VOICEVOX] Text coverage: ${textIndex}/${originalText.length} characters`);
+    console.log(`[VOICEVOX] Text coverage: ${textIndex}/${filteredText.length} characters`);
     console.log(`[VOICEVOX] Total duration: ${currentTime}s`);
     
     return timings;
