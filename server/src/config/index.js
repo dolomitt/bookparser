@@ -12,6 +12,9 @@ export const config = {
     host: process.env.OLLAMA_HOST || '192.168.1.43',
     port: process.env.OLLAMA_PORT || '11434',
     model: process.env.OLLAMA_MODEL || 'gemma2:9b',
+    timeout: parseInt(process.env.OLLAMA_TIMEOUT) || 120000, // 120 seconds default
+    maxRetries: parseInt(process.env.OLLAMA_MAX_RETRIES) || 2,
+    maxTokens: parseInt(process.env.OLLAMA_MAX_TOKENS) || 10000, // Fixed response token limit
     get baseUrl() {
       return `http://${this.host}:${this.port}`;
     }
@@ -24,6 +27,14 @@ export const config = {
     get baseUrl() {
       return `http://${this.host}:${this.port}`;
     }
+  },
+  
+  mfa: {
+    language: process.env.MFA_LANGUAGE || 'japanese_mfa',
+    tempDir: process.env.MFA_TEMP_DIR || './temp_mfa',
+    modelsDir: process.env.MFA_MODELS_DIR || '/root/Documents/MFA/pretrained_models',
+    condaPath: process.env.MFA_CONDA_PATH || '/root/miniconda3/bin/mfa',
+    useConda: process.env.MFA_USE_CONDA === 'true'
   }
 };
 
@@ -36,6 +47,8 @@ export function logConfig() {
   console.log('OLLAMA_HOST:', config.ollama.host);
   console.log('OLLAMA_PORT:', config.ollama.port);
   console.log('OLLAMA_MODEL:', config.ollama.model);
+  console.log('OLLAMA_TIMEOUT:', config.ollama.timeout + 'ms');
+  console.log('OLLAMA_MAX_RETRIES:', config.ollama.maxRetries);
   console.log('VOICEVOX_HOST:', config.voicevox.host);
   console.log('VOICEVOX_PORT:', config.voicevox.port);
   console.log('VOICEVOX_DEFAULT_SPEAKER:', config.voicevox.defaultSpeaker);

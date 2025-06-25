@@ -378,7 +378,7 @@ app.post('/api/parse', async (req, res) => {
     if (japaneseService.tokenizer) {
       // Use Kuromoji for Japanese tokenization
       const rawTokens = japaneseService.tokenize(text);
-      console.log('Raw Kuromoji tokens:', rawTokens.slice(0, 5)); // Log first 5 tokens for debugging
+      //console.log('Raw Kuromoji tokens:', rawTokens.slice(0, 5)); // Log first 5 tokens for debugging
 
       // Apply punctuation merging first
       let tokensAfterPunctuation = verbMergeOptions.mergePunctuation !== false ?
@@ -461,9 +461,9 @@ app.post('/api/parse', async (req, res) => {
         const dictLookup = await japaneseService.lookupInJMDict(token.surface, token.reading);
 
         // Debug logging to see what we're getting from dictionary
-        if (dictLookup) {
-          console.log(`[DEBUG] Dictionary lookup for "${token.surface}":`, JSON.stringify(dictLookup, null, 2));
-        }
+        // if (dictLookup) {
+        //   console.log(`[DEBUG] Dictionary lookup for "${token.surface}":`, JSON.stringify(dictLookup, null, 2));
+        // }
 
         // For local processing, prioritize dictionary, for remote processing prioritize AI
         let translation = 'N/A';

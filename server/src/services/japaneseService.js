@@ -57,7 +57,7 @@ class JapaneseService {
 
   // Function to lookup word in JMDict
   async lookupInJMDict(word, reading) {
-    console.log(`[JMDict] Looking up word: "${word}", reading: "${reading}"`);
+    //console.log(`[JMDict] Looking up word: "${word}", reading: "${reading}"`);
 
     if (!this.jmdictDb) {
       console.log('[JMDict] Database not available - skipping lookup');
@@ -65,16 +65,16 @@ class JapaneseService {
     }
 
     try {
-      console.log(`[JMDict] Searching by kanji: "${word}"`);
+      //console.log(`[JMDict] Searching by kanji: "${word}"`);
       // Search by kanji first
       let results = await kanjiBeginning(this.jmdictDb, word, 3);
-      console.log(`[JMDict] Kanji search results: ${results.length} entries found`);
+      //console.log(`[JMDict] Kanji search results: ${results.length} entries found`);
 
       // If no results by kanji, try by reading
       if (results.length === 0 && reading) {
-        console.log(`[JMDict] No kanji results, searching by reading: "${reading}"`);
+        //console.log(`[JMDict] No kanji results, searching by reading: "${reading}"`);
         results = await readingBeginning(this.jmdictDb, reading, 3);
-        console.log(`[JMDict] Reading search results: ${results.length} entries found`);
+        //console.log(`[JMDict] Reading search results: ${results.length} entries found`);
       }
 
       if (results.length > 0) {
@@ -82,7 +82,7 @@ class JapaneseService {
         const result = results[0];
         
         // Debug: log the structure of the first sense to understand the data
-        console.log(`[DEBUG] First sense structure:`, JSON.stringify(result.sense[0], null, 2));
+        //console.log(`[DEBUG] First sense structure:`, JSON.stringify(result.sense[0], null, 2));
         
         const meanings = result.sense
           .filter(s => s.gloss && s.gloss.length > 0)
@@ -110,7 +110,7 @@ class JapaneseService {
           source: 'JMDict'
         };
 
-        console.log(`[JMDict] ✅ Found translation for "${word}": "${meanings}"`);
+        //console.log(`[JMDict] ✅ Found translation for "${word}": "${meanings}"`);
         return lookupResult;
       } else {
         console.log(`[JMDict] ❌ No results found for "${word}" (reading: "${reading}")`);

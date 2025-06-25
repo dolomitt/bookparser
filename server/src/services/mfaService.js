@@ -5,8 +5,8 @@ import { config } from '../config/index.js';
 
 class MFAService {
   constructor() {
-    this.tempDir = './temp_mfa';
-    this.modelsDir = '/root/Documents/MFA/pretrained_models';
+    this.tempDir = config.mfa.tempDir;
+    this.modelsDir = config.mfa.modelsDir;
     this.ensureDirectories();
   }
 
@@ -22,24 +22,84 @@ class MFAService {
   // Check if MFA is available on the system
   async checkMFAAvailability() {
     return new Promise((resolve) => {
-      const mfaPath = '/root/miniconda3/bin/mfa';
-      console.log(`[MFA] Using MFA at: ${mfaPath}`);
+      // Try conda-installed MFA first if configured
+      if (config.mfa.useConda) {
+        const condaMfaPath = config.mfa.condaPath;
+        console.log(`[MFA] Checking conda MFA at: ${condaMfaPath}`);
+        
+        // Set up conda environment
+        const env = {
+          ...process.env,
+          PATH: `/root/miniconda3/bin:${process.env.PATH}`,
+          CONDA_DEFAULT_ENV: 'base',
+          CONDA_PREFIX: '/root/miniconda3'
+        };
+        
+        const mfa = spawn(condaMfaPath, ['version'], { 
+          stdio: 'pipe',
+          env: env
+        });
+        
+        let stdout = '';
+        let stderr = '';
+        
+        mfa.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+        
+        mfa.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+        
+        mfa.on('close', (code) => {
+          if (code === 0) {
+            console.log(`[MFA] ✅ Conda MFA is available and working`);
+            console.log(`[MFA] Version info: ${stdout.trim()}`);
+            this.mfaCommand = condaMfaPath;
+            this.mfaEnv = env;
+            resolve(true);
+          } else {
+            console.log(`[MFA] ❌ Conda MFA command failed with code ${code}`);
+            console.log(`[MFA] stderr: ${stderr}`);
+            
+            // Fallback to system MFA
+            this.checkSystemMFA().then(resolve);
+          }
+        });
+        
+        mfa.on('error', (error) => {
+          console.log(`[MFA] ❌ Conda MFA command error: ${error.message}`);
+          // Fallback to system MFA
+          this.checkSystemMFA().then(resolve);
+        });
+      } else {
+        // Skip conda and go directly to system MFA
+        this.checkSystemMFA().then(resolve);
+      }
+    });
+  }
+
+  // Fallback to check system-installed MFA
+  async checkSystemMFA() {
+    return new Promise((resolve) => {
+      console.log('[MFA] Checking system MFA...');
       
-      const mfa = spawn(mfaPath, ['version'], { stdio: 'pipe' });
+      const mfa = spawn('mfa', ['version'], { stdio: 'pipe' });
       
       mfa.on('close', (code) => {
         if (code === 0) {
-          console.log(`[MFA] MFA is available and working`);
-          this.mfaCommand = mfaPath;
+          console.log(`[MFA] ✅ System MFA is available and working`);
+          this.mfaCommand = 'mfa';
+          this.mfaEnv = process.env;
           resolve(true);
         } else {
-          console.log(`[MFA] MFA command failed with code ${code}`);
+          console.log(`[MFA] ❌ No MFA installation found`);
           resolve(false);
         }
       });
       
       mfa.on('error', (error) => {
-        console.log(`[MFA] MFA command error: ${error.message}`);
+        console.log(`[MFA] ❌ System MFA not found: ${error.message}`);
         resolve(false);
       });
     });
@@ -98,7 +158,8 @@ class MFAService {
       const fullArgs = [...baseArgs, ...args];
       
       const mfa = spawn(command, fullArgs, {
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: this.mfaEnv || process.env
       });
 
       let stdout = '';
@@ -199,7 +260,7 @@ class MFAService {
   async alignVoiceVoxAudio(audioBuffer, text, options = {}) {
     const {
       filename = `alignment_${Date.now()}`,
-      language = 'japanese_mfa',
+      language = config.mfa.language,
       useVoiceVoxTimings = true
     } = options;
 
