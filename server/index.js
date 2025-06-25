@@ -333,10 +333,167 @@ app.get('/api/imports', (req, res) => {
   });
 });
 
-// Upload book (txt)
-app.post('/api/import', upload.single('file'), (req, res) => {
+// Upload book (txt) with automatic local processing
+app.post('/api/import', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  res.json({ filename: req.file.filename, originalname: req.file.originalname });
+  
+  const filename = req.file.filename;
+  const originalname = req.file.originalname;
+  
+  console.log(`[AUTO-PROCESS] Starting automatic processing for uploaded file: ${originalname}`);
+  
+  try {
+    // Read the uploaded file content
+    const filePath = path.join(UPLOAD_DIR, filename);
+    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    const lines = fileContent.split('\n').filter(line => line.trim().length > 0);
+    
+    console.log(`[AUTO-PROCESS] File contains ${lines.length} lines`);
+    
+    // Process each line with local processing (dictionary only)
+    const processedData = {};
+    let processedCount = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.length === 0) continue;
+      
+      try {
+        console.log(`[AUTO-PROCESS] Processing line ${i + 1}/${lines.length}: "${line.substring(0, 30)}..."`);
+        
+        if (tokenizer) {
+          // Use Kuromoji for Japanese tokenization
+          const rawTokens = tokenizer.tokenize(line);
+          
+          // Apply basic token merging
+          const tokens = mergeVerbTokens(mergePunctuationTokens(rawTokens), {
+            mergeAuxiliaryVerbs: true,
+            mergeVerbParticles: true,
+            mergeAllInflections: true,
+            mergePunctuation: true
+          });
+          
+          // Prepare basic token data with hiragana readings
+          const basicTokens = tokens.map(token => ({
+            surface: token.surface_form,
+            reading: katakanaToHiragana(token.reading),
+            pos: token.pos,
+            pos_detail: token.pos_detail_1
+          }));
+          
+          // Get dictionary translations for each token
+          const enhancedTokens = await Promise.all(basicTokens.map(async (token) => {
+            // Look up in JMDict dictionary
+            const dictLookup = await lookupInJMDict(token.surface, token.reading);
+            
+            let translation = 'N/A';
+            if (dictLookup && dictLookup.meanings) {
+              if (typeof dictLookup.meanings === 'string') {
+                translation = dictLookup.meanings;
+              } else if (Array.isArray(dictLookup.meanings)) {
+                translation = dictLookup.meanings.join('; ');
+              } else {
+                translation = String(dictLookup.meanings);
+              }
+            }
+            
+            return {
+              ...token,
+              translation: translation,
+              contextualMeaning: 'N/A',
+              grammaticalRole: token.pos,
+              dictionarySource: dictLookup ? dictLookup.source : null
+            };
+          }));
+          
+          // Count different types of tokens
+          const words = tokens.filter(token =>
+            token.pos === '名詞' || token.pos === '動詞' || token.pos === '形容詞' || token.pos === '副詞'
+          );
+          const nouns = tokens.filter(token => token.pos === '名詞');
+          const verbs = tokens.filter(token => token.pos === '動詞');
+          
+          // Store processed line data
+          processedData[i] = {
+            result: 'Processed with local dictionary',
+            processed: true,
+            originalText: line,
+            sentenceIndex: i,
+            fullSentenceTranslation: 'N/A (local processing)',
+            analysis: {
+              totalTokens: tokens.length,
+              words: words.length,
+              nouns: nouns.length,
+              verbs: verbs.length,
+              characters: line.length,
+              tokens: enhancedTokens,
+              hasAIAnalysis: false
+            }
+          };
+          
+          processedCount++;
+        } else {
+          console.log(`[AUTO-PROCESS] Kuromoji not ready, skipping line ${i + 1}`);
+        }
+      } catch (lineError) {
+        console.error(`[AUTO-PROCESS] Error processing line ${i + 1}:`, lineError);
+        // Continue with next line even if one fails
+      }
+    }
+    
+    // Create book data structure with processed content
+    const bookData = {
+      metadata: {
+        originalFilename: filename,
+        bookname: originalname,
+        savedAt: new Date().toISOString(),
+        totalLines: lines.length,
+        processedLines: processedCount,
+        version: '1.0',
+        autoProcessed: true,
+        processingType: 'local_dictionary'
+      },
+      settings: {
+        verbMergeOptions: {
+          mergeAuxiliaryVerbs: true,
+          mergeVerbParticles: true,
+          mergeAllInflections: true,
+          mergePunctuation: true
+        },
+        processingDate: new Date().toISOString()
+      },
+      content: {
+        originalLines: lines,
+        processedData: processedData
+      }
+    };
+    
+    // Save the processed book
+    const bookFilePath = path.join(BOOKS_DIR, `${filename}.book`);
+    fs.writeFileSync(bookFilePath, JSON.stringify(bookData, null, 2), 'utf-8');
+    
+    console.log(`[AUTO-PROCESS] ✅ Successfully processed and saved book: ${originalname}`);
+    console.log(`[AUTO-PROCESS] Processed ${processedCount}/${lines.length} lines`);
+    
+    res.json({ 
+      filename: filename, 
+      originalname: originalname,
+      autoProcessed: true,
+      processedLines: processedCount,
+      totalLines: lines.length,
+      bookFile: `${filename}.book`
+    });
+    
+  } catch (error) {
+    console.error('[AUTO-PROCESS] Error during automatic processing:', error);
+    // Still return success for the upload, but indicate processing failed
+    res.json({ 
+      filename: filename, 
+      originalname: originalname,
+      autoProcessed: false,
+      error: 'Auto-processing failed, manual processing required'
+    });
+  }
 });
 
 // Get content of imported file (line by line) with any existing processed data
@@ -960,7 +1117,7 @@ app.post('/api/parse', async (req, res) => {
 app.post('/api/text-to-speech', async (req, res) => {
   console.log('Received /api/text-to-speech request');
   
-  const { text, speaker, includeTimings = false } = req.body;
+  const { text, speaker, includeTimings = false, speed = 1.0, volume = 1.0 } = req.body;
   
   // Use environment variables for VOICEVOX configuration
   const voicevoxHost = process.env.VOICEVOX_HOST || '192.168.1.43';
@@ -994,6 +1151,17 @@ app.post('/api/text-to-speech', async (req, res) => {
 
     const audioQuery = await audioQueryResponse.json();
     console.log('[VOICEVOX] Audio query successful');
+
+    // Apply speed and volume settings to the audio query
+    if (speed !== 1.0) {
+      audioQuery.speedScale = speed;
+      console.log(`[VOICEVOX] Applied speed scale: ${speed}`);
+    }
+    
+    if (volume !== 1.0) {
+      audioQuery.volumeScale = volume;
+      console.log(`[VOICEVOX] Applied volume scale: ${volume}`);
+    }
 
     // Step 2: Generate synthesis audio
     console.log('[VOICEVOX] Requesting audio synthesis...');
@@ -1069,16 +1237,25 @@ app.post('/api/text-to-speech', async (req, res) => {
 // Helper function to extract timing data from VOICEVOX audio query
 function extractTimingData(audioQuery, originalText) {
   console.log('[VOICEVOX] Extracting timing data...');
+  console.log('[VOICEVOX] Audio query structure:', JSON.stringify(audioQuery, null, 2));
   
   const timings = [];
   let currentTime = 0;
   let textIndex = 0;
   
   // VOICEVOX audio query contains accent_phrases with moras
-  if (audioQuery.accent_phrases) {
+  if (audioQuery.accent_phrases && Array.isArray(audioQuery.accent_phrases)) {
+    console.log(`[VOICEVOX] Found ${audioQuery.accent_phrases.length} accent phrases`);
+    
     audioQuery.accent_phrases.forEach((phrase, phraseIndex) => {
-      if (phrase.moras) {
+      console.log(`[VOICEVOX] Processing phrase ${phraseIndex}:`, JSON.stringify(phrase, null, 2));
+      
+      if (phrase.moras && Array.isArray(phrase.moras)) {
+        console.log(`[VOICEVOX] Phrase ${phraseIndex} has ${phrase.moras.length} moras`);
+        
         phrase.moras.forEach((mora, moraIndex) => {
+          console.log(`[VOICEVOX] Processing mora ${moraIndex}:`, JSON.stringify(mora, null, 2));
+          
           // Each mora has a vowel_length (and consonant_length if applicable)
           const consonantLength = mora.consonant_length || 0;
           const vowelLength = mora.vowel_length || 0;
@@ -1087,43 +1264,39 @@ function extractTimingData(audioQuery, originalText) {
           const startTime = currentTime;
           const endTime = currentTime + consonantLength + vowelLength;
           
-          // Try to map mora to original text characters
-          const moraText = mora.text || '';
+          // Get mora text - try different possible fields
+          const moraText = mora.text || mora.phoneme || mora.vowel || '';
+          console.log(`[VOICEVOX] Mora text: "${moraText}", consonant: ${consonantLength}, vowel: ${vowelLength}`);
           
-          // Better text alignment - find the mora text in the remaining original text
-          let textLength = 0;
+          // Map mora to original text characters
+          let textLength = 1; // Default to 1 character
           let matchedText = '';
           
           if (textIndex < originalText.length) {
             const remainingText = originalText.substring(textIndex);
+            matchedText = remainingText.charAt(0); // Default to next character
             
-            // Try exact match first
-            if (remainingText.startsWith(moraText)) {
+            // Try to match mora text if available
+            if (moraText && remainingText.startsWith(moraText)) {
               textLength = moraText.length;
               matchedText = moraText;
-            } else {
-              // Try to find similar characters (handling hiragana/katakana variations)
+            } else if (moraText) {
+              // Try hiragana/katakana conversion
               for (let i = 1; i <= Math.min(3, remainingText.length); i++) {
                 const candidate = remainingText.substring(0, i);
-                if (candidate && (candidate === moraText || 
-                    katakanaToHiragana(candidate) === katakanaToHiragana(moraText))) {
+                if (candidate === moraText || 
+                    katakanaToHiragana(candidate) === katakanaToHiragana(moraText)) {
                   textLength = i;
                   matchedText = candidate;
                   break;
                 }
               }
-              
-              // Fallback: advance by 1 character if no match found
-              if (textLength === 0) {
-                textLength = 1;
-                matchedText = remainingText.charAt(0);
-              }
             }
           }
           
-          // Only add timing if we have a valid time duration
-          if (endTime > startTime) {
-            timings.push({
+          // Only add timing if we have a valid time duration and text
+          if (endTime > startTime && matchedText) {
+            const timingEntry = {
               startTime: startTime,
               endTime: endTime,
               textStart: textIndex,
@@ -1131,8 +1304,13 @@ function extractTimingData(audioQuery, originalText) {
               text: matchedText,
               mora: moraText,
               phraseIndex: phraseIndex,
-              moraIndex: moraIndex
-            });
+              moraIndex: moraIndex,
+              consonantLength: consonantLength,
+              vowelLength: vowelLength
+            };
+            
+            timings.push(timingEntry);
+            console.log(`[VOICEVOX] Added timing: ${JSON.stringify(timingEntry)}`);
           }
           
           currentTime = endTime;
@@ -1142,13 +1320,18 @@ function extractTimingData(audioQuery, originalText) {
       
       // Add pause after phrase if specified
       if (phrase.pause_mora && phrase.pause_mora.vowel_length) {
+        console.log(`[VOICEVOX] Adding pause: ${phrase.pause_mora.vowel_length}s`);
         currentTime += phrase.pause_mora.vowel_length;
       }
     });
+  } else {
+    console.log('[VOICEVOX] No accent_phrases found in audio query');
   }
   
   console.log(`[VOICEVOX] Extracted ${timings.length} timing points`);
   console.log(`[VOICEVOX] Text coverage: ${textIndex}/${originalText.length} characters`);
+  console.log(`[VOICEVOX] Total duration: ${currentTime}s`);
+  
   return timings;
 }
 

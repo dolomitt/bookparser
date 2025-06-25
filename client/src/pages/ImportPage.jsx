@@ -23,6 +23,12 @@ export default function ImportPage() {
     useCompoundDetection: false
   });
   const [showVerbOptions, setShowVerbOptions] = useState(false);
+  const [ttsOptions, setTtsOptions] = useState({
+    speed: 1.0,
+    speaker: 1,
+    volume: 1.0
+  });
+  const [showTtsOptions, setShowTtsOptions] = useState(false);
   const fileInput = useRef();
 
   // Separate useEffect for initial load only
@@ -104,10 +110,18 @@ export default function ImportPage() {
         
         setInitialLoadComplete(true);
         
-        // Auto-process all sentences with local processing
-        setTimeout(() => {
-          autoProcessAllSentences(allSentences);
-        }, 100);
+        // Only auto-process if there are unprocessed sentences
+        const unprocessedCount = allSentences.filter((s, i) => !s.isLineBreak && !res.data.existingProcessedSentences[i]).length;
+        if (unprocessedCount > 0) {
+          console.log(`Found ${unprocessedCount} unprocessed sentences, starting auto-processing...`);
+          setTimeout(() => {
+            autoProcessAllSentences(allSentences);
+          }, 100);
+        } else {
+          console.log('All sentences already processed, skipping auto-processing');
+          setMessage('All sentences already processed - ready for reading!');
+          setTimeout(() => setMessage(''), 3000);
+        }
       }).catch(error => {
         console.error('Error loading file data:', error);
         setInitialLoadComplete(true);
@@ -124,7 +138,15 @@ export default function ImportPage() {
     formData.append('file', file);
     try {
       const res = await axios.post('/api/import', formData);
-      setMessage(`Uploaded: ${res.data.originalname}`);
+      
+      if (res.data.autoProcessed) {
+        setMessage(`✅ Uploaded and auto-processed: ${res.data.originalname} (${res.data.processedLines}/${res.data.totalLines} lines processed)`);
+      } else if (res.data.error) {
+        setMessage(`⚠️ Uploaded: ${res.data.originalname} - ${res.data.error}`);
+      } else {
+        setMessage(`Uploaded: ${res.data.originalname}`);
+      }
+      
       navigate(`/import/${res.data.filename}`);
     } catch (err) {
       setMessage('Upload failed');
@@ -146,10 +168,13 @@ export default function ImportPage() {
 
     try {
       if (withTimings) {
-        // Request audio with timing data
+        // Request audio with timing data using TTS options
         const response = await axios.post('/api/text-to-speech', {
           text: sentence.text,
-          includeTimings: true
+          includeTimings: true,
+          speaker: ttsOptions.speaker,
+          speed: ttsOptions.speed,
+          volume: ttsOptions.volume
         });
 
         console.log('Received audio and timing response from server');
@@ -234,34 +259,131 @@ export default function ImportPage() {
           }
         }
 
-        // Map timing data to tokens based on text positions
+        // Use VOICEVOX timing data to synchronize highlighting with actual audio
         const mapTimingsToTokens = (timings, tokens) => {
-          const tokenTimings = [];
-          let currentTextPos = 0;
+          console.log('[TIMING] Starting VOICEVOX timing mapping');
+          console.log('[TIMING] Original text:', sentence.text);
+          console.log('[TIMING] All tokens:', tokens.map((t, i) => `${i}:${t.surface}(${t.pos})`));
+          console.log('[TIMING] VOICEVOX timings:', timings.length, 'entries');
           
-          tokens.forEach((token, tokenIndex) => {
-            const tokenStart = currentTextPos;
-            const tokenEnd = currentTextPos + token.surface.length;
+          // Show detailed VOICEVOX timing data
+          console.log('[TIMING] === VOICEVOX TIMING POINTS ===');
+          timings.forEach((timing, index) => {
+            console.log(`[TIMING] ${index}: ${timing.startTime.toFixed(3)}-${timing.endTime.toFixed(3)}s | text:"${timing.text || timing.mora || ''}" | textStart:${timing.textStart || 'N/A'} textEnd:${timing.textEnd || 'N/A'} | phraseIndex:${timing.phraseIndex || 'N/A'} moraIndex:${timing.moraIndex || 'N/A'}`);
+          });
+          console.log('[TIMING] === END TIMING POINTS ===');
+          
+          // Filter out punctuation tokens
+          const nonPunctuationTokens = [];
+          tokens.forEach((token, originalIndex) => {
+            if (token.pos !== '記号') {
+              nonPunctuationTokens.push({ ...token, originalIndex });
+            }
+          });
+          
+          console.log('[TIMING] Non-punctuation tokens:', nonPunctuationTokens.map(t => `${t.originalIndex}:${t.surface}`));
+          
+          if (nonPunctuationTokens.length === 0) {
+            console.log('[TIMING] No tokens to highlight');
+            return [];
+          }
+          
+          if (!timings || timings.length === 0) {
+            console.log('[TIMING] No VOICEVOX timings available, using fallback');
+            // Fallback to simple timing
+            const totalDuration = 3.0;
+            const tokenDuration = totalDuration / nonPunctuationTokens.length;
             
-            // Find all timing points that overlap with this token
-            const overlappingTimings = timings.filter(timing => 
-              timing.textStart < tokenEnd && timing.textEnd > tokenStart
-            );
-            
-            if (overlappingTimings.length > 0) {
-              // Use the earliest start time and latest end time for this token
-              const startTime = Math.min(...overlappingTimings.map(t => t.startTime));
-              const endTime = Math.max(...overlappingTimings.map(t => t.endTime));
+            return nonPunctuationTokens.map((token, sequenceIndex) => {
+              const startTime = sequenceIndex * tokenDuration;
+              const endTime = startTime + tokenDuration;
               
-              tokenTimings.push({
-                tokenIndex,
+              return {
+                tokenIndex: token.originalIndex,
                 startTime,
                 endTime,
-                token: token.surface
-              });
+                token: token.surface,
+                sequenceIndex
+              };
+            });
+          }
+          
+          // Use actual VOICEVOX timing data
+          const audioStartTime = timings[0].startTime;
+          const audioEndTime = timings[timings.length - 1].endTime;
+          const totalDuration = audioEndTime - audioStartTime;
+          
+          console.log(`[TIMING] VOICEVOX audio: ${audioStartTime.toFixed(3)}s - ${audioEndTime.toFixed(3)}s (${totalDuration.toFixed(3)}s total)`);
+          
+          // Create a mapping from text positions to timing data
+          const textToTimingMap = new Map();
+          let currentTextPos = 0;
+          
+          // Build a map of text positions to VOICEVOX timings
+          timings.forEach((timing, index) => {
+            const timingText = timing.text || timing.mora || '';
+            if (timingText) {
+              textToTimingMap.set(currentTextPos, timing);
+              currentTextPos += timingText.length;
+            }
+          });
+          
+          console.log('[TIMING] Built text-to-timing map with', textToTimingMap.size, 'entries');
+          
+          // Map each token to its corresponding timing
+          const tokenTimings = [];
+          let textPosition = 0;
+          
+          nonPunctuationTokens.forEach((token, sequenceIndex) => {
+            // Find the text position of this token in the original sentence
+            let tokenTextPos = 0;
+            for (let i = 0; i < token.originalIndex; i++) {
+              tokenTextPos += tokens[i].surface.length;
             }
             
-            currentTextPos = tokenEnd;
+            console.log(`[TIMING] Token "${token.surface}" at text position ${tokenTextPos}`);
+            
+            // Find VOICEVOX timings that overlap with this token
+            const tokenLength = token.surface.length;
+            const overlappingTimings = timings.filter(timing => {
+              const timingStart = timing.textStart || 0;
+              const timingEnd = timing.textEnd || (timingStart + (timing.text?.length || 1));
+              
+              // Check if timing overlaps with token position
+              return (timingStart < tokenTextPos + tokenLength && timingEnd > tokenTextPos);
+            });
+            
+            let startTime, endTime;
+            
+            if (overlappingTimings.length > 0) {
+              // Use actual VOICEVOX timing
+              startTime = Math.min(...overlappingTimings.map(t => t.startTime));
+              endTime = Math.max(...overlappingTimings.map(t => t.endTime));
+              console.log(`[TIMING] Token "${token.surface}" mapped to VOICEVOX timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s`);
+            } else {
+              // Fallback: distribute remaining time evenly
+              const avgTokenDuration = totalDuration / nonPunctuationTokens.length;
+              startTime = audioStartTime + (sequenceIndex * avgTokenDuration);
+              endTime = startTime + avgTokenDuration;
+              console.log(`[TIMING] Token "${token.surface}" using fallback timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s`);
+            }
+            
+            tokenTimings.push({
+              tokenIndex: token.originalIndex,
+              startTime,
+              endTime,
+              token: token.surface,
+              sequenceIndex,
+              hasVoicevoxTiming: overlappingTimings.length > 0
+            });
+          });
+          
+          // Sort by start time to ensure proper order
+          tokenTimings.sort((a, b) => a.startTime - b.startTime);
+          
+          console.log('[TIMING] Final token timings:');
+          tokenTimings.forEach(t => {
+            console.log(`  ${t.sequenceIndex}: "${t.token}" ${t.startTime.toFixed(3)}-${t.endTime.toFixed(3)}s ${t.hasVoicevoxTiming ? '(VOICEVOX)' : '(fallback)'}`);
           });
           
           return tokenTimings;
@@ -447,6 +569,13 @@ export default function ImportPage() {
 
   const handleVerbOptionChange = (option, value) => {
     setVerbMergeOptions(prev => ({
+      ...prev,
+      [option]: value
+    }));
+  };
+
+  const handleTtsOptionChange = (option, value) => {
+    setTtsOptions(prev => ({
       ...prev,
       [option]: value
     }));
@@ -861,6 +990,13 @@ export default function ImportPage() {
           <div style={{ marginBottom: '20px' }}>
             <button onClick={handleSave} className="btn">Save to Books</button>
             <button
+              onClick={() => setShowTtsOptions(!showTtsOptions)}
+              className="btn"
+              style={{ marginLeft: '10px' }}
+            >
+              {showTtsOptions ? 'Hide' : 'Show'} TTS Options
+            </button>
+            <button
               onClick={() => setShowVerbOptions(!showVerbOptions)}
               className="btn"
               style={{ marginLeft: '10px' }}
@@ -868,6 +1004,88 @@ export default function ImportPage() {
               {showVerbOptions ? 'Hide' : 'Show'} Verb Options
             </button>
           </div>
+
+          {showTtsOptions && (
+            <div style={{
+              marginBottom: '20px',
+              padding: '15px',
+              backgroundColor: '#2a2a2a',
+              borderRadius: '5px',
+              border: '1px solid #444'
+            }}>
+              <h4 style={{ marginTop: '0', color: '#fff' }}>Text-to-Speech Options</h4>
+              <p style={{ fontSize: '0.9em', color: '#ccc', marginBottom: '15px' }}>
+                Configure VOICEVOX speech synthesis settings:
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', alignItems: 'center' }}>
+                <div>
+                  <label style={{ display: 'block', color: '#fff', marginBottom: '5px' }}>
+                    Speech Speed
+                  </label>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="2.0"
+                    step="0.1"
+                    value={ttsOptions.speed}
+                    onChange={(e) => handleTtsOptionChange('speed', parseFloat(e.target.value))}
+                    style={{ width: '100%' }}
+                  />
+                  <div style={{ color: '#ccc', fontSize: '0.8em', textAlign: 'center' }}>
+                    {ttsOptions.speed}x
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', color: '#fff', marginBottom: '5px' }}>
+                    Speaker Voice
+                  </label>
+                  <select
+                    value={ttsOptions.speaker}
+                    onChange={(e) => handleTtsOptionChange('speaker', parseInt(e.target.value))}
+                    style={{
+                      width: '100%',
+                      padding: '5px',
+                      backgroundColor: '#444',
+                      color: '#fff',
+                      border: '1px solid #666',
+                      borderRadius: '3px'
+                    }}
+                  >
+                    <option value={1}>Speaker 1 (四国めたん)</option>
+                    <option value={2}>Speaker 2 (ずんだもん)</option>
+                    <option value={3}>Speaker 3 (春日部つむぎ)</option>
+                    <option value={8}>Speaker 8 (青山龍星)</option>
+                    <option value={13}>Speaker 13 (白上虎太郎)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', color: '#fff', marginBottom: '5px' }}>
+                    Volume
+                  </label>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1.0"
+                    step="0.1"
+                    value={ttsOptions.volume}
+                    onChange={(e) => handleTtsOptionChange('volume', parseFloat(e.target.value))}
+                    style={{ width: '100%' }}
+                  />
+                  <div style={{ color: '#ccc', fontSize: '0.8em', textAlign: 'center' }}>
+                    {Math.round(ttsOptions.volume * 100)}%
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '10px', fontSize: '0.8em', color: '#888' }}>
+                <strong>Note:</strong> Speed and volume settings will be applied to future speech generation. 
+                Speaker selection requires VOICEVOX engine to support the selected voice.
+              </div>
+            </div>
+          )}
 
           {showVerbOptions && (
             <div style={{
