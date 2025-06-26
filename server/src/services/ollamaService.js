@@ -4,6 +4,9 @@ class OllamaService {
   constructor() {
     this.baseUrl = config.ollama.baseUrl;
     this.model = config.ollama.model;
+    this.timeout = config.ollama.timeout;
+    this.maxRetries = config.ollama.maxRetries;
+    this.maxTokens = config.ollama.maxTokens;
   }
 
   // Test Ollama connection and list available models
@@ -28,11 +31,11 @@ class OllamaService {
       }
     } catch (error) {
       console.log(`[Ollama] ❌ Connection test failed:`, error.message);
-    }
+    } 
   }
 
   // Get Ollama analysis for tokens with retry logic
-  async getAnalysis(originalText, tokens, contextLines = {}, maxRetries = config.ollama.maxRetries) {
+  async getAnalysis(originalText, tokens, contextLines = {}, maxRetries = this.maxRetries) {
     console.log('[Ollama] Starting Ollama analysis...');
     console.log('[Ollama] Original text:', originalText);
     console.log('[Ollama] Number of tokens:', tokens.length);
@@ -63,7 +66,7 @@ class OllamaService {
         console.log('[Ollama] Context text:', contextText);
 
         // Use fixed token limit for response
-        const fixedNumPredict = config.ollama.maxTokens;
+        const fixedNumPredict = this.maxTokens;
         
         console.log(`[Ollama] Using fixed response limit: ${fixedNumPredict} tokens for ${tokens.length} input tokens`);
 

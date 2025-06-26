@@ -62,7 +62,9 @@ export default function ImportPage() {
     return saved || {
       speed: 1.0,
       speaker: 1,
-      volume: 1.0
+      volume: 1.0,
+      timingStretch: 1.5, // 50% increase in timing length
+      commaPauseDuration: 0.5 // 0.5 second pause for commas
     };
   });
   
@@ -426,13 +428,23 @@ export default function ImportPage() {
               // Use actual VOICEVOX timing
               startTime = Math.min(...overlappingTimings.map(t => t.startTime));
               endTime = Math.max(...overlappingTimings.map(t => t.endTime));
-              console.log(`[TIMING] Token "${token.surface}" mapped to VOICEVOX timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s`);
+              
+              // Apply timing stretch factor to increase duration
+              const duration = endTime - startTime;
+              const stretchedDuration = duration * ttsOptions.timingStretch;
+              endTime = startTime + stretchedDuration;
+              
+              console.log(`[TIMING] Token "${token.surface}" mapped to VOICEVOX timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s (stretched by ${ttsOptions.timingStretch}x)`);
             } else {
               // Fallback: distribute remaining time evenly
               const avgTokenDuration = totalDuration / nonPunctuationTokens.length;
               startTime = audioStartTime + (sequenceIndex * avgTokenDuration);
-              endTime = startTime + avgTokenDuration;
-              console.log(`[TIMING] Token "${token.surface}" using fallback timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s`);
+              
+              // Apply timing stretch factor to increase duration
+              const stretchedDuration = avgTokenDuration * ttsOptions.timingStretch;
+              endTime = startTime + stretchedDuration;
+              
+              console.log(`[TIMING] Token "${token.surface}" using fallback timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s (stretched by ${ttsOptions.timingStretch}x)`);
             }
             
             tokenTimings.push({
@@ -445,10 +457,43 @@ export default function ImportPage() {
             });
           });
           
+          // Add pauses after commas
+          // First, find all comma tokens
+          const commaTokens = tokens.filter(token => token.surface === '、');
+          
+          // For each comma, find the next non-punctuation token and add a pause before it
+          commaTokens.forEach(commaToken => {
+            const commaIndex = tokens.indexOf(commaToken);
+            
+            // Find the next non-punctuation token after the comma
+            let nextTokenIndex = -1;
+            for (let i = commaIndex + 1; i < tokens.length; i++) {
+              if (tokens[i].pos !== '記号') {
+                nextTokenIndex = i;
+                break;
+              }
+            }
+            
+            if (nextTokenIndex !== -1) {
+              // Find this token in our tokenTimings array
+              const nextTimingIndex = tokenTimings.findIndex(t => t.tokenIndex === nextTokenIndex);
+              
+              if (nextTimingIndex !== -1) {
+                console.log(`[TIMING] Adding ${ttsOptions.commaPauseDuration}s pause after comma before token "${tokens[nextTokenIndex].surface}"`);                
+                
+                // Shift all subsequent timings by the pause duration
+                for (let i = nextTimingIndex; i < tokenTimings.length; i++) {
+                  tokenTimings[i].startTime += ttsOptions.commaPauseDuration;
+                  tokenTimings[i].endTime += ttsOptions.commaPauseDuration;
+                }
+              }
+            }
+          });
+          
           // Sort by start time to ensure proper order
           tokenTimings.sort((a, b) => a.startTime - b.startTime);
           
-          console.log('[TIMING] Final token timings:');
+          console.log('[TIMING] Final token timings (after comma pauses):');
           tokenTimings.forEach(t => {
             console.log(`  ${t.sequenceIndex}: "${t.token}" ${t.startTime.toFixed(3)}-${t.endTime.toFixed(3)}s ${t.hasVoicevoxTiming ? '(VOICEVOX)' : '(fallback)'}`);
           });
@@ -1186,6 +1231,40 @@ export default function ImportPage() {
                     {Math.round(ttsOptions.volume * 100)}%
                   </div>
                 </div>
+                
+                <div className="tts-option-group">
+                  <label>
+                    Timing Stretch
+                  </label>
+                  <input
+                    type="range"
+                    min="1.0"
+                    max="3.0"
+                    step="0.1"
+                    value={ttsOptions.timingStretch}
+                    onChange={(e) => handleTtsOptionChange('timingStretch', parseFloat(e.target.value))}
+                  />
+                  <div className="tts-option-value">
+                    {ttsOptions.timingStretch}x
+                  </div>
+                </div>
+                
+                <div className="tts-option-group">
+                  <label>
+                    Comma Pause
+                  </label>
+                  <input
+                    type="range"
+                    min="0.0"
+                    max="2.0"
+                    step="0.1"
+                    value={ttsOptions.commaPauseDuration}
+                    onChange={(e) => handleTtsOptionChange('commaPauseDuration', parseFloat(e.target.value))}
+                  />
+                  <div className="tts-option-value">
+                    {ttsOptions.commaPauseDuration}s
+                  </div>
+                </div>
               </div>
 
               <div className="note">
@@ -1370,13 +1449,6 @@ export default function ImportPage() {
                     
                     {/* Processing buttons - inline after sentence */}
                     <span className="sentence-controls">
-                      <button 
-                        onClick={() => handleSentenceProcess(sentenceIndex, false)} 
-                        className="sentence-btn local"
-                        title="Process using local dictionary only (JMDict)"
-                      >
-                        L
-                      </button>
                       <button 
                         onClick={() => handleSentenceProcess(sentenceIndex, true)} 
                         className="sentence-btn remote"
