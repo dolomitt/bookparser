@@ -103,6 +103,10 @@ bookparser/
 └── README.md            # This file
 ```
 
+Samples were taken from 
+https://www.aozora.gr.jp/cards/000009/files/8_31220.html
+
+
 ## 🔧 Configuration
 
 ### Environment Variables (server/.env)
@@ -118,7 +122,7 @@ OPENAI_API_KEY=your_api_key_here
 # VOICEVOX Text-to-Speech (optional)
 VOICEVOX_HOST=localhost
 VOICEVOX_PORT=50021
-VOICEVOX_DEFAULT_SPEAKER=1
+VOICEVOX_DEFAULT_SPEAKER=13
 ```
 
 ### Processing Options

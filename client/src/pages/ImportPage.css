@@ -147,7 +147,7 @@
   color: #28a745;
 }
 
-/* Token styling */
+/* Token styles */
 .token {
   display: inline-flex;
   margin: 0px 1px;
@@ -168,6 +168,17 @@
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   line-height: 1.5;
+}
+
+/* Blinking animation for processing buttons */
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
+.sentence-btn.processing {
+  animation: blink 1s ease-in-out infinite;
 }
 
 .token.punctuation {

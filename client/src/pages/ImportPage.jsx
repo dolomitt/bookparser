@@ -37,6 +37,7 @@ export default function ImportPage() {
   const [message, setMessage] = useState('');
   const [sentenceMessages, setSentenceMessages] = useState({});
   const [processedSentences, setProcessedSentences] = useState({});
+  const [processingSentences, setProcessingSentences] = useState({});
   // Load settings from cookies with fallback to defaults
   const [verbMergeOptions, setVerbMergeOptions] = useState(() => {
     const saved = getCookie('verbMergeOptions');
@@ -673,9 +674,8 @@ export default function ImportPage() {
     console.log('Verb merge options:', verbMergeOptions);
     console.log('Use remote processing (OpenAI):', useRemoteProcessing);
 
-    // Set processing message for this specific sentence
-    const processingMessage = useRemoteProcessing ? 'Processing with AI...' : 'Processing locally...';
-    setSentenceMessages(prev => ({ ...prev, [sentenceIndex]: processingMessage }));
+    // Instead of text message, set processing state for this sentence to make button blink
+    setProcessingSentences(prev => ({ ...prev, [sentenceIndex]: true }));
 
     try {
       const requestData = {
@@ -690,8 +690,12 @@ export default function ImportPage() {
       const response = await axios.post('/api/parse', requestData);
       console.log('Received response:', response.data);
 
-      // Clear message for this specific sentence after successful processing
-      setSentenceMessages(prev => ({ ...prev, [sentenceIndex]: '' }));
+      // Clear processing state for this specific sentence
+      setProcessingSentences(prev => {
+        const updated = { ...prev };
+        delete updated[sentenceIndex];
+        return updated;
+      });
 
       // Store the processed tokens and full sentence translation for interactive display
       if (response.data.analysis && response.data.analysis.tokens) {
@@ -729,6 +733,13 @@ export default function ImportPage() {
         errorMessage = error.message;
       }
 
+      // Clear processing state and set error message
+      setProcessingSentences(prev => {
+        const updated = { ...prev };
+        delete updated[sentenceIndex];
+        return updated;
+      });
+      
       setSentenceMessages(prev => ({
         ...prev,
         [sentenceIndex]: `Error: ${errorMessage}`
@@ -1508,7 +1519,7 @@ export default function ImportPage() {
                     <span className="sentence-controls">
                       <button 
                         onClick={() => handleSentenceProcess(sentenceIndex, true)} 
-                        className="sentence-btn remote"
+                        className={`sentence-btn remote ${processingSentences[sentenceIndex] ? 'processing' : ''}`}
                         title="Process using OpenAI for enhanced translations"
                       >
                         R
@@ -1540,9 +1551,9 @@ export default function ImportPage() {
                       )}
                     </span>
 
-                    {/* Processing status message */}
+                    {/* Only error messages are shown as text now */}
                     {sentenceMessages[sentenceIndex] && (
-                      <span className={`sentence-status ${sentenceMessages[sentenceIndex].startsWith('Error') ? 'error' : 'success'}`}>
+                      <span className="sentence-status error">
                         {sentenceMessages[sentenceIndex]}
                       </span>
                     )}
