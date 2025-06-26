@@ -116,9 +116,6 @@ PORT=5000
 UPLOAD_DIR=./imports
 BOOKS_DIR=./books
 
-# OpenAI Integration (optional)
-OPENAI_API_KEY=your_api_key_here
-
 # VOICEVOX Text-to-Speech (optional)
 VOICEVOX_HOST=localhost
 VOICEVOX_PORT=50021
