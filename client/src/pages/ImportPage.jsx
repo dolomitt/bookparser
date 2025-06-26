@@ -247,6 +247,15 @@ export default function ImportPage() {
         // Log timing info for debugging
         console.log(`[VOICEVOX] Using VoiceVox timing data`);
         console.log(`[VOICEVOX] Timing points: ${timings.length} (mora-level)`);
+        
+        // Log original VoiceVox timings in a readable format
+        console.log('=== ORIGINAL VOICEVOX TIMINGS ===');
+        console.log('Mora | Text | Start-End | Duration');
+        timings.forEach((timing, i) => {
+          const text = timing.text || timing.mora || '';
+          const duration = timing.endTime - timing.startTime;
+          console.log(`${i.toString().padStart(2, '0')} | ${text.padEnd(4)} | ${timing.startTime.toFixed(3)}-${timing.endTime.toFixed(3)}s | ${duration.toFixed(3)}s`);
+        });
         setSentenceMessages(prev => ({ ...prev, [sentenceIndex]: '🔊 Using VoiceVox timing...' }));
 
         // Convert base64 audio to blob
@@ -414,8 +423,8 @@ export default function ImportPage() {
           
           console.log('[TIMING] Built text-to-timing map with', textToTimingMap.size, 'entries');
           
-          // Map each token to its corresponding timing
-          const tokenTimings = [];
+          // First pass: calculate raw timings for each token
+          const rawTokenTimings = [];
           let textPosition = 0;
           
           nonPunctuationTokens.forEach((token, sequenceIndex) => {
@@ -437,38 +446,62 @@ export default function ImportPage() {
               return (timingStart < tokenTextPos + tokenLength && timingEnd > tokenTextPos);
             });
             
-            let startTime, endTime;
+            let startTime, endTime, rawDuration;
             
             if (overlappingTimings.length > 0) {
               // Use actual VOICEVOX timing
               startTime = Math.min(...overlappingTimings.map(t => t.startTime));
               endTime = Math.max(...overlappingTimings.map(t => t.endTime));
+              rawDuration = endTime - startTime;
               
-              // Apply timing stretch factor to increase duration
-              const duration = endTime - startTime;
-              const stretchedDuration = duration * ttsOptions.timingStretch;
-              endTime = startTime + stretchedDuration;
-              
-              console.log(`[TIMING] Token "${token.surface}" mapped to VOICEVOX timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s (stretched by ${ttsOptions.timingStretch}x)`);
+              console.log(`[TIMING] Token "${token.surface}" raw VOICEVOX timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s (${rawDuration.toFixed(3)}s)`);
             } else {
               // Fallback: distribute remaining time evenly
               const avgTokenDuration = totalDuration / nonPunctuationTokens.length;
               startTime = audioStartTime + (sequenceIndex * avgTokenDuration);
+              endTime = startTime + avgTokenDuration;
+              rawDuration = avgTokenDuration;
               
-              // Apply timing stretch factor to increase duration
-              const stretchedDuration = avgTokenDuration * ttsOptions.timingStretch;
-              endTime = startTime + stretchedDuration;
-              
-              console.log(`[TIMING] Token "${token.surface}" using fallback timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s (stretched by ${ttsOptions.timingStretch}x)`);
+              console.log(`[TIMING] Token "${token.surface}" raw fallback timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s (${rawDuration.toFixed(3)}s)`);
             }
             
-            tokenTimings.push({
+            rawTokenTimings.push({
               tokenIndex: token.originalIndex,
               startTime,
               endTime,
+              rawDuration,
               token: token.surface,
               sequenceIndex,
               hasVoicevoxTiming: overlappingTimings.length > 0
+            });
+          });
+          
+          // Second pass: ensure sequential non-overlapping timings
+          const tokenTimings = [];
+          let currentTime = rawTokenTimings[0]?.startTime || 0;
+          
+          rawTokenTimings.forEach((timing, index) => {
+            // Start time is the current time marker
+            const startTime = currentTime;
+            
+            // Apply timing stretch factor to the raw duration
+            const stretchedDuration = timing.rawDuration * ttsOptions.timingStretch;
+            
+            // End time is start time plus stretched duration
+            const endTime = startTime + stretchedDuration;
+            
+            // Update current time marker for next token
+            currentTime = endTime;
+            
+            console.log(`[TIMING] Token "${timing.token}" sequential timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s (stretched by ${ttsOptions.timingStretch}x)`);
+            
+            tokenTimings.push({
+              tokenIndex: timing.tokenIndex,
+              startTime,
+              endTime,
+              token: timing.token,
+              sequenceIndex: timing.sequenceIndex,
+              hasVoicevoxTiming: timing.hasVoicevoxTiming
             });
           });
           
@@ -507,6 +540,15 @@ export default function ImportPage() {
           
           // Sort by start time to ensure proper order
           tokenTimings.sort((a, b) => a.startTime - b.startTime);
+          
+          // Log stretched timings in a readable format
+          console.log('=== STRETCHED TIMINGS (after applying stretch factor and comma pauses) ===');
+          console.log('Token | Text | Start-End | Duration | Stretch');
+          tokenTimings.forEach(t => {
+            const duration = t.endTime - t.startTime;
+            const originalDuration = duration / ttsOptions.timingStretch;
+            console.log(`${t.sequenceIndex.toString().padStart(2, '0')} | ${t.token.padEnd(4)} | ${t.startTime.toFixed(3)}-${t.endTime.toFixed(3)}s | ${duration.toFixed(3)}s | ${ttsOptions.timingStretch}x`);
+          });
           
           console.log('[TIMING] Final token timings (after comma pauses):');
           tokenTimings.forEach(t => {
