@@ -63,7 +63,7 @@ export default function ImportPage() {
       speed: 1.0,
       speaker: 1,
       volume: 1.0,
-      timingStretch: 1.5, // 50% increase in timing length
+      timingStretch: 1.2, // 20% increase in timing length
       commaPauseDuration: 0.5 // 0.5 second pause for commas
     };
   });
