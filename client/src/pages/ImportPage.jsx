@@ -266,11 +266,26 @@ export default function ImportPage() {
         let currentHighlight = null;
         
         const clearHighlights = () => {
+          // Clear all timeouts
           highlightTimeouts.forEach(timeout => clearTimeout(timeout));
           highlightTimeouts = [];
+          
+          // Reset current highlight if any
           if (currentHighlight) {
             currentHighlight.style.backgroundColor = 'transparent';
+            currentHighlight.style.color = '';
             currentHighlight = null;
+          }
+          
+          // Reset all token highlights in this sentence to ensure none remain highlighted
+          if (processedSentence && processedSentence.tokens) {
+            processedSentence.tokens.forEach((token, tokenIndex) => {
+              const tokenElement = document.querySelector(`[data-token="${sentenceIndex}-${tokenIndex}"]`);
+              if (tokenElement) {
+                tokenElement.style.backgroundColor = 'transparent';
+                tokenElement.style.color = '';
+              }
+            });
           }
         };
 
