@@ -1297,11 +1297,13 @@ export default function ImportPage() {
 
                 {token.frequency && (
                   <div style={{ marginBottom: '6px' }}>
-                    <strong>Frequency:</strong> {token.frequency.rank ? `Rank ${token.frequency.rank} (${token.frequency.category})` : 'Unknown'}
+                    <div>
+                      <strong>Frequency:</strong> {token.frequency.frequency ? `${token.frequency.frequency.toLocaleString()} (${token.frequency.category})` : 'Unknown'}
+                    </div>
                     {token.frequency.shouldHideFurigana && (
-                      <span style={{ color: '#ff6b35', fontSize: '0.8em', marginLeft: '8px' }}>
+                      <div style={{ color: '#ff6b35', fontSize: '0.8em', marginTop: '2px' }}>
                         🚫 Furigana Hidden
-                      </span>
+                      </div>
                     )}
                   </div>
                 )}
