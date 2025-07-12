@@ -407,21 +407,31 @@ class JapaneseService {
       const enhancedToken = { ...token };
 
       // Only process tokens that have kanji and reading
-      if (this.hasKanji(token.surface) && token.reading && token.reading !== token.surface) {
-        // Get frequency information
-        const frequencyRank = frequencyService.getFrequencyRank(token.surface);
-        const frequencyCategory = frequencyService.getFrequencyCategory(token.surface);
+      if (this.hasKanji(token.surface_form) && token.reading && token.reading !== token.surface_form) {
+        // Get the lemma (basic form) for proper frequency lookup
+        const lemma = token.basic_form || token.surface_form;
+
+        // Get frequency information using surface form, lemma, and reading
+        const frequency = frequencyService.getFrequency(token.surface_form, lemma, token.reading);
+        const frequencyCategory = frequencyService.getFrequencyCategory(token.surface_form, lemma, token.reading);
+
+        // Only log for specific testing word "僕"
+        if (lemma === '僕') {
+          console.log(`[Frequency] Token: "${token.surface_form}" (lemma: "${lemma}", reading: "${token.reading}") -> frequency: ${frequency}, shouldHide: ${frequency >= frequencyThreshold}`);
+        }
 
         // Determine if furigana should be hidden based on frequency
         let shouldHideFurigana = false;
 
         if (hideFrequentFurigana) {
-          // Check custom rules first
-          if (customFrequencyRules[token.surface] !== undefined) {
-            shouldHideFurigana = customFrequencyRules[token.surface];
-          } else if (frequencyRank !== null) {
+          // Check custom rules first (check both surface form and lemma)
+          if (customFrequencyRules[token.surface_form] !== undefined) {
+            shouldHideFurigana = customFrequencyRules[token.surface_form];
+          } else if (customFrequencyRules[lemma] !== undefined) {
+            shouldHideFurigana = customFrequencyRules[lemma];
+          } else if (frequency !== null) {
             // Use frequency threshold
-            shouldHideFurigana = frequencyRank <= frequencyThreshold;
+            shouldHideFurigana = frequency >= frequencyThreshold;
           } else if (!alwaysShowUnknown) {
             // If word is unknown and we don't always show unknown words
             shouldHideFurigana = false;
@@ -430,18 +440,20 @@ class JapaneseService {
 
         // Add frequency metadata to token
         enhancedToken.frequency = {
-          rank: frequencyRank,
+          frequency: frequency,
           category: frequencyCategory,
           shouldHideFurigana: shouldHideFurigana,
-          hasFrequencyData: frequencyRank !== null
+          hasFrequencyData: frequency !== null,
+          lemma: lemma // Store the lemma used for lookup
         };
       } else {
         // For tokens without kanji or reading, no furigana needed
         enhancedToken.frequency = {
-          rank: null,
+          frequency: null,
           category: 'no_kanji',
           shouldHideFurigana: true, // No furigana to hide
-          hasFrequencyData: false
+          hasFrequencyData: false,
+          lemma: token.basic_form || token.surface_form
         };
       }
 
@@ -467,7 +479,10 @@ class JapaneseService {
     };
 
     tokens.forEach(token => {
-      if (this.hasKanji(token.surface)) {
+      // Use the correct property name for surface form
+      const surfaceForm = token.surface_form || token.surface;
+
+      if (this.hasKanji(surfaceForm)) {
         stats.tokensWithKanji++;
 
         if (token.frequency) {

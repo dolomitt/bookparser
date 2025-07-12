@@ -95,7 +95,8 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
 
           // Prepare basic token data with hiragana readings
           const basicTokens = tokens.map(token => ({
-            surface: token.surface_form,
+            surface_form: token.surface_form,
+            basic_form: token.basic_form,
             reading: japaneseService.katakanaToHiragana(token.reading),
             pos: token.pos,
             pos_detail: token.pos_detail_1
@@ -104,7 +105,7 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
           // Get dictionary translations for each token
           const enhancedTokens = await Promise.all(basicTokens.map(async (token) => {
             // Look up in JMDict dictionary
-            const dictLookup = await japaneseService.lookupInJMDict(token.surface, token.reading);
+            const dictLookup = await japaneseService.lookupInJMDict(token.surface_form, token.reading);
 
             let translation = 'N/A';
             if (dictLookup && dictLookup.meanings) {
@@ -348,9 +349,6 @@ app.post('/api/import/:filename/save', (req, res) => {
 
 // Japanese text processing endpoint with Kuromoji
 app.post('/api/parse', async (req, res) => {
-  console.log('Received /api/parse request');
-  console.log('Request body:', req.body);
-
   const {
     text,
     sentenceIndex,
@@ -361,13 +359,8 @@ app.post('/api/parse', async (req, res) => {
   } = req.body;
 
   if (!text) {
-    console.log('Error: No text provided for processing');
     return res.status(400).json({ error: 'No text provided for processing' });
   }
-
-  console.log(`Processing sentence ${sentenceIndex}: "${text.substring(0, 50)}..."`);
-  console.log(`Using remote processing (Ollama): ${useRemoteProcessing}`);
-  console.log(`Frequency settings:`, frequencySettings);
 
   // Prepare context sentences for Ollama (only if using remote processing)
   const contextSentences = {};
@@ -403,14 +396,6 @@ app.post('/api/parse', async (req, res) => {
         tokens = japaneseService.mergeVerbTokens(tokensAfterPunctuation, verbMergeOptions);
       }
 
-      console.log('Processed tokens:', tokens.slice(0, 5)); // Log first 5 processed tokens
-
-      // Log verb merging statistics
-      const mergedVerbs = tokens.filter(token => token.isCompoundVerb);
-      if (mergedVerbs.length > 0) {
-        console.log(`Merged ${mergedVerbs.length} compound verbs:`,
-          mergedVerbs.map(v => `${v.surface_form} (${v.mergeReason})`));
-      }
 
       // Count different types of tokens
       const words = tokens.filter(token =>
@@ -425,7 +410,9 @@ app.post('/api/parse', async (req, res) => {
 
       // Prepare basic token data with hiragana readings
       const basicTokens = tokens.map(token => ({
-        surface: token.surface_form,
+        surface_form: token.surface_form,
+        basic_form: token.basic_form,
+        surface: token.surface_form, // Keep for compatibility with Ollama
         reading: japaneseService.katakanaToHiragana(token.reading),
         pos: token.pos,
         pos_detail: token.pos_detail_1
@@ -434,17 +421,11 @@ app.post('/api/parse', async (req, res) => {
       // Get Ollama analysis for enhanced translations and explanations (only if using remote processing)
       let ollamaAnalysis = null;
       if (useRemoteProcessing) {
-        console.log('Calling Ollama for enhanced analysis...');
         try {
           ollamaAnalysis = await ollamaService.getAnalysis(text, basicTokens, contextSentences);
-          console.log('[Ollama] Analysis completed successfully');
         } catch (ollamaError) {
-          console.error('[Ollama] Analysis failed:', ollamaError);
-          // Don't throw the error, just log it and continue with local processing
-          console.log('[Ollama] Falling back to local dictionary processing only');
+          // Don't throw the error, just continue with local processing
         }
-      } else {
-        console.log('Skipping Ollama analysis - using local processing only');
       }
 
       // Extract full line translation and token data from Ollama response
@@ -463,10 +444,10 @@ app.post('/api/parse', async (req, res) => {
 
       // Merge Kuromoji, JMDict, and Ollama data
       const enhancedTokens = await Promise.all(basicTokens.map(async (token, index) => {
-        const aiData = tokenAnalysisData.find(ai => ai.surface === token.surface) || {};
+        const aiData = tokenAnalysisData.find(ai => ai.surface === token.surface_form) || {};
 
         // Look up in JMDict dictionary
-        const dictLookup = await japaneseService.lookupInJMDict(token.surface, token.reading);
+        const dictLookup = await japaneseService.lookupInJMDict(token.surface_form, token.reading);
 
         // Debug logging to see what we're getting from dictionary
         // if (dictLookup) {
@@ -517,7 +498,6 @@ app.post('/api/parse', async (req, res) => {
 
       // Get frequency statistics
       const frequencyStats = japaneseService.getTokenFrequencyStats(tokensWithFrequency);
-      console.log('[Frequency] Token frequency stats:', frequencyStats);
 
       const analysisStatus = useRemoteProcessing
         ? (ollamaAnalysis ? 'Processed with AI translations' : 'Processed with dictionary only (AI unavailable)')
@@ -553,7 +533,6 @@ app.post('/api/parse', async (req, res) => {
       };
     }
 
-    console.log('Sending response:', result);
     res.json(result);
 
   } catch (error) {
