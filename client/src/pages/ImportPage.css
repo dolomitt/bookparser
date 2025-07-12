@@ -171,6 +171,21 @@
   background-color: #6c757d;
 }
 
+.sentence-btn.bookmark {
+  background-color: #ffc107;
+  color: #000;
+}
+
+.sentence-btn.bookmark:hover {
+  background-color: #e0a800;
+}
+
+.sentence-btn.bookmark.active {
+  background-color: #ff9800;
+  color: #fff;
+  box-shadow: 0 0 8px rgba(255, 152, 0, 0.5);
+}
+
 /* Sentence status message */
 .sentence-status {
   margin-left: 8px;

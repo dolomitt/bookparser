@@ -98,6 +98,44 @@ export default function ImportPage() {
   // Separate useEffect for initial load only
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
+  // Bookmark state for reading position
+  const [currentReadingPosition, setCurrentReadingPosition] = useState(null);
+
+  // Load bookmark on initial load
+  useEffect(() => {
+    if (filename && initialLoadComplete) {
+      const bookmark = getCookie(`bookmark_${filename.replace('.txt', '')}`);
+      if (bookmark && bookmark.sentenceIndex !== undefined) {
+        setCurrentReadingPosition(bookmark.sentenceIndex);
+        // Navigate to the page containing this sentence
+        const sentenceIndex = bookmark.sentenceIndex;
+        const targetPage = Math.ceil((sentenceIndex + 1) / sentencesPerPage);
+        if (targetPage !== currentPage) {
+          setCurrentPage(targetPage);
+        }
+        console.log(`Loaded bookmark: sentence ${sentenceIndex}, page ${targetPage}`);
+      }
+    }
+  }, [filename, initialLoadComplete, sentencesPerPage]);
+
+  // Function to save reading position bookmark
+  const saveReadingBookmark = (sentenceIndex) => {
+    if (!filename) return;
+
+    const bookmark = {
+      book: filename,
+      sentenceIndex: sentenceIndex,
+      page: currentPage,
+      timestamp: new Date().toISOString(),
+      totalSentences: sentences.filter(s => !s.isLineBreak).length,
+      progressPercent: sentences.length > 0 ? Math.round((sentenceIndex / sentences.length) * 100) : 0
+    };
+
+    setCookie(`bookmark_${filename.replace('.txt', '')}`, bookmark);
+    setCurrentReadingPosition(sentenceIndex);
+    console.log(`Saved reading bookmark: sentence ${sentenceIndex}`);
+  };
+
   // Save settings to cookies when they change
   useEffect(() => {
     setCookie('verbMergeOptions', verbMergeOptions);
@@ -251,6 +289,9 @@ export default function ImportPage() {
     console.log('Text-to-speech button clicked for sentence index:', sentenceIndex);
     console.log('Sentence text:', sentence.text);
     console.log('With timings:', withTimings);
+
+    // Auto-save bookmark when user interacts with sentence
+    saveReadingBookmark(sentenceIndex);
 
     // Set processing message for this specific sentence
     setSentenceMessages(prev => ({ ...prev, [sentenceIndex]: 'Generating speech...' }));
@@ -698,6 +739,9 @@ export default function ImportPage() {
     console.log('Verb merge options:', verbMergeOptions);
     console.log('Use remote processing (OpenAI):', useRemoteProcessing);
 
+    // Auto-save bookmark when user interacts with sentence
+    saveReadingBookmark(sentenceIndex);
+
     // Instead of text message, set processing state for this sentence to make button blink
     setProcessingSentences(prev => ({ ...prev, [sentenceIndex]: true }));
 
@@ -1087,6 +1131,9 @@ export default function ImportPage() {
 
       e.preventDefault();
       e.stopPropagation();
+
+      // Auto-save bookmark when user clicks on any token
+      saveReadingBookmark(sentenceIndex);
 
       // Calculate popup position with better viewport handling
       const rect = e.currentTarget.getBoundingClientRect();
@@ -1753,12 +1800,28 @@ export default function ImportPage() {
 
               return (
                 <span key={sentenceIndex} className="sentence-container">
+                  {/* Small bookmark mark at the beginning of the sentence */}
+                  {currentReadingPosition === sentenceIndex && (
+                    <span
+                      style={{
+                        color: '#ffc107',
+                        fontSize: '0.9em',
+                        marginRight: '4px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      📖
+                    </span>
+                  )}
+
                   {isProcessed ? (
                     <span data-sentence={sentenceIndex}>
                       <TokenizedText tokens={isProcessed.tokens} sentenceIndex={sentenceIndex} />
                     </span>
                   ) : (
-                    <span data-sentence={sentenceIndex} className="sentence-text">{sentence.text}</span>
+                    <span data-sentence={sentenceIndex} className="sentence-text">
+                      {sentence.text}
+                    </span>
                   )}
 
                   {/* Processing buttons - inline after sentence */}
@@ -1784,6 +1847,9 @@ export default function ImportPage() {
                     {hasRemoteTranslation && (
                       <button
                         onClick={() => {
+                          // Auto-save bookmark when user interacts with sentence
+                          saveReadingBookmark(sentenceIndex);
+
                           const popup = document.getElementById(`translation-popup-${sentenceIndex}`);
                           if (popup) {
                             popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
@@ -1795,6 +1861,8 @@ export default function ImportPage() {
                         💬
                       </button>
                     )}
+
+                    {/* Bookmark button - hidden but functionality preserved through auto-save */}
                   </span>
 
                   {/* Only error messages are shown as text now */}
