@@ -6,7 +6,7 @@ process.env
 
 *.sh
 
-temp_mfa
+BCCWJ_frequencylist_suw_ver1_0.tsv
 
 # Build output
 dist/
