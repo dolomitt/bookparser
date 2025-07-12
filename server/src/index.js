@@ -53,38 +53,38 @@ app.get('/api/imports', (req, res) => {
 // Upload book (txt) with automatic local processing
 app.post('/api/import', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  
+
   const filename = req.file.filename;
   const originalname = req.file.originalname;
-  
+
   console.log(`[AUTO-PROCESS] Starting automatic processing for uploaded file: ${originalname}`);
-  
+
   try {
     // Read the uploaded file content
     const filePath = path.join(config.uploadDir, filename);
     const fileContent = fs.readFileSync(filePath, 'utf-8');
     const lines = fileContent.split('\n').filter(line => line.trim().length > 0);
-    
+
     console.log(`[AUTO-PROCESS] File contains ${lines.length} lines`);
-    
+
     // Process each line with local processing (dictionary only)
     const processedData = {};
     let processedCount = 0;
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (line.length === 0) continue;
-      
+
       try {
         console.log(`[AUTO-PROCESS] Processing line ${i + 1}/${lines.length}: "${line.substring(0, 30)}..."`);
-        
+
         if (japaneseService.tokenizer) {
           // Use Kuromoji for Japanese tokenization
           const rawTokens = japaneseService.tokenize(line);
-          
+
           // Apply basic token merging
           const tokens = japaneseService.mergeVerbTokens(
-            japaneseService.mergePunctuationTokens(rawTokens), 
+            japaneseService.mergePunctuationTokens(rawTokens),
             {
               mergeAuxiliaryVerbs: true,
               mergeVerbParticles: true,
@@ -92,7 +92,7 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
               mergePunctuation: true
             }
           );
-          
+
           // Prepare basic token data with hiragana readings
           const basicTokens = tokens.map(token => ({
             surface: token.surface_form,
@@ -100,12 +100,12 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
             pos: token.pos,
             pos_detail: token.pos_detail_1
           }));
-          
+
           // Get dictionary translations for each token
           const enhancedTokens = await Promise.all(basicTokens.map(async (token) => {
             // Look up in JMDict dictionary
             const dictLookup = await japaneseService.lookupInJMDict(token.surface, token.reading);
-            
+
             let translation = 'N/A';
             if (dictLookup && dictLookup.meanings) {
               if (typeof dictLookup.meanings === 'string') {
@@ -116,7 +116,7 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
                 translation = String(dictLookup.meanings);
               }
             }
-            
+
             return {
               ...token,
               translation: translation,
@@ -125,14 +125,14 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
               dictionarySource: dictLookup ? dictLookup.source : null
             };
           }));
-          
+
           // Count different types of tokens
           const words = tokens.filter(token =>
             token.pos === '名詞' || token.pos === '動詞' || token.pos === '形容詞' || token.pos === '副詞'
           );
           const nouns = tokens.filter(token => token.pos === '名詞');
           const verbs = tokens.filter(token => token.pos === '動詞');
-          
+
           // Store processed line data
           processedData[i] = {
             result: 'Processed with local dictionary',
@@ -150,7 +150,7 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
               hasAIAnalysis: false
             }
           };
-          
+
           processedCount++;
         } else {
           console.log(`[AUTO-PROCESS] Kuromoji not ready, skipping line ${i + 1}`);
@@ -160,7 +160,7 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
         // Continue with next line even if one fails
       }
     }
-    
+
     // Create book data structure with processed content
     const bookData = {
       metadata: {
@@ -187,28 +187,28 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
         processedData: processedData
       }
     };
-    
+
     // Save the processed book
     const bookFilePath = path.join(config.booksDir, `${filename}.book`);
     fs.writeFileSync(bookFilePath, JSON.stringify(bookData, null, 2), 'utf-8');
-    
+
     console.log(`[AUTO-PROCESS] ✅ Successfully processed and saved book: ${originalname}`);
     console.log(`[AUTO-PROCESS] Processed ${processedCount}/${lines.length} lines`);
-    
-    res.json({ 
-      filename: filename, 
+
+    res.json({
+      filename: filename,
       originalname: originalname,
       autoProcessed: true,
       processedLines: processedCount,
       totalLines: lines.length,
       bookFile: `${filename}.book`
     });
-    
+
   } catch (error) {
     console.error('[AUTO-PROCESS] Error during automatic processing:', error);
     // Still return success for the upload, but indicate processing failed
-    res.json({ 
-      filename: filename, 
+    res.json({
+      filename: filename,
       originalname: originalname,
       autoProcessed: false,
       error: 'Auto-processing failed, manual processing required'
@@ -351,7 +351,14 @@ app.post('/api/parse', async (req, res) => {
   console.log('Received /api/parse request');
   console.log('Request body:', req.body);
 
-  const { text, sentenceIndex, verbMergeOptions = {}, allSentences = [], useRemoteProcessing = true } = req.body;
+  const {
+    text,
+    sentenceIndex,
+    verbMergeOptions = {},
+    allSentences = [],
+    useRemoteProcessing = true,
+    frequencySettings = {}
+  } = req.body;
 
   if (!text) {
     console.log('Error: No text provided for processing');
@@ -360,6 +367,7 @@ app.post('/api/parse', async (req, res) => {
 
   console.log(`Processing sentence ${sentenceIndex}: "${text.substring(0, 50)}..."`);
   console.log(`Using remote processing (Ollama): ${useRemoteProcessing}`);
+  console.log(`Frequency settings:`, frequencySettings);
 
   // Prepare context sentences for Ollama (only if using remote processing)
   const contextSentences = {};
@@ -504,7 +512,14 @@ app.post('/api/parse', async (req, res) => {
         };
       }));
 
-      const analysisStatus = useRemoteProcessing 
+      // Apply frequency-based furigana hiding
+      const tokensWithFrequency = japaneseService.enhanceTokensWithFrequency(enhancedTokens, frequencySettings);
+
+      // Get frequency statistics
+      const frequencyStats = japaneseService.getTokenFrequencyStats(tokensWithFrequency);
+      console.log('[Frequency] Token frequency stats:', frequencyStats);
+
+      const analysisStatus = useRemoteProcessing
         ? (ollamaAnalysis ? 'Processed with AI translations' : 'Processed with dictionary only (AI unavailable)')
         : 'Processed with local dictionary';
 
@@ -520,8 +535,9 @@ app.post('/api/parse', async (req, res) => {
           nouns: nouns.length,
           verbs: verbs.length,
           characters: text.length,
-          tokens: enhancedTokens,
-          hasAIAnalysis: !!ollamaAnalysis
+          tokens: tokensWithFrequency,
+          hasAIAnalysis: !!ollamaAnalysis,
+          frequencyStats: frequencyStats
         }
       };
     } else {

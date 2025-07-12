@@ -1,6 +1,7 @@
 import kuromoji from 'kuromoji';
 import JMDict from 'jmdict-simplified-node';
 import { setup as setupJmdict, readingBeginning, kanjiBeginning } from 'jmdict-simplified-node';
+import frequencyService from './frequencyService.js';
 
 class JapaneseService {
   constructor() {
@@ -80,10 +81,10 @@ class JapaneseService {
       if (results.length > 0) {
         // Return the first result with English meanings
         const result = results[0];
-        
+
         // Debug: log the structure of the first sense to understand the data
         //console.log(`[DEBUG] First sense structure:`, JSON.stringify(result.sense[0], null, 2));
-        
+
         const meanings = result.sense
           .filter(s => s.gloss && s.gloss.length > 0)
           .map(s => {
@@ -375,6 +376,115 @@ class JapaneseService {
     }
 
     return compoundTokens;
+  }
+
+  // Check if a character is kanji
+  isKanji(char) {
+    const code = char.charCodeAt(0);
+    return (code >= 0x4e00 && code <= 0x9faf) || // CJK Unified Ideographs
+      (code >= 0x3400 && code <= 0x4dbf) || // CJK Extension A
+      (code >= 0x20000 && code <= 0x2a6df); // CJK Extension B
+  }
+
+  // Check if token contains kanji
+  hasKanji(text) {
+    return text.split('').some(char => this.isKanji(char));
+  }
+
+  // Enhance tokens with frequency-based furigana visibility
+  enhanceTokensWithFrequency(tokens, frequencySettings = {}) {
+    console.log('[Frequency] enhanceTokensWithFrequency called with settings:', frequencySettings);
+    console.log('[Frequency] Processing', tokens.length, 'tokens');
+
+    const {
+      hideFrequentFurigana = true,
+      frequencyThreshold = 1000,
+      alwaysShowUnknown = true,
+      customFrequencyRules = {}
+    } = frequencySettings;
+
+    return tokens.map(token => {
+      const enhancedToken = { ...token };
+
+      // Only process tokens that have kanji and reading
+      if (this.hasKanji(token.surface) && token.reading && token.reading !== token.surface) {
+        // Get frequency information
+        const frequencyRank = frequencyService.getFrequencyRank(token.surface);
+        const frequencyCategory = frequencyService.getFrequencyCategory(token.surface);
+
+        // Determine if furigana should be hidden based on frequency
+        let shouldHideFurigana = false;
+
+        if (hideFrequentFurigana) {
+          // Check custom rules first
+          if (customFrequencyRules[token.surface] !== undefined) {
+            shouldHideFurigana = customFrequencyRules[token.surface];
+          } else if (frequencyRank !== null) {
+            // Use frequency threshold
+            shouldHideFurigana = frequencyRank <= frequencyThreshold;
+          } else if (!alwaysShowUnknown) {
+            // If word is unknown and we don't always show unknown words
+            shouldHideFurigana = false;
+          }
+        }
+
+        // Add frequency metadata to token
+        enhancedToken.frequency = {
+          rank: frequencyRank,
+          category: frequencyCategory,
+          shouldHideFurigana: shouldHideFurigana,
+          hasFrequencyData: frequencyRank !== null
+        };
+      } else {
+        // For tokens without kanji or reading, no furigana needed
+        enhancedToken.frequency = {
+          rank: null,
+          category: 'no_kanji',
+          shouldHideFurigana: true, // No furigana to hide
+          hasFrequencyData: false
+        };
+      }
+
+      return enhancedToken;
+    });
+  }
+
+  // Get frequency statistics for a set of tokens
+  getTokenFrequencyStats(tokens) {
+    const stats = {
+      totalTokens: tokens.length,
+      tokensWithKanji: 0,
+      tokensWithFrequencyData: 0,
+      tokensWithHiddenFurigana: 0,
+      frequencyDistribution: {
+        very_common: 0,
+        common: 0,
+        somewhat_common: 0,
+        uncommon: 0,
+        rare: 0,
+        unknown: 0
+      }
+    };
+
+    tokens.forEach(token => {
+      if (this.hasKanji(token.surface)) {
+        stats.tokensWithKanji++;
+
+        if (token.frequency) {
+          if (token.frequency.hasFrequencyData) {
+            stats.tokensWithFrequencyData++;
+          }
+
+          if (token.frequency.shouldHideFurigana) {
+            stats.tokensWithHiddenFurigana++;
+          }
+
+          stats.frequencyDistribution[token.frequency.category]++;
+        }
+      }
+    });
+
+    return stats;
   }
 }
 

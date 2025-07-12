@@ -52,12 +52,12 @@ export default function ImportPage() {
       useCompoundDetection: false
     };
   });
-  
+
   const [showVerbOptions, setShowVerbOptions] = useState(() => {
     const saved = getCookie('showVerbOptions');
     return saved !== null ? saved : false;
   });
-  
+
   const [ttsOptions, setTtsOptions] = useState(() => {
     const saved = getCookie('ttsOptions');
     return saved || {
@@ -68,11 +68,27 @@ export default function ImportPage() {
       commaPauseDuration: 0.5 // 0.5 second pause for commas
     };
   });
-  
+
   const [showTtsOptions, setShowTtsOptions] = useState(() => {
     const saved = getCookie('showTtsOptions');
     return saved !== null ? saved : false;
   });
+
+  const [frequencySettings, setFrequencySettings] = useState(() => {
+    const saved = getCookie('frequencySettings');
+    return saved || {
+      hideFrequentFurigana: true,
+      frequencyThreshold: 1000,
+      alwaysShowUnknown: true,
+      customFrequencyRules: {}
+    };
+  });
+
+  const [showFrequencyOptions, setShowFrequencyOptions] = useState(() => {
+    const saved = getCookie('showFrequencyOptions');
+    return saved !== null ? saved : false;
+  });
+
   const fileInput = useRef();
 
   // Pagination state
@@ -81,30 +97,38 @@ export default function ImportPage() {
 
   // Separate useEffect for initial load only
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
-  
+
   // Save settings to cookies when they change
   useEffect(() => {
     setCookie('verbMergeOptions', verbMergeOptions);
   }, [verbMergeOptions]);
-  
+
   useEffect(() => {
     setCookie('showVerbOptions', showVerbOptions);
   }, [showVerbOptions]);
-  
+
   useEffect(() => {
     setCookie('ttsOptions', ttsOptions);
   }, [ttsOptions]);
-  
+
   useEffect(() => {
     setCookie('showTtsOptions', showTtsOptions);
   }, [showTtsOptions]);
-  
+
+  useEffect(() => {
+    setCookie('frequencySettings', frequencySettings);
+  }, [frequencySettings]);
+
+  useEffect(() => {
+    setCookie('showFrequencyOptions', showFrequencyOptions);
+  }, [showFrequencyOptions]);
+
   // Function to split text into sentences using Japanese dot (。)
   const splitIntoSentences = (text) => {
     // Split by Japanese period (。) and preserve the period with each sentence
     const parts = text.split('。');
     const sentences = [];
-    
+
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i].trim();
       if (part) {
@@ -113,7 +137,7 @@ export default function ImportPage() {
         sentences.push(sentence);
       }
     }
-    
+
     return sentences;
   };
 
@@ -153,7 +177,7 @@ export default function ImportPage() {
             });
           }
         });
-        
+
         setSentences(allSentences);
         console.log(`Split ${res.data.lines.length} lines into ${allSentences.length} sentences`);
 
@@ -172,9 +196,9 @@ export default function ImportPage() {
           }));
           console.log('Loaded existing verb merge options:', res.data.existingVerbMergeOptions);
         }
-        
+
         setInitialLoadComplete(true);
-        
+
         // Only auto-process if there are unprocessed sentences
         const unprocessedCount = allSentences.filter((s, i) => !s.isLineBreak && !res.data.existingProcessedSentences[i]).length;
         if (unprocessedCount > 0) {
@@ -203,7 +227,7 @@ export default function ImportPage() {
     formData.append('file', file);
     try {
       const res = await axios.post('/api/import', formData);
-      
+
       if (res.data.autoProcessed) {
         setMessage(`✅ Uploaded and auto-processed: ${res.data.originalname} (${res.data.processedLines}/${res.data.totalLines} lines processed)`);
       } else if (res.data.error) {
@@ -211,7 +235,7 @@ export default function ImportPage() {
       } else {
         setMessage(`Uploaded: ${res.data.originalname}`);
       }
-      
+
       navigate(`/import/${res.data.filename}`);
     } catch (err) {
       setMessage('Upload failed');
@@ -244,11 +268,11 @@ export default function ImportPage() {
 
         console.log('Received audio and timing response from server');
         const { audio, timings, audioFormat, sampleRate } = response.data;
-        
+
         // Log timing info for debugging
         console.log(`[VOICEVOX] Using VoiceVox timing data`);
         console.log(`[VOICEVOX] Timing points: ${timings.length} (mora-level)`);
-        
+
         // Log original VoiceVox timings in a readable format
         console.log('=== ORIGINAL VOICEVOX TIMINGS ===');
         console.log('Mora | Text | Start-End | Duration');
@@ -267,26 +291,26 @@ export default function ImportPage() {
         }
         const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
         const audioUrl = URL.createObjectURL(audioBlob);
-        
+
         // Create and play audio element
         const audioElement = new Audio(audioUrl);
-        
+
         // Set up timing-based text highlighting
         let highlightTimeouts = [];
         let currentHighlight = null;
-        
+
         const clearHighlights = () => {
           // Clear all timeouts
           highlightTimeouts.forEach(timeout => clearTimeout(timeout));
           highlightTimeouts = [];
-          
+
           // Reset current highlight if any
           if (currentHighlight) {
             currentHighlight.style.backgroundColor = 'transparent';
             currentHighlight.style.color = '';
             currentHighlight = null;
           }
-          
+
           // Reset all token highlights in this sentence to ensure none remain highlighted
           if (processedSentence && processedSentence.tokens) {
             processedSentence.tokens.forEach((token, tokenIndex) => {
@@ -303,7 +327,7 @@ export default function ImportPage() {
         let processedSentence = processedSentences[sentenceIndex];
         if (!processedSentence || !processedSentence.tokens) {
           console.log('No processed tokens available, running local processing first...');
-          
+
           try {
             // Run local processing automatically
             const requestData = {
@@ -315,22 +339,22 @@ export default function ImportPage() {
             };
 
             const response = await axios.post('/api/parse', requestData);
-            
+
             if (response.data.analysis && response.data.analysis.tokens) {
               const sentenceData = {
                 tokens: response.data.analysis.tokens,
                 fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
                 processingType: 'local'
               };
-              
+
               // Update the processed sentences state
               setProcessedSentences(prev => ({ ...prev, [sentenceIndex]: sentenceData }));
-              
+
               // Auto-save the processed data
               setTimeout(() => {
                 autoSave(sentenceIndex, sentenceData);
               }, 100);
-              
+
               // Use the newly processed sentence data
               processedSentence = sentenceData;
               console.log('Local processing completed, proceeding with highlighting');
@@ -359,14 +383,14 @@ export default function ImportPage() {
           console.log('[TIMING] Original text:', sentence.text);
           console.log('[TIMING] All tokens:', tokens.map((t, i) => `${i}:${t.surface}(${t.pos})`));
           console.log('[TIMING] VOICEVOX timings:', timings.length, 'entries');
-          
+
           // Show detailed VOICEVOX timing data
           console.log('[TIMING] === VOICEVOX TIMING POINTS ===');
           timings.forEach((timing, index) => {
             console.log(`[TIMING] ${index}: ${timing.startTime.toFixed(3)}-${timing.endTime.toFixed(3)}s | text:"${timing.text || timing.mora || ''}" | textStart:${timing.textStart || 'N/A'} textEnd:${timing.textEnd || 'N/A'} | phraseIndex:${timing.phraseIndex || 'N/A'} moraIndex:${timing.moraIndex || 'N/A'}`);
           });
           console.log('[TIMING] === END TIMING POINTS ===');
-          
+
           // Filter out punctuation tokens
           const nonPunctuationTokens = [];
           tokens.forEach((token, originalIndex) => {
@@ -374,24 +398,24 @@ export default function ImportPage() {
               nonPunctuationTokens.push({ ...token, originalIndex });
             }
           });
-          
+
           console.log('[TIMING] Non-punctuation tokens:', nonPunctuationTokens.map(t => `${t.originalIndex}:${t.surface}`));
-          
+
           if (nonPunctuationTokens.length === 0) {
             console.log('[TIMING] No tokens to highlight');
             return [];
           }
-          
+
           if (!timings || timings.length === 0) {
             console.log('[TIMING] No VOICEVOX timings available, using fallback');
             // Fallback to simple timing
             const totalDuration = 3.0;
             const tokenDuration = totalDuration / nonPunctuationTokens.length;
-            
+
             return nonPunctuationTokens.map((token, sequenceIndex) => {
               const startTime = sequenceIndex * tokenDuration;
               const endTime = startTime + tokenDuration;
-              
+
               return {
                 tokenIndex: token.originalIndex,
                 startTime,
@@ -401,18 +425,18 @@ export default function ImportPage() {
               };
             });
           }
-          
+
           // Use actual VOICEVOX timing data
           const audioStartTime = timings[0].startTime;
           const audioEndTime = timings[timings.length - 1].endTime;
           const totalDuration = audioEndTime - audioStartTime;
-          
+
           console.log(`[TIMING] VOICEVOX audio: ${audioStartTime.toFixed(3)}s - ${audioEndTime.toFixed(3)}s (${totalDuration.toFixed(3)}s total)`);
-          
+
           // Create a mapping from text positions to timing data
           const textToTimingMap = new Map();
           let currentTextPos = 0;
-          
+
           // Build a map of text positions to VOICEVOX timings
           timings.forEach((timing, index) => {
             const timingText = timing.text || timing.mora || '';
@@ -421,40 +445,40 @@ export default function ImportPage() {
               currentTextPos += timingText.length;
             }
           });
-          
+
           console.log('[TIMING] Built text-to-timing map with', textToTimingMap.size, 'entries');
-          
+
           // First pass: calculate raw timings for each token
           const rawTokenTimings = [];
           let textPosition = 0;
-          
+
           nonPunctuationTokens.forEach((token, sequenceIndex) => {
             // Find the text position of this token in the original sentence
             let tokenTextPos = 0;
             for (let i = 0; i < token.originalIndex; i++) {
               tokenTextPos += tokens[i].surface.length;
             }
-            
+
             console.log(`[TIMING] Token "${token.surface}" at text position ${tokenTextPos}`);
-            
+
             // Find VOICEVOX timings that overlap with this token
             const tokenLength = token.surface.length;
             const overlappingTimings = timings.filter(timing => {
               const timingStart = timing.textStart || 0;
               const timingEnd = timing.textEnd || (timingStart + (timing.text?.length || 1));
-              
+
               // Check if timing overlaps with token position
               return (timingStart < tokenTextPos + tokenLength && timingEnd > tokenTextPos);
             });
-            
+
             let startTime, endTime, rawDuration;
-            
+
             if (overlappingTimings.length > 0) {
               // Use actual VOICEVOX timing
               startTime = Math.min(...overlappingTimings.map(t => t.startTime));
               endTime = Math.max(...overlappingTimings.map(t => t.endTime));
               rawDuration = endTime - startTime;
-              
+
               console.log(`[TIMING] Token "${token.surface}" raw VOICEVOX timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s (${rawDuration.toFixed(3)}s)`);
             } else {
               // Fallback: distribute remaining time evenly
@@ -462,10 +486,10 @@ export default function ImportPage() {
               startTime = audioStartTime + (sequenceIndex * avgTokenDuration);
               endTime = startTime + avgTokenDuration;
               rawDuration = avgTokenDuration;
-              
+
               console.log(`[TIMING] Token "${token.surface}" raw fallback timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s (${rawDuration.toFixed(3)}s)`);
             }
-            
+
             rawTokenTimings.push({
               tokenIndex: token.originalIndex,
               startTime,
@@ -476,26 +500,26 @@ export default function ImportPage() {
               hasVoicevoxTiming: overlappingTimings.length > 0
             });
           });
-          
+
           // Second pass: ensure sequential non-overlapping timings
           const tokenTimings = [];
           let currentTime = rawTokenTimings[0]?.startTime || 0;
-          
+
           rawTokenTimings.forEach((timing, index) => {
             // Start time is the current time marker
             const startTime = currentTime;
-            
+
             // Apply timing stretch factor to the raw duration
             const stretchedDuration = timing.rawDuration * ttsOptions.timingStretch;
-            
+
             // End time is start time plus stretched duration
             const endTime = startTime + stretchedDuration;
-            
+
             // Update current time marker for next token
             currentTime = endTime;
-            
+
             console.log(`[TIMING] Token "${timing.token}" sequential timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s (stretched by ${ttsOptions.timingStretch}x)`);
-            
+
             tokenTimings.push({
               tokenIndex: timing.tokenIndex,
               startTime,
@@ -505,15 +529,15 @@ export default function ImportPage() {
               hasVoicevoxTiming: timing.hasVoicevoxTiming
             });
           });
-          
+
           // Add pauses after commas
           // First, find all comma tokens
           const commaTokens = tokens.filter(token => token.surface === '、');
-          
+
           // For each comma, find the next non-punctuation token and add a pause before it
           commaTokens.forEach(commaToken => {
             const commaIndex = tokens.indexOf(commaToken);
-            
+
             // Find the next non-punctuation token after the comma
             let nextTokenIndex = -1;
             for (let i = commaIndex + 1; i < tokens.length; i++) {
@@ -522,14 +546,14 @@ export default function ImportPage() {
                 break;
               }
             }
-            
+
             if (nextTokenIndex !== -1) {
               // Find this token in our tokenTimings array
               const nextTimingIndex = tokenTimings.findIndex(t => t.tokenIndex === nextTokenIndex);
-              
+
               if (nextTimingIndex !== -1) {
-                console.log(`[TIMING] Adding ${ttsOptions.commaPauseDuration}s pause after comma before token "${tokens[nextTokenIndex].surface}"`);                
-                
+                console.log(`[TIMING] Adding ${ttsOptions.commaPauseDuration}s pause after comma before token "${tokens[nextTokenIndex].surface}"`);
+
                 // Shift all subsequent timings by the pause duration
                 for (let i = nextTimingIndex; i < tokenTimings.length; i++) {
                   tokenTimings[i].startTime += ttsOptions.commaPauseDuration;
@@ -538,10 +562,10 @@ export default function ImportPage() {
               }
             }
           });
-          
+
           // Sort by start time to ensure proper order
           tokenTimings.sort((a, b) => a.startTime - b.startTime);
-          
+
           // Log stretched timings in a readable format
           console.log('=== STRETCHED TIMINGS (after applying stretch factor and comma pauses) ===');
           console.log('Token | Text | Start-End | Duration | Stretch');
@@ -550,12 +574,12 @@ export default function ImportPage() {
             const originalDuration = duration / ttsOptions.timingStretch;
             console.log(`${t.sequenceIndex.toString().padStart(2, '0')} | ${t.token.padEnd(4)} | ${t.startTime.toFixed(3)}-${t.endTime.toFixed(3)}s | ${duration.toFixed(3)}s | ${ttsOptions.timingStretch}x`);
           });
-          
+
           console.log('[TIMING] Final token timings (after comma pauses):');
           tokenTimings.forEach(t => {
             console.log(`  ${t.sequenceIndex}: "${t.token}" ${t.startTime.toFixed(3)}-${t.endTime.toFixed(3)}s ${t.hasVoicevoxTiming ? '(VOICEVOX)' : '(fallback)'}`);
           });
-          
+
           return tokenTimings;
         };
 
@@ -570,7 +594,7 @@ export default function ImportPage() {
               currentHighlight.style.backgroundColor = 'transparent';
               currentHighlight.style.color = '';
             }
-            
+
             // Find the specific token to highlight
             const tokenElement = document.querySelector(`[data-token="${sentenceIndex}-${tokenTiming.tokenIndex}"]`);
             if (tokenElement) {
@@ -582,9 +606,9 @@ export default function ImportPage() {
               currentHighlight = tokenElement;
             }
           }, tokenTiming.startTime * 1000); // Convert to milliseconds
-          
+
           highlightTimeouts.push(timeout);
-          
+
           // Schedule clearing of this specific highlight
           const clearTimeout = setTimeout(() => {
             const tokenElement = document.querySelector(`[data-token="${sentenceIndex}-${tokenTiming.tokenIndex}"]`);
@@ -593,7 +617,7 @@ export default function ImportPage() {
               tokenElement.style.color = '';
             }
           }, tokenTiming.endTime * 1000);
-          
+
           highlightTimeouts.push(clearTimeout);
         });
 
@@ -623,7 +647,7 @@ export default function ImportPage() {
         // Create audio blob and play it
         const audioBlob = new Blob([response.data], { type: 'audio/wav' });
         const audioUrl = URL.createObjectURL(audioBlob);
-        
+
         // Create and play audio element
         const audio = new Audio(audioUrl);
         audio.play();
@@ -639,7 +663,7 @@ export default function ImportPage() {
 
     } catch (error) {
       console.error('Text-to-speech error:', error);
-      
+
       let errorMessage = 'Speech generation failed';
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
         errorMessage = 'Server not running. Please start the server with "npm run dev" in the bookparser directory.';
@@ -683,7 +707,8 @@ export default function ImportPage() {
         sentenceIndex: sentenceIndex,
         verbMergeOptions: verbMergeOptions,
         allSentences: sentences.map(s => s.text),
-        useRemoteProcessing: useRemoteProcessing
+        useRemoteProcessing: useRemoteProcessing,
+        frequencySettings: frequencySettings
       };
       console.log('Sending request to /api/parse with data:', requestData);
 
@@ -704,9 +729,9 @@ export default function ImportPage() {
           fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
           processingType: useRemoteProcessing ? 'remote' : 'local'
         };
-        
+
         console.log('Setting processed sentence data for index:', sentenceIndex, sentenceData);
-        
+
         setProcessedSentences(prev => {
           const updatedSentences = { ...prev, [sentenceIndex]: sentenceData };
           console.log('Updated processed sentences state:', updatedSentences);
@@ -739,7 +764,7 @@ export default function ImportPage() {
         delete updated[sentenceIndex];
         return updated;
       });
-      
+
       setSentenceMessages(prev => ({
         ...prev,
         [sentenceIndex]: `Error: ${errorMessage}`
@@ -756,6 +781,13 @@ export default function ImportPage() {
 
   const handleTtsOptionChange = (option, value) => {
     setTtsOptions(prev => ({
+      ...prev,
+      [option]: value
+    }));
+  };
+
+  const handleFrequencyOptionChange = (option, value) => {
+    setFrequencySettings(prev => ({
       ...prev,
       [option]: value
     }));
@@ -780,91 +812,225 @@ export default function ImportPage() {
 
   const autoProcessAllSentences = async (allSentences) => {
     console.log('Starting automatic local processing for unprocessed sentences...');
-    
+
     let processedCount = 0;
     let skippedCount = 0;
     const totalSentences = allSentences.filter(s => !s.isLineBreak).length;
-    
+
     // Check how many sentences are already processed
     const alreadyProcessedCount = Object.keys(processedSentences).length;
-    
+
     if (alreadyProcessedCount > 0) {
       console.log(`Found ${alreadyProcessedCount} already processed sentences, skipping auto-processing for those`);
       setMessage(`Found ${alreadyProcessedCount} already processed sentences. Processing remaining sentences...`);
     } else {
       setMessage('Auto-processing sentences with local dictionary...');
     }
-    
+
     for (let i = 0; i < allSentences.length; i++) {
       const sentence = allSentences[i];
-      
+
       // Skip line breaks
       if (sentence.isLineBreak) continue;
-      
+
       // Skip already processed sentences
       if (processedSentences[i]) {
         skippedCount++;
         console.log(`Skipping sentence ${i} - already processed`);
         continue;
       }
-      
+
       try {
         console.log(`Auto-processing sentence ${i}: "${sentence.text.substring(0, 30)}..."`);
-        
+
         const requestData = {
           text: sentence.text,
           sentenceIndex: i,
           verbMergeOptions: verbMergeOptions,
           allSentences: allSentences.map(s => s.text),
-          useRemoteProcessing: false // Use local processing only
+          useRemoteProcessing: false, // Use local processing only
+          frequencySettings: frequencySettings
         };
 
         const response = await axios.post('/api/parse', requestData);
-        
+
         if (response.data.analysis && response.data.analysis.tokens) {
           const sentenceData = {
             tokens: response.data.analysis.tokens,
             fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
             processingType: 'local'
           };
-          
+
           // Update the processed sentences state
           setProcessedSentences(prev => ({ ...prev, [i]: sentenceData }));
-          
+
           // Auto-save the processed data
           setTimeout(() => {
             autoSave(i, sentenceData);
           }, 50);
-          
+
           processedCount++;
-          
+
           // Update progress message
           const totalProcessed = skippedCount + processedCount;
           setMessage(`Auto-processing: ${totalProcessed}/${totalSentences} sentences completed (${processedCount} new, ${skippedCount} existing)`);
         }
-        
+
         // Small delay to prevent overwhelming the server
         await new Promise(resolve => setTimeout(resolve, 50));
-        
+
       } catch (error) {
         console.error(`Error auto-processing sentence ${i}:`, error);
         // Continue with next sentence even if one fails
       }
     }
-    
+
     const totalProcessed = skippedCount + processedCount;
     console.log(`Auto-processing completed: ${totalProcessed}/${totalSentences} sentences total (${processedCount} newly processed, ${skippedCount} already existed)`);
-    
+
     if (processedCount > 0) {
       setMessage(`Auto-processing completed: ${processedCount} new sentences processed with local dictionary (${skippedCount} already existed)`);
     } else {
       setMessage(`All ${totalSentences} sentences were already processed - no new processing needed`);
     }
-    
+
     // Clear the message after 5 seconds
     setTimeout(() => {
       setMessage('');
     }, 5000);
+  };
+
+  const handleReprocessAll = async () => {
+    console.log('Starting reprocessing of all sentences with current settings...');
+
+    const totalSentences = sentences.filter(s => !s.isLineBreak).length;
+
+    if (totalSentences === 0) {
+      setMessage('No sentences to reprocess');
+      return;
+    }
+
+    // Confirm with user
+    const confirmed = window.confirm(
+      `This will reprocess all ${totalSentences} sentences with your current settings (verb options, frequency settings, etc.). This may take a few minutes. Continue?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setMessage('Reprocessing all sentences with current settings...');
+
+    let processedCount = 0;
+    let errorCount = 0;
+
+    // Clear existing processed sentences to force reprocessing
+    setProcessedSentences({});
+
+    // Process sentences in smaller batches to avoid overwhelming the server
+    const batchSize = 5;
+    const batches = [];
+
+    // Create batches of non-line-break sentences
+    const nonLineBreakSentences = [];
+    for (let i = 0; i < sentences.length; i++) {
+      if (!sentences[i].isLineBreak) {
+        nonLineBreakSentences.push({ sentence: sentences[i], originalIndex: i });
+      }
+    }
+
+    for (let i = 0; i < nonLineBreakSentences.length; i += batchSize) {
+      batches.push(nonLineBreakSentences.slice(i, i + batchSize));
+    }
+
+    console.log(`Processing ${nonLineBreakSentences.length} sentences in ${batches.length} batches of ${batchSize}`);
+
+    // Process each batch
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+
+      console.log(`Processing batch ${batchIndex + 1}/${batches.length}`);
+
+      // Process all sentences in the current batch concurrently
+      const batchPromises = batch.map(async ({ sentence, originalIndex }) => {
+        try {
+          console.log(`Reprocessing sentence ${originalIndex}: "${sentence.text.substring(0, 30)}..."`);
+
+          const requestData = {
+            text: sentence.text,
+            sentenceIndex: originalIndex,
+            verbMergeOptions: verbMergeOptions,
+            allSentences: sentences.map(s => s.text),
+            useRemoteProcessing: false, // Use local processing for speed
+            frequencySettings: frequencySettings
+          };
+
+          const response = await axios.post('/api/parse', requestData);
+
+          if (response.data.analysis && response.data.analysis.tokens) {
+            const sentenceData = {
+              tokens: response.data.analysis.tokens,
+              fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
+              processingType: 'local_reprocessed'
+            };
+
+            // Update the processed sentences state
+            setProcessedSentences(prev => ({ ...prev, [originalIndex]: sentenceData }));
+
+            // Auto-save the processed data with a small delay
+            setTimeout(() => {
+              autoSave(originalIndex, sentenceData);
+            }, Math.random() * 100 + 50); // Random delay between 50-150ms
+
+            return { success: true, index: originalIndex };
+          } else {
+            console.warn(`No tokens received for sentence ${originalIndex}`);
+            return { success: false, index: originalIndex, error: 'No tokens received' };
+          }
+        } catch (error) {
+          console.error(`Error reprocessing sentence ${originalIndex}:`, error);
+          return { success: false, index: originalIndex, error: error.message };
+        }
+      });
+
+      // Wait for all sentences in the batch to complete
+      const batchResults = await Promise.allSettled(batchPromises);
+
+      // Count successes and errors for this batch
+      batchResults.forEach(result => {
+        if (result.status === 'fulfilled') {
+          if (result.value.success) {
+            processedCount++;
+          } else {
+            errorCount++;
+          }
+        } else {
+          errorCount++;
+          console.error('Batch promise rejected:', result.reason);
+        }
+      });
+
+      // Update progress message
+      setMessage(`Reprocessing: ${processedCount}/${totalSentences} sentences completed (batch ${batchIndex + 1}/${batches.length})`);
+
+      // Small delay between batches to prevent overwhelming the server
+      if (batchIndex < batches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+
+    console.log(`Reprocessing completed: ${processedCount}/${totalSentences} sentences processed successfully, ${errorCount} errors`);
+
+    if (errorCount > 0) {
+      setMessage(`Reprocessing completed: ${processedCount}/${totalSentences} sentences processed (${errorCount} errors)`);
+    } else {
+      setMessage(`✅ Reprocessing completed: All ${processedCount} sentences processed with current settings`);
+    }
+
+    // Clear the message after 8 seconds (longer since this is important feedback)
+    setTimeout(() => {
+      setMessage('');
+    }, 8000);
   };
 
   const handleSave = async () => {
@@ -913,7 +1079,7 @@ export default function ImportPage() {
 
     const handleTokenClick = (e, token, tokenIdx) => {
       console.log('Token clicked:', token, 'Index:', tokenIdx);
-      
+
       if (token.pos === '記号') {
         console.log('Skipping punctuation token');
         return; // Skip punctuation
@@ -926,21 +1092,21 @@ export default function ImportPage() {
       const rect = e.currentTarget.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
-      
+
       // Calculate initial position - bottom of popup should be 20 pixels above the click
       let x = rect.left + (rect.width / 2);
       let y = rect.top - 20; // Position so bottom of popup is 20px above click
-      
+
       // Adjust for viewport boundaries
       const popupWidth = 320; // max-width from CSS
-      
+
       // Keep popup within horizontal bounds
-      if (x - popupWidth/2 < 10) {
-        x = popupWidth/2 + 10;
-      } else if (x + popupWidth/2 > viewportWidth - 10) {
-        x = viewportWidth - popupWidth/2 - 10;
+      if (x - popupWidth / 2 < 10) {
+        x = popupWidth / 2 + 10;
+      } else if (x + popupWidth / 2 > viewportWidth - 10) {
+        x = viewportWidth - popupWidth / 2 - 10;
       }
-      
+
       // Keep popup within vertical bounds - if not enough space above, show below
       if (y < 10) {
         y = rect.bottom + 20; // Show below token with 20px gap if not enough space above
@@ -986,7 +1152,9 @@ export default function ImportPage() {
           // Check if this is a merged verb (from server-side processing)
           const isMergedVerb = token.pos === '動詞' && (token.pos_detail === 'compound' || token.pos_detail === 'inflected');
           const isPunctuation = token.pos === '記号';
-          const shouldShowRuby = hasKanji(token.surface) && token.reading && token.reading !== token.surface;
+          // Check if furigana should be hidden based on frequency settings
+          const shouldHideBasedOnFrequency = token.frequency && token.frequency.shouldHideFurigana;
+          const shouldShowRuby = hasKanji(token.surface) && token.reading && token.reading !== token.surface && !shouldHideBasedOnFrequency;
           const hasAIData = token.translation && token.translation !== 'N/A';
 
           // Determine token color based on type and AI analysis
@@ -1096,7 +1264,7 @@ export default function ImportPage() {
                 <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#4fc3f7' }}>
                   {token.surface}
                 </div>
-                
+
                 {token.reading && token.reading !== token.surface && (
                   <div style={{ marginBottom: '6px', color: '#ccc', fontSize: '0.85em' }}>
                     <strong>Reading:</strong> {token.reading}
@@ -1124,6 +1292,17 @@ export default function ImportPage() {
                 {token.grammaticalRole && token.grammaticalRole !== token.pos && (
                   <div style={{ marginBottom: '6px' }}>
                     <strong>Grammar:</strong> {token.grammaticalRole}
+                  </div>
+                )}
+
+                {token.frequency && (
+                  <div style={{ marginBottom: '6px' }}>
+                    <strong>Frequency:</strong> {token.frequency.rank ? `Rank ${token.frequency.rank} (${token.frequency.category})` : 'Unknown'}
+                    {token.frequency.shouldHideFurigana && (
+                      <span style={{ color: '#ff6b35', fontSize: '0.8em', marginLeft: '8px' }}>
+                        🚫 Furigana Hidden
+                      </span>
+                    )}
                   </div>
                 )}
 
@@ -1156,13 +1335,13 @@ export default function ImportPage() {
   // Pagination calculations
   const totalSentences = sentences.filter(s => !s.isLineBreak).length;
   const totalPages = Math.ceil(totalSentences / sentencesPerPage);
-  
+
   // Get sentences for current page
   const getPaginatedSentences = () => {
     let sentenceCount = 0;
     let startIndex = -1;
     let endIndex = -1;
-    
+
     // Find start index for current page
     for (let i = 0; i < sentences.length; i++) {
       if (!sentences[i].isLineBreak) {
@@ -1173,7 +1352,7 @@ export default function ImportPage() {
         }
       }
     }
-    
+
     // Find end index for current page
     sentenceCount = 0;
     for (let i = 0; i < sentences.length; i++) {
@@ -1185,12 +1364,12 @@ export default function ImportPage() {
         }
       }
     }
-    
+
     // If we didn't find an end index, use the last sentence
     if (endIndex === -1) {
       endIndex = sentences.length - 1;
     }
-    
+
     // Include line breaks that fall within our range
     const result = [];
     for (let i = startIndex; i <= endIndex; i++) {
@@ -1198,7 +1377,7 @@ export default function ImportPage() {
         result.push({ ...sentences[i], originalIndex: i });
       }
     }
-    
+
     return result;
   };
 
@@ -1229,6 +1408,13 @@ export default function ImportPage() {
           <div className="controls-section">
             <button onClick={handleSave} className="btn">Save to Books</button>
             <button
+              onClick={() => handleReprocessAll()}
+              className="btn"
+              style={{ backgroundColor: '#28a745' }}
+            >
+              Reprocess All Sentences
+            </button>
+            <button
               onClick={() => setShowTtsOptions(!showTtsOptions)}
               className="btn"
             >
@@ -1239,6 +1425,12 @@ export default function ImportPage() {
               className="btn"
             >
               {showVerbOptions ? 'Hide' : 'Show'} Verb Options
+            </button>
+            <button
+              onClick={() => setShowFrequencyOptions(!showFrequencyOptions)}
+              className="btn"
+            >
+              {showFrequencyOptions ? 'Hide' : 'Show'} Frequency Options
             </button>
           </div>
 
@@ -1299,7 +1491,7 @@ export default function ImportPage() {
                     {Math.round(ttsOptions.volume * 100)}%
                   </div>
                 </div>
-                
+
                 <div className="tts-option-group">
                   <label>
                     Timing Stretch
@@ -1316,7 +1508,7 @@ export default function ImportPage() {
                     {ttsOptions.timingStretch}x
                   </div>
                 </div>
-                
+
                 <div className="tts-option-group">
                   <label>
                     Comma Pause
@@ -1336,7 +1528,7 @@ export default function ImportPage() {
               </div>
 
               <div className="note">
-                <strong>Note:</strong> Speed and volume settings will be applied to future speech generation. 
+                <strong>Note:</strong> Speed and volume settings will be applied to future speech generation.
                 Speaker selection requires VOICEVOX engine to support the selected voice.
               </div>
             </div>
@@ -1425,6 +1617,58 @@ export default function ImportPage() {
             </div>
           )}
 
+          {showFrequencyOptions && (
+            <div className="options-panel">
+              <h4>Furigana Frequency Options</h4>
+              <p>
+                Configure when to hide furigana based on word frequency:
+              </p>
+
+              <div className="frequency-options-grid">
+                <label className="frequency-option-label">
+                  <input
+                    type="checkbox"
+                    checked={frequencySettings.hideFrequentFurigana}
+                    onChange={(e) => handleFrequencyOptionChange('hideFrequentFurigana', e.target.checked)}
+                  />
+                  Hide Furigana for Frequent Words
+                </label>
+
+                <div className="frequency-option-group">
+                  <label>
+                    Frequency Threshold (words ranked 1-{frequencySettings.frequencyThreshold} will hide furigana)
+                  </label>
+                  <input
+                    type="range"
+                    min="100"
+                    max="5000"
+                    step="100"
+                    value={frequencySettings.frequencyThreshold}
+                    onChange={(e) => handleFrequencyOptionChange('frequencyThreshold', parseInt(e.target.value))}
+                    disabled={!frequencySettings.hideFrequentFurigana}
+                  />
+                  <div className="frequency-option-value">
+                    Top {frequencySettings.frequencyThreshold} words
+                  </div>
+                </div>
+
+                <label className="frequency-option-label">
+                  <input
+                    type="checkbox"
+                    checked={frequencySettings.alwaysShowUnknown}
+                    onChange={(e) => handleFrequencyOptionChange('alwaysShowUnknown', e.target.checked)}
+                  />
+                  Always Show Furigana for Unknown Words
+                </label>
+              </div>
+
+              <div className="note">
+                <strong>Note:</strong> Frequency-based furigana hiding helps you focus on learning less common words while reducing visual clutter from words you already know.
+                The frequency data is based on common Japanese text corpora.
+              </div>
+            </div>
+          )}
+
           {/* Pagination info and controls - TOP */}
           {totalPages > 1 && (
             <>
@@ -1433,23 +1677,23 @@ export default function ImportPage() {
                   Page {currentPage} of {totalPages} ({totalSentences} total sentences)
                 </span>
               </div>
-              
+
               <div className="pagination-controls">
-                <button 
+                <button
                   onClick={() => handlePageChange(1)}
                   disabled={currentPage === 1}
                   className="btn pagination-btn"
                 >
                   First
                 </button>
-                <button 
+                <button
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1}
                   className="btn pagination-btn"
                 >
                   Previous
                 </button>
-                
+
                 <span className="pagination-pages">
                   {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                     let pageNum;
@@ -1462,7 +1706,7 @@ export default function ImportPage() {
                     } else {
                       pageNum = currentPage - 2 + i;
                     }
-                    
+
                     return (
                       <button
                         key={pageNum}
@@ -1474,15 +1718,15 @@ export default function ImportPage() {
                     );
                   })}
                 </span>
-                
-                <button 
+
+                <button
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === totalPages}
                   className="btn pagination-btn"
                 >
                   Next
                 </button>
-                <button 
+                <button
                   onClick={() => handlePageChange(totalPages)}
                   disabled={currentPage === totalPages}
                   className="btn pagination-btn"
@@ -1494,117 +1738,117 @@ export default function ImportPage() {
           )}
 
           <div className="import-content">
-              {paginatedSentences.map((sentence, index) => {
-                const sentenceIndex = sentence.originalIndex;
-                
-                if (sentence.isLineBreak) {
-                  return <br key={sentenceIndex} />;
-                }
+            {paginatedSentences.map((sentence, index) => {
+              const sentenceIndex = sentence.originalIndex;
 
-                const isProcessed = processedSentences[sentenceIndex];
-                const hasRemoteTranslation = isProcessed && isProcessed.processingType === 'remote' && 
-                  isProcessed.fullSentenceTranslation && isProcessed.fullSentenceTranslation !== 'N/A';
+              if (sentence.isLineBreak) {
+                return <br key={sentenceIndex} />;
+              }
 
-                return (
-                  <span key={sentenceIndex} className="sentence-container">
-                    {isProcessed ? (
-                      <span data-sentence={sentenceIndex}>
-                        <TokenizedText tokens={isProcessed.tokens} sentenceIndex={sentenceIndex} />
-                      </span>
-                    ) : (
-                      <span data-sentence={sentenceIndex} className="sentence-text">{sentence.text}</span>
-                    )}
-                    
-                    {/* Processing buttons - inline after sentence */}
-                    <span className="sentence-controls">
-                      <button 
-                        onClick={() => handleSentenceProcess(sentenceIndex, true)} 
-                        className={`sentence-btn remote ${processingSentences[sentenceIndex] ? 'processing' : ''}`}
-                        title="Process using OpenAI for enhanced translations"
-                      >
-                        R
-                      </button>
-                      
-                      {/* Text-to-speech with timing button */}
-                      <button 
-                        onClick={() => handleTextToSpeech(sentenceIndex, true)} 
-                        className="sentence-btn tts"
-                        title="Generate speech with real-time highlighting using VOICEVOX"
-                      >
-                        🔊
-                      </button>
-                      
-                      {/* Translation popup button - only visible after remote processing */}
-                      {hasRemoteTranslation && (
-                        <button 
-                          onClick={() => {
-                            const popup = document.getElementById(`translation-popup-${sentenceIndex}`);
-                            if (popup) {
-                              popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
-                            }
-                          }}
-                          className="sentence-btn translation"
-                          title="Show sentence translation"
-                        >
-                          💬
-                        </button>
-                      )}
+              const isProcessed = processedSentences[sentenceIndex];
+              const hasRemoteTranslation = isProcessed && isProcessed.processingType === 'remote' &&
+                isProcessed.fullSentenceTranslation && isProcessed.fullSentenceTranslation !== 'N/A';
+
+              return (
+                <span key={sentenceIndex} className="sentence-container">
+                  {isProcessed ? (
+                    <span data-sentence={sentenceIndex}>
+                      <TokenizedText tokens={isProcessed.tokens} sentenceIndex={sentenceIndex} />
                     </span>
+                  ) : (
+                    <span data-sentence={sentenceIndex} className="sentence-text">{sentence.text}</span>
+                  )}
 
-                    {/* Only error messages are shown as text now */}
-                    {sentenceMessages[sentenceIndex] && (
-                      <span className="sentence-status error">
-                        {sentenceMessages[sentenceIndex]}
-                      </span>
-                    )}
+                  {/* Processing buttons - inline after sentence */}
+                  <span className="sentence-controls">
+                    <button
+                      onClick={() => handleSentenceProcess(sentenceIndex, true)}
+                      className={`sentence-btn remote ${processingSentences[sentenceIndex] ? 'processing' : ''}`}
+                      title="Process using OpenAI for enhanced translations"
+                    >
+                      R
+                    </button>
 
-                    {/* Translation popup */}
+                    {/* Text-to-speech with timing button */}
+                    <button
+                      onClick={() => handleTextToSpeech(sentenceIndex, true)}
+                      className="sentence-btn tts"
+                      title="Generate speech with real-time highlighting using VOICEVOX"
+                    >
+                      🔊
+                    </button>
+
+                    {/* Translation popup button - only visible after remote processing */}
                     {hasRemoteTranslation && (
-                      <div
-                        id={`translation-popup-${sentenceIndex}`}
-                        className="translation-popup"
+                      <button
+                        onClick={() => {
+                          const popup = document.getElementById(`translation-popup-${sentenceIndex}`);
+                          if (popup) {
+                            popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
+                          }
+                        }}
+                        className="sentence-btn translation"
+                        title="Show sentence translation"
                       >
-                        <div className="translation-popup-label">
-                          Translation
-                        </div>
-                        <div>
-                          {isProcessed.fullSentenceTranslation}
-                        </div>
-                        <button
-                          onClick={() => {
-                            document.getElementById(`translation-popup-${sentenceIndex}`).style.display = 'none';
-                          }}
-                          className="translation-popup-close"
-                        >
-                          ×
-                        </button>
-                      </div>
+                        💬
+                      </button>
                     )}
-                    
-                    {' '} {/* Space between sentences */}
                   </span>
-                );
-              })}
+
+                  {/* Only error messages are shown as text now */}
+                  {sentenceMessages[sentenceIndex] && (
+                    <span className="sentence-status error">
+                      {sentenceMessages[sentenceIndex]}
+                    </span>
+                  )}
+
+                  {/* Translation popup */}
+                  {hasRemoteTranslation && (
+                    <div
+                      id={`translation-popup-${sentenceIndex}`}
+                      className="translation-popup"
+                    >
+                      <div className="translation-popup-label">
+                        Translation
+                      </div>
+                      <div>
+                        {isProcessed.fullSentenceTranslation}
+                      </div>
+                      <button
+                        onClick={() => {
+                          document.getElementById(`translation-popup-${sentenceIndex}`).style.display = 'none';
+                        }}
+                        className="translation-popup-close"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+
+                  {' '} {/* Space between sentences */}
+                </span>
+              );
+            })}
           </div>
 
           {/* Pagination controls */}
           {totalPages > 1 && (
             <div className="pagination-controls">
-              <button 
+              <button
                 onClick={() => handlePageChange(1)}
                 disabled={currentPage === 1}
                 className="btn pagination-btn"
               >
                 First
               </button>
-              <button 
+              <button
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
                 className="btn pagination-btn"
               >
                 Previous
               </button>
-              
+
               <span className="pagination-pages">
                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                   let pageNum;
@@ -1617,7 +1861,7 @@ export default function ImportPage() {
                   } else {
                     pageNum = currentPage - 2 + i;
                   }
-                  
+
                   return (
                     <button
                       key={pageNum}
@@ -1629,15 +1873,15 @@ export default function ImportPage() {
                   );
                 })}
               </span>
-              
-              <button 
+
+              <button
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
                 className="btn pagination-btn"
               >
                 Next
               </button>
-              <button 
+              <button
                 onClick={() => handlePageChange(totalPages)}
                 disabled={currentPage === totalPages}
                 className="btn pagination-btn"

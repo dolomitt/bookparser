@@ -87,6 +87,45 @@
   margin-right: 8px;
 }
 
+/* Frequency Options Grid */
+.frequency-options-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 15px;
+}
+
+.frequency-option-label {
+  display: flex;
+  align-items: center;
+  color: #fff;
+}
+
+.frequency-option-label input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+.frequency-option-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.frequency-option-group label {
+  color: #fff;
+  font-size: 0.9em;
+}
+
+.frequency-option-group input[type="range"] {
+  width: 100%;
+}
+
+.frequency-option-value {
+  font-weight: bold;
+  color: #4fc3f7;
+  font-size: 0.85em;
+  text-align: center;
+}
+
 /* Sentence container */
 .sentence-container {
   position: relative;
@@ -172,9 +211,17 @@
 
 /* Blinking animation for processing buttons */
 @keyframes blink {
-  0% { opacity: 1; }
-  50% { opacity: 0.3; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+
+  100% {
+    opacity: 1;
+  }
 }
 
 .sentence-btn.processing {
@@ -348,30 +395,30 @@
     grid-template-columns: 1fr;
     gap: 20px;
   }
-  
+
   .verb-options-grid {
     grid-template-columns: 1fr;
     gap: 15px;
   }
-  
+
   .sentence-controls {
     flex-wrap: wrap;
     gap: 6px;
   }
-  
+
   .sentence-btn {
     min-height: 44px;
     padding: 10px 12px;
     font-size: 0.9em;
     touch-action: manipulation;
   }
-  
+
   .token {
     min-height: 32px;
     min-width: 20px;
     padding: 3px 4px;
   }
-  
+
   .token-popup {
     max-width: 90vw;
     min-width: 250px;
@@ -380,7 +427,7 @@
     border-radius: 12px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   }
-  
+
   .translation-popup {
     max-width: 90vw;
     position: fixed;
@@ -389,13 +436,13 @@
     transform: translate(-50%, -50%);
     margin-top: 0;
   }
-  
+
   .controls-section {
     display: flex;
     flex-direction: column;
     gap: 10px;
   }
-  
+
   .controls-section .btn {
     margin-left: 0;
   }
@@ -405,12 +452,12 @@
   .options-panel {
     padding: 12px;
   }
-  
+
   .import-content {
     padding: 16px;
     font-size: 1em;
   }
-  
+
   .sentence-btn {
     min-height: 48px;
     padding: 12px 16px;
@@ -522,13 +569,13 @@ button {
     flex-wrap: wrap;
     gap: 8px;
   }
-  
+
   .pagination-btn {
     padding: 10px 14px;
     min-width: 50px;
     font-size: 0.9em;
   }
-  
+
   .pagination-pages {
     gap: 4px;
   }
@@ -539,11 +586,11 @@ button {
     flex-direction: column;
     gap: 15px;
   }
-  
+
   .pagination-pages {
     order: -1;
   }
-  
+
   .pagination-btn {
     min-height: 44px;
     touch-action: manipulation;
