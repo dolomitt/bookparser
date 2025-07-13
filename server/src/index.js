@@ -365,11 +365,26 @@ app.post('/api/parse', async (req, res) => {
   // Prepare context sentences for Ollama (only if using remote processing)
   const contextSentences = {};
   if (useRemoteProcessing && allSentences && allSentences.length > 0) {
-    if (sentenceIndex > 0) {
-      contextSentences.previousSentence = allSentences[sentenceIndex - 1];
+    // Get 5 sentences before
+    const previousSentences = [];
+    for (let i = Math.max(0, sentenceIndex - 5); i < sentenceIndex; i++) {
+      if (allSentences[i] && allSentences[i].trim()) {
+        previousSentences.push(allSentences[i]);
+      }
     }
-    if (sentenceIndex < allSentences.length - 1) {
-      contextSentences.nextSentence = allSentences[sentenceIndex + 1];
+    if (previousSentences.length > 0) {
+      contextSentences.previousSentences = previousSentences;
+    }
+
+    // Get 5 sentences after
+    const nextSentences = [];
+    for (let i = sentenceIndex + 1; i <= Math.min(allSentences.length - 1, sentenceIndex + 5); i++) {
+      if (allSentences[i] && allSentences[i].trim()) {
+        nextSentences.push(allSentences[i]);
+      }
+    }
+    if (nextSentences.length > 0) {
+      contextSentences.nextSentences = nextSentences;
     }
   }
 

@@ -18,7 +18,7 @@ class OllamaService {
         const data = await response.json();
         console.log('[Ollama] ✅ Connected to Ollama server');
         console.log('[Ollama] Available models:', data.models?.map(m => m.name) || 'No models found');
-        
+
         // Check if our configured model exists
         const modelExists = data.models?.some(m => m.name === this.model);
         if (modelExists) {
@@ -31,7 +31,7 @@ class OllamaService {
       }
     } catch (error) {
       console.log(`[Ollama] ❌ Connection test failed:`, error.message);
-    } 
+    }
   }
 
   // Get Ollama analysis for tokens with retry logic
@@ -53,21 +53,27 @@ class OllamaService {
         const tokenList = tokens.map(token => token.surface).join(' | ');
         console.log('[Ollama] Token list for analysis:', tokenList);
 
-        // Build context with previous and next lines
+        // Build context with previous and next sentences (up to 5 each)
         let contextText = '';
-        if (contextLines.previousSentence) {
-          contextText += `Previous sentence: "${contextLines.previousSentence}"\n`;
+        if (contextLines.previousSentences && contextLines.previousSentences.length > 0) {
+          contextText += `Previous sentences:\n`;
+          contextLines.previousSentences.forEach((sentence, index) => {
+            contextText += `${index + 1}. "${sentence}"\n`;
+          });
         }
         contextText += `Current sentence: "${originalText}"`;
-        if (contextLines.nextSentence) {
-          contextText += `\nNext sentence: "${contextLines.nextSentence}"`;
+        if (contextLines.nextSentences && contextLines.nextSentences.length > 0) {
+          contextText += `\nNext sentences:\n`;
+          contextLines.nextSentences.forEach((sentence, index) => {
+            contextText += `${index + 1}. "${sentence}"\n`;
+          });
         }
 
         console.log('[Ollama] Context text:', contextText);
 
         // Use fixed token limit for response
         const fixedNumPredict = this.maxTokens;
-        
+
         console.log(`[Ollama] Using fixed response limit: ${fixedNumPredict} tokens for ${tokens.length} input tokens`);
 
         const prompt = `Translate this Japanese sentence and analyze each token.
@@ -94,7 +100,7 @@ Return JSON only:
         console.log('[Ollama] Prompt length:', prompt.length, 'characters');
 
         const startTime = Date.now();
-        
+
         // Create AbortController for timeout - configurable timeout for larger models
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), config.ollama.timeout);
@@ -131,7 +137,7 @@ Return JSON only:
 
         const data = await response.json();
         const endTime = Date.now();
-        
+
         console.log('[Ollama] ✅ Received response from Ollama API');
         console.log('[Ollama] Response time:', endTime - startTime, 'ms');
 
@@ -148,7 +154,7 @@ Return JSON only:
           return parsedResponse;
         } catch (parseError) {
           console.log('[Ollama] Direct JSON parse failed, trying to extract JSON from response...');
-          
+
           // Try to find JSON object in the response
           try {
             // Look for JSON object starting with { and ending with }
@@ -175,13 +181,13 @@ Return JSON only:
         console.error(`[Ollama] ❌ Ollama API error (attempt ${attempt}):`, error);
         console.error('[Ollama] Error type:', error.constructor.name);
         console.error('[Ollama] Error message:', error.message);
-        
+
         if (error.code === 'ECONNREFUSED') {
           console.error('[Ollama] Cannot connect to Ollama server at:', this.baseUrl);
         } else if (error.name === 'AbortError') {
           console.error(`[Ollama] Request timed out after ${config.ollama.timeout / 1000} seconds`);
         }
-        
+
         // If this is the last attempt, throw the error
         if (attempt === maxRetries + 1) {
           if (error.name === 'AbortError') {
@@ -189,7 +195,7 @@ Return JSON only:
           }
           throw error;
         }
-        
+
         // Otherwise, continue to next retry attempt
         console.log(`[Ollama] Will retry... (${maxRetries + 1 - attempt} attempts remaining)`);
       }
