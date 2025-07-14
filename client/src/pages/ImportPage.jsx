@@ -1124,9 +1124,9 @@ export default function ImportPage() {
     const handleTokenClick = (e, token, tokenIdx) => {
       console.log('Token clicked:', token, 'Index:', tokenIdx);
 
-      if (token.pos === '記号') {
-        console.log('Skipping punctuation token');
-        return; // Skip punctuation
+      if (token.pos === '記号' || token.surface === '」') {
+        console.log('Skipping punctuation token or closing quote');
+        return; // Skip punctuation and closing quotes
       }
 
       e.preventDefault();
@@ -1198,7 +1198,7 @@ export default function ImportPage() {
         {tokens.map((token, tokenIdx) => {
           // Check if this is a merged verb (from server-side processing)
           const isMergedVerb = token.pos === '動詞' && (token.pos_detail === 'compound' || token.pos_detail === 'inflected');
-          const isPunctuation = token.pos === '記号';
+          const isPunctuation = token.pos === '記号' || token.surface === '」';
           // Check if furigana should be hidden based on frequency settings
           const shouldHideBasedOnFrequency = token.frequency && token.frequency.shouldHideFurigana;
           const shouldShowRuby = hasKanji(token.surface) && token.reading && token.reading !== token.surface && !shouldHideBasedOnFrequency;
@@ -1804,10 +1804,16 @@ export default function ImportPage() {
                   {currentReadingPosition === sentenceIndex && (
                     <span
                       style={{
-                        color: '#ffc107',
+                        color: 'white',
+                        backgroundColor: '#9c27b0',
                         fontSize: '0.9em',
                         marginRight: '4px',
-                        fontWeight: 'bold'
+                        fontWeight: 'bold',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
                       }}
                     >
                       📖
@@ -1824,46 +1830,48 @@ export default function ImportPage() {
                     </span>
                   )}
 
-                  {/* Processing buttons - inline after sentence */}
-                  <span className="sentence-controls">
-                    <button
-                      onClick={() => handleSentenceProcess(sentenceIndex, true)}
-                      className={`sentence-btn remote ${processingSentences[sentenceIndex] ? 'processing' : ''}`}
-                      title="Process using OpenAI for enhanced translations"
-                    >
-                      R
-                    </button>
-
-                    {/* Text-to-speech with timing button */}
-                    <button
-                      onClick={() => handleTextToSpeech(sentenceIndex, true)}
-                      className="sentence-btn tts"
-                      title="Generate speech with real-time highlighting using VOICEVOX"
-                    >
-                      🔊
-                    </button>
-
-                    {/* Translation popup button - only visible after remote processing */}
-                    {hasRemoteTranslation && (
+                  {/* Processing buttons - inline after sentence - hide for sentences that are just closing quotes */}
+                  {sentence.text.trim() !== '」' && (
+                    <span className="sentence-controls">
                       <button
-                        onClick={() => {
-                          // Auto-save bookmark when user interacts with sentence
-                          saveReadingBookmark(sentenceIndex);
-
-                          const popup = document.getElementById(`translation-popup-${sentenceIndex}`);
-                          if (popup) {
-                            popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
-                          }
-                        }}
-                        className="sentence-btn translation"
-                        title="Show sentence translation"
+                        onClick={() => handleSentenceProcess(sentenceIndex, true)}
+                        className={`sentence-btn remote ${processingSentences[sentenceIndex] ? 'processing' : ''}`}
+                        title="Process using OpenAI for enhanced translations"
                       >
-                        💬
+                        R
                       </button>
-                    )}
 
-                    {/* Bookmark button - hidden but functionality preserved through auto-save */}
-                  </span>
+                      {/* Text-to-speech with timing button */}
+                      <button
+                        onClick={() => handleTextToSpeech(sentenceIndex, true)}
+                        className="sentence-btn tts"
+                        title="Generate speech with real-time highlighting using VOICEVOX"
+                      >
+                        🔊
+                      </button>
+
+                      {/* Translation popup button - only visible after remote processing */}
+                      {hasRemoteTranslation && (
+                        <button
+                          onClick={() => {
+                            // Auto-save bookmark when user interacts with sentence
+                            saveReadingBookmark(sentenceIndex);
+
+                            const popup = document.getElementById(`translation-popup-${sentenceIndex}`);
+                            if (popup) {
+                              popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
+                            }
+                          }}
+                          className="sentence-btn translation"
+                          title="Show sentence translation"
+                        >
+                          💬
+                        </button>
+                      )}
+
+                      {/* Bookmark button - hidden but functionality preserved through auto-save */}
+                    </span>
+                  )}
 
                   {/* Only error messages are shown as text now */}
                   {sentenceMessages[sentenceIndex] && (

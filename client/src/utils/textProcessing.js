@@ -1,19 +1,50 @@
 // Text processing utilities
 export const splitIntoSentences = (text) => {
-  // Split by Japanese period (。) and preserve the period with each sentence
-  const parts = text.split('。');
+  // Split by Japanese sentence endings, handling quotation marks properly
+  // Use a more precise approach to avoid overlapping matches
   const sentences = [];
-  
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i].trim();
-    if (part) {
-      // Add the period back except for the last part (which might not have one)
-      const sentence = i < parts.length - 1 ? part + '。' : part;
-      sentences.push(sentence);
+  let currentSentence = '';
+  let i = 0;
+
+  while (i < text.length) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    currentSentence += char;
+
+    // Check for two-character endings first
+    if ((char === '。' && nextChar === '」') ||
+      (char === '」' && nextChar === '。') ||
+      (char === '。' && nextChar === '』') ||
+      (char === '』' && nextChar === '。') ||
+      (char === '！' && nextChar === '」') ||
+      (char === '」' && nextChar === '！') ||
+      (char === '？' && nextChar === '」') ||
+      (char === '」' && nextChar === '？')) {
+      // Add the second character and complete the sentence
+      currentSentence += nextChar;
+      sentences.push(currentSentence.trim());
+      currentSentence = '';
+      i += 2; // Skip both characters
+    }
+    // Check for single-character endings only if not part of a two-character pattern
+    else if ((char === '。' || char === '！' || char === '？') &&
+      nextChar !== '」' && nextChar !== '』') {
+      sentences.push(currentSentence.trim());
+      currentSentence = '';
+      i++;
+    }
+    else {
+      i++;
     }
   }
-  
-  return sentences;
+
+  // Add any remaining text as the last sentence
+  if (currentSentence.trim()) {
+    sentences.push(currentSentence.trim());
+  }
+
+  return sentences.filter(sentence => sentence.length > 0);
 };
 
 export const isKanji = (char) => {
@@ -30,21 +61,21 @@ export const hasKanji = (text) => {
 export const mapTimingsToTokens = (timings, tokens) => {
   const tokenTimings = [];
   let currentTextPos = 0;
-  
+
   tokens.forEach((token, tokenIndex) => {
     const tokenStart = currentTextPos;
     const tokenEnd = currentTextPos + token.surface.length;
-    
+
     // Find all timing points that overlap with this token
-    const overlappingTimings = timings.filter(timing => 
+    const overlappingTimings = timings.filter(timing =>
       timing.textStart < tokenEnd && timing.textEnd > tokenStart
     );
-    
+
     if (overlappingTimings.length > 0) {
       // Use the earliest start time and latest end time for this token
       const startTime = Math.min(...overlappingTimings.map(t => t.startTime));
       const endTime = Math.max(...overlappingTimings.map(t => t.endTime));
-      
+
       tokenTimings.push({
         tokenIndex,
         startTime,
@@ -52,10 +83,10 @@ export const mapTimingsToTokens = (timings, tokens) => {
         token: token.surface
       });
     }
-    
+
     currentTextPos = tokenEnd;
   });
-  
+
   return tokenTimings;
 };
 

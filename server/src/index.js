@@ -104,8 +104,11 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
 
           // Get dictionary translations for each token
           const enhancedTokens = await Promise.all(basicTokens.map(async (token) => {
-            // Look up in JMDict dictionary
-            const dictLookup = await japaneseService.lookupInJMDict(token.surface_form, token.reading);
+            // Skip JMDict lookup for punctuation marks (記号)
+            let dictLookup = null;
+            if (token.pos !== '記号') {
+              dictLookup = await japaneseService.lookupInJMDict(token.surface_form, token.reading);
+            }
 
             let translation = 'N/A';
             if (dictLookup && dictLookup.meanings) {
@@ -461,8 +464,11 @@ app.post('/api/parse', async (req, res) => {
       const enhancedTokens = await Promise.all(basicTokens.map(async (token, index) => {
         const aiData = tokenAnalysisData.find(ai => ai.surface === token.surface_form) || {};
 
-        // Look up in JMDict dictionary
-        const dictLookup = await japaneseService.lookupInJMDict(token.surface_form, token.reading);
+        // Skip JMDict lookup for punctuation marks (記号)
+        let dictLookup = null;
+        if (token.pos !== '記号') {
+          dictLookup = await japaneseService.lookupInJMDict(token.surface_form, token.reading);
+        }
 
         // Debug logging to see what we're getting from dictionary
         // if (dictLookup) {
