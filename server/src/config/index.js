@@ -7,7 +7,7 @@ export const config = {
   port: process.env.PORT || 5000,
   uploadDir: process.env.UPLOAD_DIR || './imports',
   booksDir: process.env.BOOKS_DIR || './books',
-  
+
   ollama: {
     host: process.env.BOOKPARSER_OLLAMA_HOST || '192.168.1.43',
     port: process.env.BOOKPARSER_OLLAMA_PORT || '11434',
@@ -15,11 +15,13 @@ export const config = {
     timeout: parseInt(process.env.BOOKPARSER_OLLAMA_TIMEOUT) || 120000, // 120 seconds default
     maxRetries: parseInt(process.env.BOOKPARSER_OLLAMA_MAX_RETRIES) || 2,
     maxTokens: parseInt(process.env.BOOKPARSER_OLLAMA_MAX_TOKENS) || 10000, // Fixed response token limit
+    contextMode: (process.env.BOOKPARSER_CONTEXT_MODE || 'full').toLowerCase(),
+    contextWindow: parseInt(process.env.BOOKPARSER_CONTEXT_WINDOW || '', 10),
     get baseUrl() {
       return `http://${this.host}:${this.port}`;
     }
   },
-  
+
   voicevox: {
     host: process.env.VOICEVOX_HOST || '192.168.1.43',
     port: process.env.VOICEVOX_PORT || '50021',
@@ -41,6 +43,10 @@ export function logConfig() {
   console.log('BOOKPARSER_OLLAMA_MODEL:', config.ollama.model);
   console.log('BOOKPARSER_OLLAMA_TIMEOUT:', config.ollama.timeout + 'ms');
   console.log('BOOKPARSER_OLLAMA_MAX_RETRIES:', config.ollama.maxRetries);
+  console.log('BOOKPARSER_CONTEXT_MODE:', config.ollama.contextMode);
+  if (!Number.isNaN(config.ollama.contextWindow)) {
+    console.log('BOOKPARSER_CONTEXT_WINDOW:', config.ollama.contextWindow);
+  }
   console.log('VOICEVOX_HOST:', config.voicevox.host);
   console.log('VOICEVOX_PORT:', config.voicevox.port);
   console.log('VOICEVOX_DEFAULT_SPEAKER:', config.voicevox.defaultSpeaker);

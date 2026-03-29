@@ -21,6 +21,8 @@ test('splitGrammarCompoundTokens splits にあたる into learner-friendly token
   assert.equal(output[1].surface_form, 'あたる');
   assert.equal(output[0].originalCompound, 'にあたる');
   assert.equal(output[1].originalCompound, 'にあたる');
+  assert.equal(output[0].expressionSurface, 'にあたる');
+  assert.ok(output[0].expressionMeaning.includes('correspond'));
 });
 
 test('splitGrammarCompoundTokens can be disabled', () => {

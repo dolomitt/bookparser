@@ -38,6 +38,12 @@ export default function ImportPage() {
   const [sentenceMessages, setSentenceMessages] = useState({});
   const [processedSentences, setProcessedSentences] = useState({});
   const [processingSentences, setProcessingSentences] = useState({});
+  const [ollamaStreamPopup, setOllamaStreamPopup] = useState({
+    visible: false,
+    sentenceIndex: null,
+    status: 'idle',
+    content: ''
+  });
   // Load settings from cookies with fallback to defaults
   const [verbMergeOptions, setVerbMergeOptions] = useState(() => {
     const saved = getCookie('verbMergeOptions');
@@ -756,8 +762,122 @@ export default function ImportPage() {
       };
       console.log('Sending request to /api/parse with data:', requestData);
 
-      const response = await axios.post('/api/parse', requestData);
-      console.log('Received response:', response.data);
+      let responseData;
+      if (useRemoteProcessing) {
+        setOllamaStreamPopup({
+          visible: true,
+          sentenceIndex: sentenceIndex,
+          status: 'connecting',
+          content: ''
+        });
+
+        const streamResponse = await fetch('/api/parse/stream', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestData)
+        });
+
+        if (!streamResponse.ok || !streamResponse.body) {
+          throw new Error(`Stream request failed with status ${streamResponse.status}`);
+        }
+
+        const reader = streamResponse.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finalPayload = null;
+
+        const consumeEventBlock = (block) => {
+          if (!block.trim()) return;
+
+          let eventType = 'message';
+          const dataLines = [];
+          const lines = block.split(/\r?\n/);
+
+          lines.forEach((line) => {
+            if (line.startsWith('event:')) {
+              eventType = line.slice(6).trim();
+            } else if (line.startsWith('data:')) {
+              dataLines.push(line.slice(5).trimStart());
+            }
+          });
+
+          if (dataLines.length === 0) return;
+
+          let payload;
+          try {
+            payload = JSON.parse(dataLines.join('\n'));
+          } catch (parseError) {
+            console.warn('Failed to parse stream payload:', parseError);
+            return;
+          }
+
+          if (eventType === 'status') {
+            setOllamaStreamPopup(prev => ({
+              ...prev,
+              status: payload.message || 'streaming'
+            }));
+            return;
+          }
+
+          if (eventType === 'chunk') {
+            setOllamaStreamPopup(prev => ({
+              ...prev,
+              status: 'streaming',
+              content: prev.content + (payload.content || '')
+            }));
+            return;
+          }
+
+          if (eventType === 'final') {
+            finalPayload = payload;
+            setOllamaStreamPopup(prev => ({
+              ...prev,
+              status: 'finalizing',
+              content: prev.content || payload.fullSentenceTranslation || JSON.stringify(payload, null, 2)
+            }));
+            return;
+          }
+
+          if (eventType === 'error') {
+            throw new Error(payload.message || 'Streaming parse failed');
+          }
+
+          if (eventType === 'done') {
+            setOllamaStreamPopup(prev => ({
+              ...prev,
+              status: 'completed'
+            }));
+          }
+        };
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split(/\r?\n\r?\n/);
+          buffer = blocks.pop() || '';
+          blocks.forEach(consumeEventBlock);
+        }
+
+        buffer += decoder.decode();
+        if (buffer.trim()) {
+          consumeEventBlock(buffer);
+        }
+
+        if (!finalPayload) {
+          throw new Error('No final parse payload received from stream');
+        }
+
+        responseData = finalPayload;
+      } else {
+        const response = await axios.post('/api/parse', requestData);
+        responseData = response.data;
+      }
+
+      console.log('Received response:', responseData);
 
       // Clear processing state for this specific sentence
       setProcessingSentences(prev => {
@@ -767,10 +887,10 @@ export default function ImportPage() {
       });
 
       // Store the processed tokens and full sentence translation for interactive display
-      if (response.data.analysis && response.data.analysis.tokens) {
+      if (responseData.analysis && responseData.analysis.tokens) {
         const sentenceData = {
-          tokens: response.data.analysis.tokens,
-          fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
+          tokens: responseData.analysis.tokens,
+          fullSentenceTranslation: responseData.fullSentenceTranslation || 'N/A',
           processingType: useRemoteProcessing ? 'remote' : 'local'
         };
 
@@ -782,11 +902,9 @@ export default function ImportPage() {
           return updatedSentences;
         });
 
-        // Auto-save after processing with a longer delay to ensure state is set
-        setTimeout(() => {
-          console.log('Auto-saving sentence:', sentenceIndex);
-          autoSave(sentenceIndex, sentenceData);
-        }, 500);
+        // Persist immediately so R results survive refresh/reload.
+        console.log('Auto-saving sentence:', sentenceIndex);
+        await autoSave(sentenceIndex, sentenceData);
       }
     } catch (error) {
       console.error('Processing error:', error);
@@ -813,6 +931,13 @@ export default function ImportPage() {
         ...prev,
         [sentenceIndex]: `Error: ${errorMessage}`
       }));
+
+      if (useRemoteProcessing) {
+        setOllamaStreamPopup(prev => ({
+          ...prev,
+          status: 'error'
+        }));
+      }
     }
   };
 
@@ -849,8 +974,10 @@ export default function ImportPage() {
 
       await axios.post(`/api/import/${filename}/save-sentence`, saveData);
       console.log(`Auto-saved sentence ${sentenceIndex}`);
+      return true;
     } catch (error) {
       console.error('Auto-save error:', error);
+      return false;
     }
   };
 
@@ -1120,6 +1247,46 @@ export default function ImportPage() {
   const TokenizedText = ({ tokens, sentenceIndex }) => {
     const [activePopup, setActivePopup] = useState(null);
     const [popupPosition, setPopupPosition] = useState({ x: 0, y: 0 });
+    const [hoveredExpressionId, setHoveredExpressionId] = useState(null);
+
+    const expressionMetaByToken = React.useMemo(() => {
+      const meta = {};
+      let idx = 0;
+
+      while (idx < tokens.length) {
+        const token = tokens[idx];
+        if (!token?.expressionSurface) {
+          idx += 1;
+          continue;
+        }
+
+        const expressionId = token.expressionId || `expr-${sentenceIndex}-${idx}-${token.expressionSurface}`;
+        const start = idx;
+        let end = idx;
+
+        while (end + 1 < tokens.length) {
+          const nextToken = tokens[end + 1];
+          if (!nextToken?.expressionSurface) break;
+          const nextExpressionId = nextToken.expressionId || expressionId;
+          if (nextExpressionId !== expressionId) break;
+          if (nextToken.expressionSurface !== token.expressionSurface) break;
+          end += 1;
+        }
+
+        for (let i = start; i <= end; i++) {
+          meta[i] = {
+            id: expressionId,
+            surface: token.expressionSurface,
+            start,
+            end
+          };
+        }
+
+        idx = end + 1;
+      }
+
+      return meta;
+    }, [tokens, sentenceIndex]);
 
     const handleTokenClick = (e, token, tokenIdx) => {
       console.log('Token clicked:', token, 'Index:', tokenIdx);
@@ -1239,6 +1406,11 @@ export default function ImportPage() {
           );
 
           const isActive = activePopup === `${sentenceIndex}-${tokenIdx}`;
+          const expressionMeta = expressionMetaByToken[tokenIdx];
+          const hasExpression = !!expressionMeta;
+          const isExpressionHovered = hasExpression && hoveredExpressionId === expressionMeta.id;
+          const isExpressionStart = isExpressionHovered && tokenIdx === expressionMeta.start;
+          const isExpressionEnd = isExpressionHovered && tokenIdx === expressionMeta.end;
 
           return (
             <span
@@ -1264,8 +1436,30 @@ export default function ImportPage() {
                 WebkitUserSelect: 'none',
                 WebkitTouchCallout: 'none',
                 lineHeight: '1.5'
+                ,
+                textDecoration: hasExpression ? 'underline 1px dashed #ffd166' : 'none',
+                textUnderlineOffset: hasExpression ? '3px' : undefined,
+                borderTop: isExpressionHovered ? '1px solid #ffd166' : '1px solid transparent',
+                borderBottom: isExpressionHovered ? '3px solid #ffd166' : '3px solid transparent',
+                borderLeft: isExpressionStart ? '1px solid #ffd166' : '1px solid transparent',
+                borderRight: isExpressionEnd ? '1px solid #ffd166' : '1px solid transparent',
+                borderTopLeftRadius: isExpressionStart ? '4px' : '0',
+                borderBottomLeftRadius: isExpressionStart ? '4px' : '0',
+                borderTopRightRadius: isExpressionEnd ? '4px' : '0',
+                borderBottomRightRadius: isExpressionEnd ? '4px' : '0',
+                boxShadow: isExpressionHovered ? 'inset 0 -3px 0 rgba(255, 209, 102, 0.35)' : 'none'
               }}
               onClick={(e) => handleTokenClick(e, token, tokenIdx)}
+              onMouseEnter={() => {
+                if (hasExpression) {
+                  setHoveredExpressionId(expressionMeta.id);
+                }
+              }}
+              onMouseLeave={() => {
+                if (hasExpression) {
+                  setHoveredExpressionId((current) => (current === expressionMeta.id ? null : current));
+                }
+              }}
               onTouchStart={(e) => {
                 if (!isPunctuation) {
                   e.preventDefault();
@@ -1283,6 +1477,15 @@ export default function ImportPage() {
             const tokenIdx = parseInt(activePopup.split('-')[1]);
             const token = tokens[tokenIdx];
             if (!token) return null;
+
+            const hasExpression = !!token.expressionSurface;
+            const primaryMeaning = hasExpression
+              ? (token.expressionMeaning || token.translation || 'N/A')
+              : (token.translation || token.contextualMeaning || 'N/A');
+            const shouldShowReading = token.reading && token.reading !== token.surface;
+            const expressionLabel = hasExpression
+              ? (token.expressionSource === 'ai' ? 'Set phrase (AI)' : 'Set phrase')
+              : null;
 
             return (
               <div
@@ -1312,46 +1515,27 @@ export default function ImportPage() {
                   {token.surface}
                 </div>
 
-                {token.reading && token.reading !== token.surface && (
+                {shouldShowReading && (
                   <div style={{ marginBottom: '6px', color: '#ccc', fontSize: '0.85em' }}>
-                    <strong>Reading:</strong> {token.reading}
+                    {token.reading}
                   </div>
                 )}
 
-                {token.pos === '動詞' && (token.pos_detail === 'compound' || token.pos_detail === 'inflected') && (
-                  <div style={{ marginBottom: '6px', color: '#4a7c59', fontSize: '0.8em' }}>
-                    🔗 Merged Verb Token
+                {hasExpression && (
+                  <div style={{ marginBottom: '8px', color: '#ffd166', fontSize: '0.85em' }}>
+                    <strong>{expressionLabel}:</strong> {token.expressionSurface}
                   </div>
                 )}
 
-                {token.translation && token.translation !== 'N/A' && (
+                {primaryMeaning && primaryMeaning !== 'N/A' && (
                   <div style={{ marginBottom: '6px' }}>
-                    <strong>Translation:</strong> {token.translation}
+                    <strong>Meaning:</strong> {primaryMeaning}
                   </div>
                 )}
 
-                {token.contextualMeaning && token.contextualMeaning !== 'N/A' && (
-                  <div style={{ marginBottom: '6px' }}>
-                    <strong>Context:</strong> {token.contextualMeaning}
-                  </div>
-                )}
-
-                {token.grammaticalRole && token.grammaticalRole !== token.pos && (
-                  <div style={{ marginBottom: '6px' }}>
-                    <strong>Grammar:</strong> {token.grammaticalRole}
-                  </div>
-                )}
-
-                {token.frequency && (
-                  <div style={{ marginBottom: '6px' }}>
-                    <div>
-                      <strong>Frequency:</strong> {token.frequency.frequency ? `${token.frequency.frequency.toLocaleString()} (${token.frequency.category})` : 'Unknown'}
-                    </div>
-                    {token.frequency.shouldHideFurigana && (
-                      <div style={{ color: '#ff6b35', fontSize: '0.8em', marginTop: '2px' }}>
-                        🚫 Furigana Hidden
-                      </div>
-                    )}
+                {hasExpression && token.expressionNote && (
+                  <div style={{ marginBottom: '6px', color: '#bdbdbd', fontSize: '0.82em' }}>
+                    {token.expressionNote}
                   </div>
                 )}
 
@@ -1797,35 +1981,22 @@ export default function ImportPage() {
               const isProcessed = processedSentences[sentenceIndex];
               const hasRemoteTranslation = isProcessed && isProcessed.processingType === 'remote' &&
                 isProcessed.fullSentenceTranslation && isProcessed.fullSentenceTranslation !== 'N/A';
+              const isCurrentReading = currentReadingPosition === sentenceIndex;
 
               return (
                 <span key={sentenceIndex} className="sentence-container">
-                  {/* Small bookmark mark at the beginning of the sentence */}
-                  {currentReadingPosition === sentenceIndex && (
-                    <span
-                      style={{
-                        color: 'white',
-                        backgroundColor: '#9c27b0',
-                        fontSize: '0.9em',
-                        marginRight: '4px',
-                        fontWeight: 'bold',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                    >
-                      📖
-                    </span>
-                  )}
-
                   {isProcessed ? (
-                    <span data-sentence={sentenceIndex}>
+                    <span
+                      data-sentence={sentenceIndex}
+                      className={isCurrentReading ? 'sentence-current-reading' : ''}
+                    >
                       <TokenizedText tokens={isProcessed.tokens} sentenceIndex={sentenceIndex} />
                     </span>
                   ) : (
-                    <span data-sentence={sentenceIndex} className="sentence-text">
+                    <span
+                      data-sentence={sentenceIndex}
+                      className={`sentence-text ${isCurrentReading ? 'sentence-current-reading' : ''}`}
+                    >
                       {sentence.text}
                     </span>
                   )}
@@ -1836,7 +2007,7 @@ export default function ImportPage() {
                       <button
                         onClick={() => handleSentenceProcess(sentenceIndex, true)}
                         className={`sentence-btn remote ${processingSentences[sentenceIndex] ? 'processing' : ''}`}
-                        title="Process using OpenAI for enhanced translations"
+                        title="Process using Ollama with live streamed response"
                       >
                         R
                       </button>
@@ -1908,6 +2079,71 @@ export default function ImportPage() {
               );
             })}
           </div>
+
+          {ollamaStreamPopup.visible && (
+            <div
+              style={{
+                position: 'fixed',
+                right: '16px',
+                bottom: '16px',
+                width: '420px',
+                maxWidth: 'calc(100vw - 32px)',
+                maxHeight: '55vh',
+                background: '#121212',
+                border: '2px solid #4fc3f7',
+                borderRadius: '10px',
+                boxShadow: '0 12px 36px rgba(0, 0, 0, 0.6)',
+                zIndex: 100000,
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+            >
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderBottom: '1px solid #2a2a2a',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  color: '#f2f2f2',
+                  fontSize: '0.9em'
+                }}
+              >
+                <div>
+                  <strong>Ollama Live</strong> (R: sentence {ollamaStreamPopup.sentenceIndex})
+                  <div style={{ fontSize: '0.8em', color: '#9ecae1' }}>
+                    Status: {ollamaStreamPopup.status}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setOllamaStreamPopup(prev => ({ ...prev, visible: false }))}
+                  style={{
+                    background: 'transparent',
+                    color: '#ccc',
+                    border: 'none',
+                    fontSize: '1.1em',
+                    cursor: 'pointer'
+                  }}
+                  title="Close stream popup"
+                >
+                  ×
+                </button>
+              </div>
+              <div
+                style={{
+                  padding: '12px',
+                  overflowY: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  fontFamily: 'monospace',
+                  fontSize: '0.85em',
+                  color: '#e6e6e6',
+                  lineHeight: '1.4'
+                }}
+              >
+                {ollamaStreamPopup.content || 'Waiting for streamed response...'}
+              </div>
+            </div>
+          )}
 
           {/* Pagination controls */}
           {totalPages > 1 && (

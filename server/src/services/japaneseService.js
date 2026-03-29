@@ -136,27 +136,58 @@ class JapaneseService {
     if (!splitGrammarCompounds) return tokens;
 
     const splitMap = {
-      'にあたる': [
-        { surface_form: 'に', reading: 'ニ', pos: '助詞', pos_detail_1: '格助詞', pos_detail_2: '*', pos_detail_3: '*', basic_form: 'に', pronunciation: 'ニ' },
-        { surface_form: 'あたる', reading: 'アタル', pos: '動詞', pos_detail_1: '自立', pos_detail_2: '*', pos_detail_3: '*', basic_form: 'あたる', pronunciation: 'アタル' }
-      ]
+      'にあたる': {
+        meaning: 'to correspond to; to be equivalent to; to fall under',
+        note: 'Grammar pattern: N にあたる = corresponding to / equivalent to N',
+        parts: [
+          { surface_form: 'に', reading: 'ニ', pos: '助詞', pos_detail_1: '格助詞', pos_detail_2: '*', pos_detail_3: '*', basic_form: 'に', pronunciation: 'ニ' },
+          { surface_form: 'あたる', reading: 'アタル', pos: '動詞', pos_detail_1: '自立', pos_detail_2: '*', pos_detail_3: '*', basic_form: 'あたる', pronunciation: 'アタル' }
+        ]
+      },
+      'について': {
+        meaning: 'about; regarding; concerning',
+        note: 'Grammar pattern: N について = about/regarding N',
+        parts: [
+          { surface_form: 'に', reading: 'ニ', pos: '助詞', pos_detail_1: '格助詞', pos_detail_2: '*', pos_detail_3: '*', basic_form: 'に', pronunciation: 'ニ' },
+          { surface_form: 'ついて', reading: 'ツイテ', pos: '動詞', pos_detail_1: '自立', pos_detail_2: '*', pos_detail_3: '*', basic_form: 'つく', pronunciation: 'ツイテ' }
+        ]
+      },
+      'によって': {
+        meaning: 'by; due to; depending on',
+        note: 'Grammar pattern: N によって = by/depending on N',
+        parts: [
+          { surface_form: 'に', reading: 'ニ', pos: '助詞', pos_detail_1: '格助詞', pos_detail_2: '*', pos_detail_3: '*', basic_form: 'に', pronunciation: 'ニ' },
+          { surface_form: 'よって', reading: 'ヨッテ', pos: '動詞', pos_detail_1: '自立', pos_detail_2: '*', pos_detail_3: '*', basic_form: 'よる', pronunciation: 'ヨッテ' }
+        ]
+      },
+      'に対して': {
+        meaning: 'toward; against; in contrast to',
+        note: 'Grammar pattern: N に対して = toward/against N',
+        parts: [
+          { surface_form: 'に', reading: 'ニ', pos: '助詞', pos_detail_1: '格助詞', pos_detail_2: '*', pos_detail_3: '*', basic_form: 'に', pronunciation: 'ニ' },
+          { surface_form: '対して', reading: 'タイシテ', pos: '動詞', pos_detail_1: '自立', pos_detail_2: '*', pos_detail_3: '*', basic_form: '対する', pronunciation: 'タイシテ' }
+        ]
+      }
     };
 
     const expanded = [];
 
     for (const token of tokens) {
-      const template = splitMap[token.surface_form];
-      if (!template) {
+      const expression = splitMap[token.surface_form];
+      if (!expression) {
         expanded.push(token);
         continue;
       }
 
-      for (const part of template) {
+      for (const part of expression.parts) {
         expanded.push({
           ...token,
           ...part,
           isSplitGrammarToken: true,
-          originalCompound: token.surface_form
+          originalCompound: token.surface_form,
+          expressionSurface: token.surface_form,
+          expressionMeaning: expression.meaning,
+          expressionNote: expression.note
         });
       }
     }

@@ -145,7 +145,12 @@ app.post('/api/import', uploadSingleTxt, async (req, res) => {
             basic_form: token.basic_form,
             reading: japaneseService.katakanaToHiragana(token.reading),
             pos: token.pos,
-            pos_detail: token.pos_detail_1
+            pos_detail: token.pos_detail_1,
+            isSplitGrammarToken: token.isSplitGrammarToken || false,
+            originalCompound: token.originalCompound || null,
+            expressionSurface: token.expressionSurface || null,
+            expressionMeaning: token.expressionMeaning || null,
+            expressionNote: token.expressionNote || null
           }));
 
           // Get dictionary translations for each token
@@ -332,6 +337,7 @@ app.post('/api/import/:filename/save-sentence', (req, res) => {
     bookData.content.processedSentences[sentenceIndex] = sentenceData;
     bookData.settings.verbMergeOptions = verbMergeOptions;
     bookData.metadata.lastUpdated = timestamp;
+    bookData.metadata.processedSentences = Object.keys(bookData.content.processedSentences).length;
     bookData.metadata.originalFilename = req.params.filename;
 
     // Save updated book data
@@ -350,7 +356,7 @@ app.post('/api/import/:filename/save', (req, res) => {
   const filePath = path.join(config.uploadDir, req.params.filename);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
 
-  const { bookname, originalLines, processedData, verbMergeOptions, metadata } = req.body;
+  const { bookname, originalLines, processedData, processedSentences, verbMergeOptions, metadata } = req.body;
   const bookFileName = bookname || req.params.filename;
 
   // Create comprehensive book data structure
@@ -361,6 +367,7 @@ app.post('/api/import/:filename/save', (req, res) => {
       savedAt: metadata?.savedAt || new Date().toISOString(),
       totalLines: metadata?.totalLines || 0,
       processedLines: metadata?.processedLines || 0,
+      processedSentences: metadata?.processedSentences || Object.keys(processedSentences || {}).length,
       version: '1.0'
     },
     settings: {
@@ -369,7 +376,8 @@ app.post('/api/import/:filename/save', (req, res) => {
     },
     content: {
       originalLines: originalLines || [],
-      processedData: processedData || {}
+      processedData: processedData || {},
+      processedSentences: processedSentences || {}
     }
   };
 
@@ -396,8 +404,113 @@ app.post('/api/import/:filename/save', (req, res) => {
   }
 });
 
-// Japanese text processing endpoint with Kuromoji
-app.post('/api/parse', async (req, res) => {
+function buildContextSentences(allSentences = [], sentenceIndex = 0, useRemoteProcessing = true) {
+  const contextSentences = {};
+  if (!useRemoteProcessing || !allSentences || allSentences.length === 0) {
+    return contextSentences;
+  }
+
+  const configuredWindow = Number.isInteger(config.ollama.contextWindow) && config.ollama.contextWindow >= 0
+    ? config.ollama.contextWindow
+    : null;
+  const defaultWindow = config.ollama.contextMode === 'compact' ? 1 : 5;
+  const contextWindow = configuredWindow ?? defaultWindow;
+
+  const previousSentences = [];
+  for (let i = sentenceIndex - 1; i >= 0 && previousSentences.length < contextWindow; i--) {
+    if (allSentences[i] && allSentences[i].trim()) {
+      // Unshift to preserve original text order (oldest to newest)
+      previousSentences.unshift(allSentences[i]);
+    }
+  }
+  if (previousSentences.length > 0) {
+    contextSentences.previousSentences = previousSentences;
+  }
+
+  const nextSentences = [];
+  for (let i = sentenceIndex + 1; i < allSentences.length && nextSentences.length < contextWindow; i++) {
+    if (allSentences[i] && allSentences[i].trim()) {
+      nextSentences.push(allSentences[i]);
+    }
+  }
+  if (nextSentences.length > 0) {
+    contextSentences.nextSentences = nextSentences;
+  }
+
+  return contextSentences;
+}
+
+function normalizeExpressionText(text) {
+  return String(text || '')
+    .replace(/\s+/g, '')
+    .trim();
+}
+
+function findExpressionRange(tokens, expressionSurface) {
+  const normalizedExpression = normalizeExpressionText(expressionSurface);
+  if (!normalizedExpression) return null;
+
+  const normalizedSurfaces = tokens.map((token) =>
+    normalizeExpressionText(token.surface_form || token.surface || '')
+  );
+
+  for (let start = 0; start < normalizedSurfaces.length; start++) {
+    let joined = '';
+    for (let end = start; end < Math.min(normalizedSurfaces.length, start + 8); end++) {
+      joined += normalizedSurfaces[end];
+      if (joined === normalizedExpression) {
+        return { start, end };
+      }
+      if (!normalizedExpression.startsWith(joined)) {
+        break;
+      }
+    }
+  }
+
+  return null;
+}
+
+function applyAiExpressionAnnotations(tokens, expressions = []) {
+  if (!Array.isArray(expressions) || expressions.length === 0) {
+    return tokens;
+  }
+
+  const annotatedTokens = tokens.map((token) => ({ ...token }));
+  let expressionCounter = 0;
+
+  for (const expression of expressions) {
+    const expressionSurface = expression?.surface || expression?.phrase || expression?.expression;
+    const range = findExpressionRange(annotatedTokens, expressionSurface);
+    if (!range) continue;
+
+    expressionCounter += 1;
+    const expressionId = `ai-exp-${expressionCounter}`;
+    const expressionMeaning = expression?.meaning || expression?.translation || null;
+    const expressionNote = expression?.note || expression?.type || null;
+
+    for (let idx = range.start; idx <= range.end; idx++) {
+      // Keep existing handcrafted grammar expression annotations unless they already came from AI.
+      if (annotatedTokens[idx].expressionSurface && annotatedTokens[idx].expressionSource !== 'ai') {
+        continue;
+      }
+
+      annotatedTokens[idx] = {
+        ...annotatedTokens[idx],
+        expressionSurface: expressionSurface || annotatedTokens[idx].expressionSurface || null,
+        expressionMeaning: expressionMeaning || annotatedTokens[idx].expressionMeaning || null,
+        expressionNote: expressionNote || annotatedTokens[idx].expressionNote || null,
+        expressionId,
+        expressionTokenIndex: idx - range.start,
+        expressionTokenLength: range.end - range.start + 1,
+        expressionSource: 'ai'
+      };
+    }
+  }
+
+  return annotatedTokens;
+}
+
+async function processTextAnalysis(payload, onOllamaChunk = null) {
   const {
     text,
     sentenceIndex,
@@ -405,210 +518,253 @@ app.post('/api/parse', async (req, res) => {
     allSentences = [],
     useRemoteProcessing = true,
     frequencySettings = {}
-  } = req.body;
+  } = payload;
 
-  if (!text) {
+  const contextSentences = buildContextSentences(allSentences, sentenceIndex, useRemoteProcessing);
+  let result;
+
+  if (japaneseService.tokenizer) {
+    const rawTokens = japaneseService.tokenize(text);
+    const grammarSplitTokens = japaneseService.splitGrammarCompoundTokens(rawTokens, verbMergeOptions);
+
+    const tokensAfterPunctuation = verbMergeOptions.mergePunctuation !== false
+      ? japaneseService.mergePunctuationTokens(grammarSplitTokens)
+      : grammarSplitTokens;
+
+    let tokens;
+    if (verbMergeOptions.useCompoundDetection) {
+      const compoundTokens = japaneseService.detectCompoundVerbs(tokensAfterPunctuation);
+      tokens = japaneseService.mergeVerbTokens(compoundTokens, verbMergeOptions);
+    } else {
+      tokens = japaneseService.mergeVerbTokens(tokensAfterPunctuation, verbMergeOptions);
+    }
+
+    const words = tokens.filter(token =>
+      token.pos === '名詞' || token.pos === '動詞' || token.pos === '形容詞' || token.pos === '副詞'
+    );
+    const nouns = tokens.filter(token => token.pos === '名詞');
+    const verbs = tokens.filter(token => token.pos === '動詞');
+
+    const basicTokens = tokens.map(token => ({
+      surface_form: token.surface_form,
+      basic_form: token.basic_form,
+      surface: token.surface_form,
+      reading: japaneseService.katakanaToHiragana(token.reading),
+      pos: token.pos,
+      pos_detail: token.pos_detail_1,
+      isSplitGrammarToken: token.isSplitGrammarToken || false,
+      originalCompound: token.originalCompound || null,
+      expressionSurface: token.expressionSurface || null,
+      expressionMeaning: token.expressionMeaning || null,
+      expressionNote: token.expressionNote || null
+    }));
+
+    let ollamaAnalysis = null;
+    if (useRemoteProcessing) {
+      try {
+        ollamaAnalysis = await ollamaService.getAnalysis(
+          text,
+          basicTokens,
+          contextSentences,
+          undefined,
+          onOllamaChunk
+        );
+      } catch (ollamaError) {
+        // Continue with local dictionary data if Ollama fails
+      }
+    }
+
+    let fullLineTranslation = 'N/A';
+    let tokenAnalysisData = [];
+
+    if (ollamaAnalysis) {
+      if (ollamaAnalysis.fullLineTranslation) {
+        fullLineTranslation = ollamaAnalysis.fullLineTranslation;
+        tokenAnalysisData = ollamaAnalysis.tokens || [];
+      } else if (Array.isArray(ollamaAnalysis)) {
+        tokenAnalysisData = ollamaAnalysis;
+      }
+    }
+
+    const enhancedTokens = await Promise.all(basicTokens.map(async (token) => {
+      const aiData = tokenAnalysisData.find(ai => ai.surface === token.surface_form) || {};
+
+      let dictLookup = null;
+      if (token.pos !== '記号') {
+        dictLookup = await japaneseService.lookupInJMDict(token.surface_form, token.reading);
+      }
+
+      let translation = 'N/A';
+      if (useRemoteProcessing) {
+        translation = aiData.translation || 'N/A';
+        if (translation === 'N/A' && dictLookup && dictLookup.meanings) {
+          if (typeof dictLookup.meanings === 'string') {
+            translation = dictLookup.meanings;
+          } else if (Array.isArray(dictLookup.meanings)) {
+            translation = dictLookup.meanings.join('; ');
+          } else {
+            translation = String(dictLookup.meanings);
+          }
+        }
+      } else if (dictLookup && dictLookup.meanings) {
+        if (typeof dictLookup.meanings === 'string') {
+          translation = dictLookup.meanings;
+        } else if (Array.isArray(dictLookup.meanings)) {
+          translation = dictLookup.meanings.join('; ');
+        } else {
+          translation = String(dictLookup.meanings);
+        }
+      }
+
+      return {
+        ...token,
+        translation: translation,
+        contextualMeaning: aiData.contextualMeaning || 'N/A',
+        grammaticalRole: aiData.grammaticalRole || token.pos,
+        dictionarySource: dictLookup ? dictLookup.source : null
+      };
+    }));
+
+    const aiExpressions = Array.isArray(ollamaAnalysis?.expressions) ? ollamaAnalysis.expressions : [];
+    const expressionAnnotatedTokens = applyAiExpressionAnnotations(enhancedTokens, aiExpressions);
+    const tokensWithFrequency = japaneseService.enhanceTokensWithFrequency(expressionAnnotatedTokens, frequencySettings);
+    const frequencyStats = japaneseService.getTokenFrequencyStats(tokensWithFrequency);
+
+    const analysisStatus = useRemoteProcessing
+      ? (ollamaAnalysis ? 'Processed with AI translations' : 'Processed with dictionary only (AI unavailable)')
+      : 'Processed with local dictionary';
+
+    result = {
+      result: analysisStatus,
+      processed: true,
+      originalText: text,
+      sentenceIndex: sentenceIndex,
+      fullSentenceTranslation: fullLineTranslation,
+      analysis: {
+        totalTokens: tokens.length,
+        words: words.length,
+        nouns: nouns.length,
+        verbs: verbs.length,
+        characters: text.length,
+        tokens: tokensWithFrequency,
+        hasAIAnalysis: !!ollamaAnalysis,
+        frequencyStats: frequencyStats
+      }
+    };
+  } else {
+    const wordCount = text.trim().split(/\s+/).length;
+    const charCount = text.length;
+
+    result = {
+      result: `Basic analysis - Words: ${wordCount}, Characters: ${charCount} (Kuromoji not ready)`,
+      processed: true,
+      originalText: text,
+      sentenceIndex: sentenceIndex
+    };
+  }
+
+  return result;
+}
+
+// Japanese text processing endpoint with Kuromoji
+app.post('/api/parse', async (req, res) => {
+  const payload = {
+    text: req.body.text,
+    sentenceIndex: req.body.sentenceIndex,
+    verbMergeOptions: req.body.verbMergeOptions || {},
+    allSentences: req.body.allSentences || [],
+    useRemoteProcessing: req.body.useRemoteProcessing !== false,
+    frequencySettings: req.body.frequencySettings || {}
+  };
+
+  if (!payload.text) {
     return res.status(400).json({ error: 'No text provided for processing' });
   }
 
-  // Prepare context sentences for Ollama (only if using remote processing)
-  const contextSentences = {};
-  if (useRemoteProcessing && allSentences && allSentences.length > 0) {
-    // Get 5 sentences before
-    const previousSentences = [];
-    for (let i = Math.max(0, sentenceIndex - 5); i < sentenceIndex; i++) {
-      if (allSentences[i] && allSentences[i].trim()) {
-        previousSentences.push(allSentences[i]);
-      }
-    }
-    if (previousSentences.length > 0) {
-      contextSentences.previousSentences = previousSentences;
-    }
-
-    // Get 5 sentences after
-    const nextSentences = [];
-    for (let i = sentenceIndex + 1; i <= Math.min(allSentences.length - 1, sentenceIndex + 5); i++) {
-      if (allSentences[i] && allSentences[i].trim()) {
-        nextSentences.push(allSentences[i]);
-      }
-    }
-    if (nextSentences.length > 0) {
-      contextSentences.nextSentences = nextSentences;
-    }
-  }
-
   try {
-    let result;
-
-    if (japaneseService.tokenizer) {
-      // Use Kuromoji for Japanese tokenization
-      const rawTokens = japaneseService.tokenize(text);
-      const grammarSplitTokens = japaneseService.splitGrammarCompoundTokens(rawTokens, verbMergeOptions);
-      //console.log('Raw Kuromoji tokens:', rawTokens.slice(0, 5)); // Log first 5 tokens for debugging
-
-      // Apply punctuation merging first
-      let tokensAfterPunctuation = verbMergeOptions.mergePunctuation !== false ?
-        japaneseService.mergePunctuationTokens(grammarSplitTokens) : grammarSplitTokens;
-
-      // Apply verb merging based on options
-      let tokens;
-      if (verbMergeOptions.useCompoundDetection) {
-        // First detect compound verbs, then apply regular merging
-        const compoundTokens = japaneseService.detectCompoundVerbs(tokensAfterPunctuation);
-        tokens = japaneseService.mergeVerbTokens(compoundTokens, verbMergeOptions);
-      } else {
-        // Just apply regular verb merging
-        tokens = japaneseService.mergeVerbTokens(tokensAfterPunctuation, verbMergeOptions);
-      }
-
-
-      // Count different types of tokens
-      const words = tokens.filter(token =>
-        token.pos === '名詞' || // Nouns
-        token.pos === '動詞' || // Verbs
-        token.pos === '形容詞' || // Adjectives
-        token.pos === '副詞' // Adverbs
-      );
-
-      const nouns = tokens.filter(token => token.pos === '名詞');
-      const verbs = tokens.filter(token => token.pos === '動詞');
-
-      // Prepare basic token data with hiragana readings
-      const basicTokens = tokens.map(token => ({
-        surface_form: token.surface_form,
-        basic_form: token.basic_form,
-        surface: token.surface_form, // Keep for compatibility with Ollama
-        reading: japaneseService.katakanaToHiragana(token.reading),
-        pos: token.pos,
-        pos_detail: token.pos_detail_1
-      }));
-
-      // Get Ollama analysis for enhanced translations and explanations (only if using remote processing)
-      let ollamaAnalysis = null;
-      if (useRemoteProcessing) {
-        try {
-          ollamaAnalysis = await ollamaService.getAnalysis(text, basicTokens, contextSentences);
-        } catch (ollamaError) {
-          // Don't throw the error, just continue with local processing
-        }
-      }
-
-      // Extract full line translation and token data from Ollama response
-      let fullLineTranslation = 'N/A';
-      let tokenAnalysisData = [];
-
-      if (ollamaAnalysis) {
-        if (ollamaAnalysis.fullLineTranslation) {
-          fullLineTranslation = ollamaAnalysis.fullLineTranslation;
-          tokenAnalysisData = ollamaAnalysis.tokens || [];
-        } else if (Array.isArray(ollamaAnalysis)) {
-          // Fallback for old format
-          tokenAnalysisData = ollamaAnalysis;
-        }
-      }
-
-      // Merge Kuromoji, JMDict, and Ollama data
-      const enhancedTokens = await Promise.all(basicTokens.map(async (token, index) => {
-        const aiData = tokenAnalysisData.find(ai => ai.surface === token.surface_form) || {};
-
-        // Skip JMDict lookup for punctuation marks (記号)
-        let dictLookup = null;
-        if (token.pos !== '記号') {
-          dictLookup = await japaneseService.lookupInJMDict(token.surface_form, token.reading);
-        }
-
-        // Debug logging to see what we're getting from dictionary
-        // if (dictLookup) {
-        //   console.log(`[DEBUG] Dictionary lookup for "${token.surface}":`, JSON.stringify(dictLookup, null, 2));
-        // }
-
-        // For local processing, prioritize dictionary, for remote processing prioritize AI
-        let translation = 'N/A';
-        if (useRemoteProcessing) {
-          // Remote processing: prioritize AI translation, fallback to dictionary
-          translation = aiData.translation || 'N/A';
-          if (translation === 'N/A' && dictLookup && dictLookup.meanings) {
-            // Ensure we extract string properly
-            if (typeof dictLookup.meanings === 'string') {
-              translation = dictLookup.meanings;
-            } else if (Array.isArray(dictLookup.meanings)) {
-              translation = dictLookup.meanings.join('; ');
-            } else {
-              translation = String(dictLookup.meanings);
-            }
-          }
-        } else {
-          // Local processing: use dictionary only
-          if (dictLookup && dictLookup.meanings) {
-            // Ensure we extract string properly
-            if (typeof dictLookup.meanings === 'string') {
-              translation = dictLookup.meanings;
-            } else if (Array.isArray(dictLookup.meanings)) {
-              translation = dictLookup.meanings.join('; ');
-            } else {
-              translation = String(dictLookup.meanings);
-            }
-          }
-        }
-
-        return {
-          ...token,
-          translation: translation,
-          contextualMeaning: aiData.contextualMeaning || 'N/A',
-          grammaticalRole: aiData.grammaticalRole || token.pos,
-          // Only include safe dictionary data, not the full object
-          dictionarySource: dictLookup ? dictLookup.source : null
-        };
-      }));
-
-      // Apply frequency-based furigana hiding
-      const tokensWithFrequency = japaneseService.enhanceTokensWithFrequency(enhancedTokens, frequencySettings);
-
-      // Get frequency statistics
-      const frequencyStats = japaneseService.getTokenFrequencyStats(tokensWithFrequency);
-
-      const analysisStatus = useRemoteProcessing
-        ? (ollamaAnalysis ? 'Processed with AI translations' : 'Processed with dictionary only (AI unavailable)')
-        : 'Processed with local dictionary';
-
-      result = {
-        result: analysisStatus,
-        processed: true,
-        originalText: text,
-        sentenceIndex: sentenceIndex,
-        fullSentenceTranslation: fullLineTranslation,
-        analysis: {
-          totalTokens: tokens.length,
-          words: words.length,
-          nouns: nouns.length,
-          verbs: verbs.length,
-          characters: text.length,
-          tokens: tokensWithFrequency,
-          hasAIAnalysis: !!ollamaAnalysis,
-          frequencyStats: frequencyStats
-        }
-      };
-    } else {
-      // Fallback to basic analysis if Kuromoji isn't ready
-      const wordCount = text.trim().split(/\s+/).length;
-      const charCount = text.length;
-
-      result = {
-        result: `Basic analysis - Words: ${wordCount}, Characters: ${charCount} (Kuromoji not ready)`,
-        processed: true,
-        originalText: text,
-        sentenceIndex: sentenceIndex
-      };
-    }
-
+    const result = await processTextAnalysis(payload);
     res.json(result);
-
   } catch (error) {
     console.error('Error processing text:', error);
     res.status(500).json({
       error: 'Failed to process text',
       details: error.message
     });
+  }
+});
+
+// Streaming endpoint for live Ollama output while processing.
+app.post('/api/parse/stream', async (req, res) => {
+  const payload = {
+    text: req.body.text,
+    sentenceIndex: req.body.sentenceIndex,
+    verbMergeOptions: req.body.verbMergeOptions || {},
+    allSentences: req.body.allSentences || [],
+    useRemoteProcessing: req.body.useRemoteProcessing !== false,
+    frequencySettings: req.body.frequencySettings || {}
+  };
+
+  if (!payload.text) {
+    return res.status(400).json({ error: 'No text provided for processing' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+
+  if (req.socket && typeof req.socket.setNoDelay === 'function') {
+    req.socket.setNoDelay(true);
+  }
+
+  const writeEvent = (event, data) => {
+    if (res.writableEnded) return;
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // Keep the connection alive through proxies while Ollama is generating.
+  const keepAliveTimer = setInterval(() => {
+    if (!res.writableEnded) {
+      res.write(': keepalive\n\n');
+    }
+  }, 3000);
+
+  req.on('close', () => {
+    clearInterval(keepAliveTimer);
+  });
+
+  try {
+    writeEvent('status', { message: 'starting' });
+    writeEvent('status', { message: 'analyzing' });
+    const result = await processTextAnalysis(payload, (chunk) => {
+      if (chunk && typeof chunk === 'object') {
+        writeEvent('chunk', {
+          kind: chunk.kind || 'response',
+          content: typeof chunk.content === 'string' ? chunk.content : ''
+        });
+        return;
+      }
+
+      writeEvent('chunk', {
+        kind: 'response',
+        content: chunk == null ? '' : String(chunk)
+      });
+    });
+    writeEvent('final', result);
+    writeEvent('done', { ok: true });
+    clearInterval(keepAliveTimer);
+    res.end();
+  } catch (error) {
+    console.error('Error processing streamed text:', error);
+    writeEvent('error', { message: error.message || 'Failed to process text' });
+    clearInterval(keepAliveTimer);
+    res.end();
   }
 });
 

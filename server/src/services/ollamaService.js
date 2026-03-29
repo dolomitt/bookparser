@@ -1,5 +1,74 @@
 import { config } from '../config/index.js';
 
+const COMPACT_PROMPT_POS = new Set([
+  '名詞',
+  '動詞',
+  '形容詞',
+  '副詞',
+  '連体詞',
+  '接続詞',
+  '助詞',
+  '助動詞'
+]);
+
+function extractJsonObjectsFromBuffer(buffer) {
+  const objects = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let lastConsumed = 0;
+
+  for (let i = 0; i < buffer.length; i++) {
+    const ch = buffer[i];
+
+    if (start === -1) {
+      if (ch === '{') {
+        start = i;
+        depth = 1;
+        inString = false;
+        escaped = false;
+      }
+      continue;
+    }
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === '{') {
+      depth += 1;
+      continue;
+    }
+
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        objects.push(buffer.slice(start, i + 1));
+        lastConsumed = i + 1;
+        start = -1;
+      }
+    }
+  }
+
+  return {
+    objects,
+    remaining: buffer.slice(lastConsumed)
+  };
+}
+
 class OllamaService {
   constructor() {
     this.baseUrl = config.ollama.baseUrl;
@@ -7,6 +76,47 @@ class OllamaService {
     this.timeout = config.ollama.timeout;
     this.maxRetries = config.ollama.maxRetries;
     this.maxTokens = config.ollama.maxTokens;
+    this.contextMode = config.ollama.contextMode === 'compact' ? 'compact' : 'full';
+    const thinkEnv = process.env.BOOKPARSER_OLLAMA_THINK;
+    this.think = thinkEnv !== undefined
+      ? (thinkEnv === 'true' ? true : thinkEnv === 'false' ? false : thinkEnv)
+      : false;
+  }
+
+  getTokenSurface(token) {
+    return (token?.surface || token?.surface_form || '').trim();
+  }
+
+  isCompactPromptToken(token) {
+    const surface = this.getTokenSurface(token);
+    if (!surface) return false;
+    if (token?.pos === '記号') return false;
+    if (token?.isSplitGrammarToken || token?.expressionSurface) return true;
+    return COMPACT_PROMPT_POS.has(token?.pos);
+  }
+
+  buildPromptTokens(tokens) {
+    if (this.contextMode !== 'compact') {
+      return tokens;
+    }
+
+    const filtered = tokens.filter((token) => this.isCompactPromptToken(token));
+    const seenSurfaces = new Set();
+    const deduped = [];
+
+    for (const token of filtered) {
+      const surface = this.getTokenSurface(token);
+      if (seenSurfaces.has(surface)) continue;
+      seenSurfaces.add(surface);
+      deduped.push(token);
+    }
+
+    if (deduped.length > 0) {
+      return deduped;
+    }
+
+    // Fallback to original tokens to avoid sending an empty token list.
+    return tokens;
   }
 
   // Test Ollama connection and list available models
@@ -35,7 +145,7 @@ class OllamaService {
   }
 
   // Get Ollama analysis for tokens with retry logic
-  async getAnalysis(originalText, tokens, contextLines = {}, maxRetries = this.maxRetries) {
+  async getAnalysis(originalText, tokens, contextLines = {}, maxRetries = this.maxRetries, onChunk = null) {
     console.log('[Ollama] Starting Ollama analysis...');
     console.log('[Ollama] Original text:', originalText);
     console.log('[Ollama] Number of tokens:', tokens.length);
@@ -50,8 +160,14 @@ class OllamaService {
           await new Promise(resolve => setTimeout(resolve, waitTime));
         }
 
-        const tokenList = tokens.map(token => token.surface).join(' | ');
+        const promptTokens = this.buildPromptTokens(tokens);
+        const tokenList = promptTokens.map((token) => this.getTokenSurface(token)).filter(Boolean).join(' | ');
         console.log('[Ollama] Token list for analysis:', tokenList);
+        if (this.contextMode === 'compact') {
+          console.log(
+            `[Ollama] Compact mode: prompt tokens reduced from ${tokens.length} to ${promptTokens.length}`
+          );
+        }
 
         // Build context with previous and next sentences (up to 5 each)
         let contextText = '';
@@ -74,9 +190,10 @@ class OllamaService {
         // Use fixed token limit for response
         const fixedNumPredict = this.maxTokens;
 
-        console.log(`[Ollama] Using fixed response limit: ${fixedNumPredict} tokens for ${tokens.length} input tokens`);
+        console.log(`[Ollama] Using fixed response limit: ${fixedNumPredict} tokens for ${promptTokens.length} prompt tokens`);
 
-        const prompt = `Translate this Japanese sentence and analyze each token.
+        const prompt = `Translate this Japanese sentence and analyze listed tokens.
+Identify fixed expressions/set phrases (if any) and include them.
 
 ${contextText}
 
@@ -92,6 +209,13 @@ Return JSON only:
       "contextualMeaning": "context explanation",
       "grammaticalRole": "grammar role"
     }
+  ],
+  "expressions": [
+    {
+      "surface": "set phrase or multi-token expression from sentence",
+      "meaning": "natural English meaning",
+      "note": "brief grammar/set-phrase note"
+    }
   ]
 }`;
 
@@ -105,6 +229,8 @@ Return JSON only:
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), config.ollama.timeout);
 
+        const shouldStream = typeof onChunk === 'function';
+
         const response = await fetch(`${this.baseUrl}/api/generate`, {
           method: 'POST',
           headers: {
@@ -113,13 +239,14 @@ Return JSON only:
           body: JSON.stringify({
             model: this.model,
             prompt: prompt,
-            stream: false,
+            stream: shouldStream,
+            format: 'json',
+            think: this.think,
             options: {
               temperature: 0.3,
               top_p: 0.9,
               top_k: 40,
-              num_predict: fixedNumPredict, // Fixed response length
-              stop: ["}\r\n"] // Stop after JSON object closes with newline
+              num_predict: fixedNumPredict // Fixed response length
             }
           }),
           signal: controller.signal
@@ -135,13 +262,87 @@ Return JSON only:
           throw new Error(`Ollama API error: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
-        const data = await response.json();
         const endTime = Date.now();
 
         console.log('[Ollama] ✅ Received response from Ollama API');
         console.log('[Ollama] Response time:', endTime - startTime, 'ms');
 
-        const responseText = data.response;
+        let responseText = '';
+        if (shouldStream) {
+          if (!response.body) {
+            throw new Error('Ollama streaming response body is empty');
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let pending = '';
+          let streamedChunkCount = 0;
+          let streamedThinkingChunkCount = 0;
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            pending += decoder.decode(value, { stream: true });
+            const extracted = extractJsonObjectsFromBuffer(pending);
+            pending = extracted.remaining;
+
+            for (const objectJson of extracted.objects) {
+              try {
+                const parsedChunk = JSON.parse(objectJson);
+                const chunkText = typeof parsedChunk.response === 'string' ? parsedChunk.response : '';
+                const thinkingText = typeof parsedChunk.thinking === 'string' ? parsedChunk.thinking : '';
+
+                if (thinkingText.length > 0) {
+                  onChunk({ kind: 'thinking', content: thinkingText });
+                  streamedThinkingChunkCount += 1;
+                }
+
+                if (chunkText.length > 0) {
+                  responseText += chunkText;
+                  onChunk({ kind: 'response', content: chunkText });
+                  streamedChunkCount += 1;
+                }
+              } catch (streamParseError) {
+                console.error('[Ollama] Failed to parse streaming chunk:', streamParseError);
+              }
+            }
+          }
+
+          pending += decoder.decode();
+          const tailExtracted = extractJsonObjectsFromBuffer(pending);
+          for (const objectJson of tailExtracted.objects) {
+            try {
+              const parsedTail = JSON.parse(objectJson);
+              const chunkText = typeof parsedTail.response === 'string' ? parsedTail.response : '';
+              const thinkingText = typeof parsedTail.thinking === 'string' ? parsedTail.thinking : '';
+
+              if (thinkingText.length > 0) {
+                onChunk({ kind: 'thinking', content: thinkingText });
+                streamedThinkingChunkCount += 1;
+              }
+
+              if (chunkText.length > 0) {
+                responseText += chunkText;
+                onChunk({ kind: 'response', content: chunkText });
+                streamedChunkCount += 1;
+              }
+            } catch (tailParseError) {
+              console.error('[Ollama] Failed to parse streaming tail chunk:', tailParseError);
+            }
+          }
+
+          if (tailExtracted.remaining.trim()) {
+            console.log('[Ollama] Unparsed streaming tail length:', tailExtracted.remaining.trim().length);
+          }
+
+          console.log('[Ollama] Streamed chunk count:', streamedChunkCount);
+          console.log('[Ollama] Streamed thinking chunk count:', streamedThinkingChunkCount);
+        } else {
+          const data = await response.json();
+          responseText = data.response;
+        }
+
         console.log('[Ollama] Raw response content:', responseText);
 
         // Try to parse JSON response - handle cases where there's text before the JSON

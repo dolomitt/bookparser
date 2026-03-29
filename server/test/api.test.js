@@ -34,7 +34,8 @@ before(async () => {
   process.env.PORT = '0';
 
   const serverModule = await import('../src/index.js');
-  app = serverModule.app;
+  app = serverModule.app || serverModule.default;
+  assert.ok(app, 'Express app export was not found from server/src/index.js');
 });
 
 beforeEach(() => {
@@ -102,4 +103,69 @@ test('POST /api/import accepts txt uploads', async () => {
   assert.equal(response.body.originalname, 'sample.txt');
   assert.equal(response.body.autoProcessed, true);
   assert.ok(typeof response.body.filename === 'string' && response.body.filename.length > 0);
+});
+
+test('POST /api/import/:filename/save-sentence persists processed sentence for reload', async () => {
+  const filename = 'persist.txt';
+  fs.writeFileSync(path.join(uploadsDir, filename), 'これはテストです。', 'utf-8');
+
+  const sentenceData = {
+    tokens: [{ surface: 'これは', reading: 'これは', translation: 'this' }],
+    fullSentenceTranslation: 'This is a test.',
+    processingType: 'remote'
+  };
+
+  const saveResponse = await request(app)
+    .post(`/api/import/${filename}/save-sentence`)
+    .send({
+      sentenceIndex: 0,
+      sentenceData,
+      verbMergeOptions: { mergePunctuation: true },
+      timestamp: new Date().toISOString()
+    });
+
+  assert.equal(saveResponse.status, 200);
+  assert.equal(saveResponse.body.success, true);
+
+  const loadResponse = await request(app).get(`/api/import/${filename}`);
+  assert.equal(loadResponse.status, 200);
+  assert.ok(loadResponse.body.existingProcessedSentences);
+  assert.deepEqual(loadResponse.body.existingProcessedSentences['0'], sentenceData);
+});
+
+test('POST /api/import/:filename/save stores processedSentences in .book file', async () => {
+  const filename = 'save-all.txt';
+  fs.writeFileSync(path.join(uploadsDir, filename), '保存テスト。', 'utf-8');
+
+  const processedSentences = {
+    0: {
+      tokens: [{ surface: '保存', translation: 'save' }],
+      fullSentenceTranslation: 'Save test.',
+      processingType: 'remote'
+    }
+  };
+
+  const saveResponse = await request(app)
+    .post(`/api/import/${filename}/save`)
+    .send({
+      bookname: filename,
+      originalLines: ['保存テスト。'],
+      processedData: {},
+      processedSentences,
+      verbMergeOptions: { mergePunctuation: true },
+      metadata: {
+        savedAt: new Date().toISOString(),
+        totalLines: 1,
+        processedLines: 0,
+        processedSentences: 1
+      }
+    });
+
+  assert.equal(saveResponse.status, 200);
+  const bookFilePath = path.join(booksDir, `${filename}.book`);
+  assert.ok(fs.existsSync(bookFilePath));
+
+  const bookJson = JSON.parse(fs.readFileSync(bookFilePath, 'utf-8'));
+  assert.deepEqual(bookJson.content.processedSentences, processedSentences);
+  assert.equal(bookJson.metadata.processedSentences, 1);
 });
