@@ -12,7 +12,12 @@ export default function MainPage() {
 
   // Separate .book files from regular text files
   const processedBooks = books.filter(book => book.endsWith('.book'));
-  const regularBooks = books.filter(book => !book.endsWith('.book') && book !== '.gitkeep');
+  const processedBaseNames = new Set(processedBooks.map((book) => book.replace(/\.book$/, '')));
+  const regularBooks = books.filter((book) =>
+    !book.endsWith('.book') &&
+    book !== '.gitkeep' &&
+    !processedBaseNames.has(book)
+  );
 
   return (
     <div className="home-container">
@@ -64,7 +69,7 @@ export default function MainPage() {
                 return (
                   <Link
                     key={book}
-                    to={`/read/${encodeURIComponent(book)}`}
+                    to={`/import/${encodeURIComponent(displayName)}?view=book`}
                     className="book-card processed"
                   >
                     <div className="book-icon">🔍</div>

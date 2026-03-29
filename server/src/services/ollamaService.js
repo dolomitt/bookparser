@@ -216,6 +216,12 @@ Return JSON only:
       "meaning": "natural English meaning",
       "note": "brief grammar/set-phrase note"
     }
+  ],
+  "sentenceNotes": [
+    {
+      "type": "grammar|nuance|context",
+      "text": "short note explaining one important point in this sentence"
+    }
   ]
 }`;
 

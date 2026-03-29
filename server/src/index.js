@@ -89,9 +89,64 @@ app.use('/api/text-to-speech', ttsRouter);
 app.get('/api/imports', (req, res) => {
   fs.readdir(config.uploadDir, (err, files) => {
     if (err) return res.status(500).json({ error: 'Cannot read imports directory' });
-    res.json(files);
+    const pendingImports = files.filter((file) => {
+      if (file === '.gitkeep') return false;
+      const completedBookPath = path.join(config.booksDir, `${file}.book`);
+      return !fs.existsSync(completedBookPath);
+    });
+    res.json(pendingImports);
   });
 });
+
+function loadLinesForImportFilename(filename) {
+  const importTextPath = path.join(config.uploadDir, filename);
+  const booksTextPath = path.join(config.booksDir, filename);
+  const bookJsonPath = path.join(config.booksDir, `${filename}.book`);
+
+  if (fs.existsSync(importTextPath)) {
+    return {
+      lines: fs.readFileSync(importTextPath, 'utf-8').split('\n'),
+      sourceLocation: 'imports'
+    };
+  }
+
+  if (fs.existsSync(booksTextPath)) {
+    return {
+      lines: fs.readFileSync(booksTextPath, 'utf-8').split('\n'),
+      sourceLocation: 'books'
+    };
+  }
+
+  if (fs.existsSync(bookJsonPath)) {
+    try {
+      const bookData = JSON.parse(fs.readFileSync(bookJsonPath, 'utf-8'));
+      if (Array.isArray(bookData?.content?.originalLines)) {
+        return {
+          lines: bookData.content.originalLines,
+          sourceLocation: 'books'
+        };
+      }
+    } catch (error) {
+      console.error('Error reading .book fallback content:', error);
+    }
+  }
+
+  return null;
+}
+
+function resolveSourceTextPath(filename) {
+  const importTextPath = path.join(config.uploadDir, filename);
+  if (fs.existsSync(importTextPath)) {
+    return importTextPath;
+  }
+
+  const booksTextPath = path.join(config.booksDir, filename);
+  if (fs.existsSync(booksTextPath)) {
+    return booksTextPath;
+  }
+
+  return null;
+}
 
 // Upload book (txt) with automatic local processing
 app.post('/api/import', uploadSingleTxt, async (req, res) => {
@@ -273,18 +328,18 @@ app.post('/api/import', uploadSingleTxt, async (req, res) => {
 
 // Get content of imported file (line by line) with any existing processed data
 app.get('/api/import/:filename', (req, res) => {
-  const filePath = path.join(config.uploadDir, req.params.filename);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
-
-  const lines = fs.readFileSync(filePath, 'utf-8').split('\n');
+  const loadResult = loadLinesForImportFilename(req.params.filename);
+  if (!loadResult) return res.status(404).json({ error: 'File not found' });
+  const { lines, sourceLocation } = loadResult;
 
   // Check if there's a corresponding .book file with processed data
   const bookFilePath = path.join(config.booksDir, `${req.params.filename}.book`);
+  const hasCompletedBook = fs.existsSync(bookFilePath);
   let processedData = {};
   let processedSentences = {};
   let verbMergeOptions = {};
 
-  if (fs.existsSync(bookFilePath)) {
+  if (hasCompletedBook) {
     try {
       const bookData = JSON.parse(fs.readFileSync(bookFilePath, 'utf-8'));
       processedData = bookData.content?.processedData || {};
@@ -300,14 +355,19 @@ app.get('/api/import/:filename', (req, res) => {
     lines,
     existingProcessedData: processedData,
     existingProcessedSentences: processedSentences,
-    existingVerbMergeOptions: verbMergeOptions
+    existingVerbMergeOptions: verbMergeOptions,
+    sourceLocation: sourceLocation,
+    isCompletedBookView: sourceLocation === 'books' || hasCompletedBook
   });
 });
 
 // Save individual processed sentence (for auto-save)
 app.post('/api/import/:filename/save-sentence', (req, res) => {
-  const filePath = path.join(config.uploadDir, req.params.filename);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+  const sourcePath = resolveSourceTextPath(req.params.filename);
+  const existingBookPath = path.join(config.booksDir, `${req.params.filename}.book`);
+  if (!sourcePath && !fs.existsSync(existingBookPath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
 
   const { sentenceIndex, sentenceData, verbMergeOptions, timestamp } = req.body;
   const bookFileName = req.params.filename;
@@ -353,8 +413,10 @@ app.post('/api/import/:filename/save-sentence', (req, res) => {
 
 // Save processed file to books with all analysis data
 app.post('/api/import/:filename/save', (req, res) => {
-  const filePath = path.join(config.uploadDir, req.params.filename);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+  const sourcePath = resolveSourceTextPath(req.params.filename);
+  if (!sourcePath && !Array.isArray(req.body.originalLines)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
 
   const { bookname, originalLines, processedData, processedSentences, verbMergeOptions, metadata } = req.body;
   const bookFileName = bookname || req.params.filename;
@@ -388,7 +450,13 @@ app.post('/api/import/:filename/save', (req, res) => {
 
     // Also save original text file for compatibility
     const txtDestPath = path.join(config.booksDir, bookFileName);
-    fs.copyFileSync(filePath, txtDestPath);
+    if (sourcePath) {
+      if (path.resolve(sourcePath) !== path.resolve(txtDestPath)) {
+        fs.copyFileSync(sourcePath, txtDestPath);
+      }
+    } else if (Array.isArray(originalLines)) {
+      fs.writeFileSync(txtDestPath, originalLines.join('\n'), 'utf-8');
+    }
 
     console.log(`Saved book with processed data: ${jsonDestPath}`);
     console.log(`Book metadata:`, completeBookData.metadata);
@@ -510,6 +578,58 @@ function applyAiExpressionAnnotations(tokens, expressions = []) {
   return annotatedTokens;
 }
 
+function collectSentenceNotes(ollamaAnalysis = null, aiExpressions = [], tokens = []) {
+  const notes = [];
+  const seen = new Set();
+
+  const pushNote = (text, type = 'note') => {
+    const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    notes.push({ type, text: normalized });
+  };
+
+  if (ollamaAnalysis && typeof ollamaAnalysis === 'object') {
+    const rawNotes =
+      ollamaAnalysis.sentenceNotes ??
+      ollamaAnalysis.notes ??
+      ollamaAnalysis.grammarNotes ??
+      [];
+
+    if (Array.isArray(rawNotes)) {
+      for (const note of rawNotes) {
+        if (typeof note === 'string') {
+          pushNote(note, 'note');
+          continue;
+        }
+        pushNote(
+          note?.text || note?.note || note?.explanation || note?.description,
+          note?.type || 'note'
+        );
+      }
+    } else if (typeof rawNotes === 'string') {
+      pushNote(rawNotes, 'note');
+    }
+  }
+
+  for (const expression of aiExpressions || []) {
+    if (!expression?.surface || !expression?.note) continue;
+    pushNote(`${expression.surface}: ${expression.note}`, 'expression');
+  }
+
+  // Fallback notes from token-level expression notes (works even without AI notes).
+  if (notes.length === 0) {
+    for (const token of tokens) {
+      if (!token?.expressionSurface || !token?.expressionNote) continue;
+      pushNote(`${token.expressionSurface}: ${token.expressionNote}`, 'expression');
+    }
+  }
+
+  return notes.slice(0, 4);
+}
+
 async function processTextAnalysis(payload, onOllamaChunk = null) {
   const {
     text,
@@ -627,6 +747,7 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
 
     const aiExpressions = Array.isArray(ollamaAnalysis?.expressions) ? ollamaAnalysis.expressions : [];
     const expressionAnnotatedTokens = applyAiExpressionAnnotations(enhancedTokens, aiExpressions);
+    const sentenceNotes = collectSentenceNotes(ollamaAnalysis, aiExpressions, expressionAnnotatedTokens);
     const tokensWithFrequency = japaneseService.enhanceTokensWithFrequency(expressionAnnotatedTokens, frequencySettings);
     const frequencyStats = japaneseService.getTokenFrequencyStats(tokensWithFrequency);
 
@@ -640,6 +761,7 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
       originalText: text,
       sentenceIndex: sentenceIndex,
       fullSentenceTranslation: fullLineTranslation,
+      sentenceNotes: sentenceNotes,
       analysis: {
         totalTokens: tokens.length,
         words: words.length,
@@ -648,7 +770,8 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
         characters: text.length,
         tokens: tokensWithFrequency,
         hasAIAnalysis: !!ollamaAnalysis,
-        frequencyStats: frequencyStats
+        frequencyStats: frequencyStats,
+        sentenceNotes: sentenceNotes
       }
     };
   } else {

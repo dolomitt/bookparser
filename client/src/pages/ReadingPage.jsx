@@ -31,7 +31,7 @@ export default function ReadingPage() {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    fetch(`/books/${book}`)
+    fetch(`/api/books/${book}`)
       .then(res => res.text())
       .then(text => setLines(text.split('\n')));
 

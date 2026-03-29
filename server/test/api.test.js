@@ -65,6 +65,35 @@ test('GET /api/books returns existing book files', async () => {
   assert.ok(response.body.includes(expectedFile));
 });
 
+test('GET /api/books/:book returns plain text content', async () => {
+  const filename = 'plain.txt';
+  fs.writeFileSync(path.join(booksDir, filename), 'line1\nline2', 'utf-8');
+
+  const response = await request(app).get(`/api/books/${filename}`);
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers['content-type'], /text\/plain/);
+  assert.equal(response.text, 'line1\nline2');
+});
+
+test('GET /api/books/:book returns originalLines for .book files', async () => {
+  const filename = 'sample.book';
+  fs.writeFileSync(
+    path.join(booksDir, filename),
+    JSON.stringify({
+      content: {
+        originalLines: ['a', 'b']
+      }
+    }),
+    'utf-8'
+  );
+
+  const response = await request(app).get(`/api/books/${filename}`);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.text, 'a\nb');
+});
+
 test('GET /api/imports returns files in import directory', async () => {
   const expectedFile = 'queued.txt';
   fs.writeFileSync(path.join(uploadsDir, expectedFile), 'line 1', 'utf-8');
@@ -74,6 +103,65 @@ test('GET /api/imports returns files in import directory', async () => {
   assert.equal(response.status, 200);
   assert.ok(Array.isArray(response.body));
   assert.ok(response.body.includes(expectedFile));
+});
+
+test('GET /api/imports excludes imports that already have completed .book files', async () => {
+  const completedName = 'done.txt';
+  fs.writeFileSync(path.join(uploadsDir, completedName), 'line 1', 'utf-8');
+  fs.writeFileSync(path.join(booksDir, `${completedName}.book`), '{}', 'utf-8');
+
+  const pendingName = 'pending.txt';
+  fs.writeFileSync(path.join(uploadsDir, pendingName), 'line 1', 'utf-8');
+
+  const response = await request(app).get('/api/imports');
+
+  assert.equal(response.status, 200);
+  assert.ok(Array.isArray(response.body));
+  assert.ok(response.body.includes(pendingName));
+  assert.ok(!response.body.includes(completedName));
+});
+
+test('GET /api/import/:filename loads from books directory when import file is missing', async () => {
+  const filename = 'completed.txt';
+  fs.writeFileSync(path.join(booksDir, filename), 'line from books', 'utf-8');
+
+  const response = await request(app).get(`/api/import/${filename}`);
+
+  assert.equal(response.status, 200);
+  assert.ok(Array.isArray(response.body.lines));
+  assert.equal(response.body.lines[0], 'line from books');
+  assert.equal(response.body.isCompletedBookView, true);
+  assert.equal(response.body.sourceLocation, 'books');
+});
+
+test('GET /api/import/:filename marks completed view when .book exists even if import file exists', async () => {
+  const filename = 'both.txt';
+  fs.writeFileSync(path.join(uploadsDir, filename), 'line from imports', 'utf-8');
+  fs.writeFileSync(path.join(booksDir, `${filename}.book`), JSON.stringify({ content: {} }), 'utf-8');
+
+  const response = await request(app).get(`/api/import/${filename}`);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.isCompletedBookView, true);
+});
+
+test('GET /api/import/:filename loads originalLines from .book fallback', async () => {
+  const filename = 'jsononly.txt';
+  fs.writeFileSync(
+    path.join(booksDir, `${filename}.book`),
+    JSON.stringify({
+      content: {
+        originalLines: ['line a', 'line b']
+      }
+    }),
+    'utf-8'
+  );
+
+  const response = await request(app).get(`/api/import/${filename}`);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.lines, ['line a', 'line b']);
+  assert.equal(response.body.isCompletedBookView, true);
 });
 
 test('POST /api/text-to-speech validates required text input', async () => {
@@ -168,4 +256,28 @@ test('POST /api/import/:filename/save stores processedSentences in .book file', 
   const bookJson = JSON.parse(fs.readFileSync(bookFilePath, 'utf-8'));
   assert.deepEqual(bookJson.content.processedSentences, processedSentences);
   assert.equal(bookJson.metadata.processedSentences, 1);
+});
+
+test('POST /api/import/:filename/save-sentence works when only books copy exists', async () => {
+  const filename = 'books-only.txt';
+  fs.writeFileSync(path.join(booksDir, filename), 'books content', 'utf-8');
+
+  const sentenceData = {
+    tokens: [{ surface: '本', translation: 'book' }],
+    fullSentenceTranslation: 'Book.',
+    processingType: 'remote'
+  };
+
+  const response = await request(app)
+    .post(`/api/import/${filename}/save-sentence`)
+    .send({
+      sentenceIndex: 0,
+      sentenceData,
+      verbMergeOptions: {},
+      timestamp: new Date().toISOString()
+    });
+
+  assert.equal(response.status, 200);
+  const stored = JSON.parse(fs.readFileSync(path.join(booksDir, `${filename}.book`), 'utf-8'));
+  assert.deepEqual(stored.content.processedSentences['0'], sentenceData);
 });

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import './ImportPage.css';
 
@@ -27,9 +27,351 @@ const getCookie = (name) => {
   return null;
 };
 
+const isKanjiChar = (char) => {
+  const code = char.charCodeAt(0);
+  return (code >= 0x4e00 && code <= 0x9faf) ||
+    (code >= 0x3400 && code <= 0x4dbf) ||
+    (code >= 0x20000 && code <= 0x2a6df);
+};
+
+const hasKanji = (text) => {
+  return text.split('').some((char) => isKanjiChar(char));
+};
+
+function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBookmark }) {
+  const [activePopup, setActivePopup] = useState(null);
+  const [popupPosition, setPopupPosition] = useState({ x: 0, y: 0 });
+  const [hoveredExpressionId, setHoveredExpressionId] = useState(null);
+  const [hoveredTokenIdx, setHoveredTokenIdx] = useState(null);
+
+  const expressionMetaByToken = React.useMemo(() => {
+    const meta = {};
+    let idx = 0;
+
+    while (idx < tokens.length) {
+      const token = tokens[idx];
+      if (!token?.expressionSurface) {
+        idx += 1;
+        continue;
+      }
+
+      const expressionId = token.expressionId || `expr-${sentenceIndex}-${idx}-${token.expressionSurface}`;
+      const start = idx;
+      let end = idx;
+
+      while (end + 1 < tokens.length) {
+        const nextToken = tokens[end + 1];
+        if (!nextToken?.expressionSurface) break;
+        const nextExpressionId = nextToken.expressionId || expressionId;
+        if (nextExpressionId !== expressionId) break;
+        if (nextToken.expressionSurface !== token.expressionSurface) break;
+        end += 1;
+      }
+
+      for (let i = start; i <= end; i++) {
+        meta[i] = {
+          id: expressionId,
+          surface: token.expressionSurface,
+          start,
+          end
+        };
+      }
+
+      idx = end + 1;
+    }
+
+    return meta;
+  }, [tokens, sentenceIndex]);
+
+  const handleTokenClick = (e, token, tokenIdx) => {
+    console.log('Token clicked:', token, 'Index:', tokenIdx);
+
+    if (token.pos === '記号' || token.surface === '」') {
+      console.log('Skipping punctuation token or closing quote');
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (typeof onBookmark === 'function') {
+      onBookmark(sentenceIndex);
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+
+    let x = rect.left + (rect.width / 2);
+    let y = rect.top - 20;
+
+    const popupWidth = 320;
+
+    if (x - popupWidth / 2 < 10) {
+      x = popupWidth / 2 + 10;
+    } else if (x + popupWidth / 2 > viewportWidth - 10) {
+      x = viewportWidth - popupWidth / 2 - 10;
+    }
+
+    if (y < 10) {
+      y = rect.bottom + 20;
+    }
+
+    console.log('Popup position:', { x, y });
+    console.log('Current activePopup:', activePopup);
+
+    setPopupPosition({ x, y });
+    const newActivePopup = activePopup === `${sentenceIndex}-${tokenIdx}` ? null : `${sentenceIndex}-${tokenIdx}`;
+    console.log('Setting activePopup to:', newActivePopup);
+    setActivePopup(newActivePopup);
+  };
+
+  const closePopup = () => {
+    console.log('Closing popup');
+    setActivePopup(null);
+  };
+
+  React.useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (activePopup !== null && !e.target.closest('.token-popup') && !e.target.closest('[data-token]')) {
+        console.log('Clicking outside popup, closing');
+        closePopup();
+      }
+    };
+
+    if (activePopup !== null) {
+      document.addEventListener('click', handleClickOutside, true);
+      document.addEventListener('touchstart', handleClickOutside, true);
+    }
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside, true);
+      document.removeEventListener('touchstart', handleClickOutside, true);
+    };
+  }, [activePopup]);
+
+  return (
+    <div style={{ display: 'inline', position: 'relative' }}>
+      {tokens.map((token, tokenIdx) => {
+        const isMergedVerb = token.pos === '動詞' && (token.pos_detail === 'compound' || token.pos_detail === 'inflected');
+        const isPunctuation = token.pos === '記号' || token.surface === '」';
+        const shouldHideBasedOnFrequency = token.frequency && token.frequency.shouldHideFurigana;
+        const shouldShowRuby = hasKanji(token.surface) && token.reading && token.reading !== token.surface && !shouldHideBasedOnFrequency;
+        const hasAIData = token.translation && token.translation !== 'N/A';
+
+        let tokenColor = '#f2f2f2';
+        let activeColor;
+
+        if (!isPunctuation) {
+          if (isMergedVerb) {
+            activeColor = hasAIData ? '#4a7c59' : '#2d7d32';
+          } else if (token.pos === '動詞') {
+            activeColor = hasAIData ? '#6b46c1' : '#7c3aed';
+          } else {
+            activeColor = hasAIData ? '#2b6cb0' : '#007bff';
+          }
+        }
+
+        const tokenContent = (
+          <>
+            {shouldShowRuby ? (
+              <ruby style={{ fontSize: 'inherit', pointerEvents: 'none' }}>
+                {token.surface}
+                <rt style={{
+                  fontSize: '0.75em',
+                  color: '#ccc',
+                  fontWeight: 'normal',
+                  pointerEvents: 'none'
+                }}>
+                  {token.reading}
+                </rt>
+              </ruby>
+            ) : (
+              token.surface
+            )}
+          </>
+        );
+
+        const isActive = activePopup === `${sentenceIndex}-${tokenIdx}`;
+        const isBookmarkToken = isCurrentReading && tokenIdx === 0;
+        const expressionMeta = expressionMetaByToken[tokenIdx];
+        const hasExpression = !!expressionMeta;
+        const isExpressionHovered = hasExpression && hoveredExpressionId === expressionMeta.id;
+        const isTokenHovered = hoveredTokenIdx === tokenIdx && !isPunctuation;
+
+        return (
+          <span
+            key={tokenIdx}
+            data-token={`${sentenceIndex}-${tokenIdx}`}
+            style={{
+              display: 'inline-flex',
+              margin: '0px 1px',
+              padding: '2px 3px',
+              backgroundColor: isActive && !isPunctuation
+                ? activeColor
+                : (isBookmarkToken
+                  ? 'rgba(156, 39, 176, 0.18)'
+                  : (isTokenHovered
+                    ? 'rgba(79, 195, 247, 0.22)'
+                    : (hasExpression ? 'rgba(255, 209, 102, 0.12)' : 'transparent'))),
+              color: isActive && !isPunctuation ? 'white' : tokenColor,
+              borderRadius: '2px',
+              cursor: isPunctuation ? 'default' : 'pointer',
+              fontSize: '1.1em',
+              border: 'none',
+              fontWeight: hasExpression ? 600 : 'normal',
+              transition: 'background-color 0.2s ease, color 0.2s ease',
+              minHeight: '28px',
+              minWidth: '16px',
+              alignItems: 'center',
+              justifyContent: 'center',
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              WebkitTouchCallout: 'none',
+              lineHeight: '1.5',
+              textDecoration: 'none',
+              borderTop: '1px solid transparent',
+              borderBottom: '3px solid transparent',
+              borderLeft: '1px solid transparent',
+              borderRight: '1px solid transparent',
+              borderTopLeftRadius: '0',
+              borderBottomLeftRadius: '0',
+              borderTopRightRadius: '0',
+              borderBottomRightRadius: '0',
+              boxShadow: isActive && !isPunctuation
+                ? 'none'
+                : (isBookmarkToken ? 'inset 0 -2px 0 rgba(206, 147, 216, 0.8)' : 'none')
+            }}
+            onClick={(e) => handleTokenClick(e, token, tokenIdx)}
+            onMouseEnter={() => {
+              setHoveredTokenIdx(tokenIdx);
+              if (hasExpression) {
+                setHoveredExpressionId(expressionMeta.id);
+              }
+            }}
+            onMouseLeave={() => {
+              setHoveredTokenIdx((current) => (current === tokenIdx ? null : current));
+              if (hasExpression) {
+                setHoveredExpressionId((current) => (current === expressionMeta.id ? null : current));
+              }
+            }}
+            onTouchStart={(e) => {
+              if (!isPunctuation) {
+                e.preventDefault();
+              }
+            }}
+          >
+            {tokenContent}
+          </span>
+        );
+      })}
+
+      {activePopup !== null && activePopup.startsWith(`${sentenceIndex}-`) && (
+        (() => {
+          const tokenIdx = parseInt(activePopup.split('-')[1]);
+          const token = tokens[tokenIdx];
+          if (!token) return null;
+
+          const hasExpression = !!token.expressionSurface;
+          const contextualMeaning =
+            token.contextualMeaning && token.contextualMeaning !== 'N/A' ? token.contextualMeaning : null;
+          const dictionaryMeaning =
+            token.translation && token.translation !== 'N/A' ? token.translation : null;
+          const primaryMeaning = hasExpression
+            ? (token.expressionMeaning || contextualMeaning || dictionaryMeaning || 'N/A')
+            : (contextualMeaning || dictionaryMeaning || 'N/A');
+          const shouldShowReading = token.reading && token.reading !== token.surface;
+          const expressionLabel = hasExpression
+            ? (token.expressionSource === 'ai' ? 'Set phrase (AI)' : 'Set phrase')
+            : null;
+
+          return (
+            <div
+              className="token-popup"
+              style={{
+                position: 'fixed',
+                left: `${popupPosition.x}px`,
+                bottom: `${window.innerHeight - popupPosition.y}px`,
+                transform: 'translateX(-50%)',
+                backgroundColor: '#1a1a1a',
+                border: '3px solid #4fc3f7',
+                borderRadius: '8px',
+                padding: '16px',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.8)',
+                zIndex: 99999,
+                maxWidth: '320px',
+                minWidth: '220px',
+                fontSize: '0.95em',
+                color: '#f2f2f2',
+                lineHeight: '1.5',
+                pointerEvents: 'auto',
+                display: 'block',
+                visibility: 'visible'
+              }}
+            >
+              <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#4fc3f7' }}>
+                {token.surface}
+              </div>
+
+              {shouldShowReading && (
+                <div style={{ marginBottom: '6px', color: '#ccc', fontSize: '0.85em' }}>
+                  {token.reading}
+                </div>
+              )}
+
+              {hasExpression && (
+                <div style={{ marginBottom: '8px', color: '#ffd166', fontSize: '0.85em' }}>
+                  <strong>{expressionLabel}:</strong> {token.expressionSurface}
+                </div>
+              )}
+
+              {primaryMeaning && primaryMeaning !== 'N/A' && (
+                <div style={{ marginBottom: '6px' }}>
+                  <strong>{hasExpression ? 'Meaning' : 'In this sentence'}:</strong> {primaryMeaning}
+                </div>
+              )}
+
+              {!hasExpression && dictionaryMeaning && contextualMeaning && dictionaryMeaning !== contextualMeaning && (
+                <div style={{ marginBottom: '6px', color: '#bdbdbd', fontSize: '0.82em' }}>
+                  <strong>Base:</strong> {dictionaryMeaning}
+                </div>
+              )}
+
+              {hasExpression && token.expressionNote && (
+                <div style={{ marginBottom: '6px', color: '#bdbdbd', fontSize: '0.82em' }}>
+                  {token.expressionNote}
+                </div>
+              )}
+
+              <button
+                onClick={closePopup}
+                style={{
+                  position: 'absolute',
+                  top: '4px',
+                  right: '4px',
+                  background: 'none',
+                  border: 'none',
+                  color: '#888',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  lineHeight: '1'
+                }}
+              >
+                ×
+              </button>
+            </div>
+          );
+        })()
+      )}
+    </div>
+  );
+}
+
 export default function ImportPage() {
   const { filename } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isBookViewHint = new URLSearchParams(location.search).get('view') === 'book';
   const [lines, setLines] = useState([]);
   const [sentences, setSentences] = useState([]);
   const [file, setFile] = useState(null);
@@ -38,6 +380,9 @@ export default function ImportPage() {
   const [sentenceMessages, setSentenceMessages] = useState({});
   const [processedSentences, setProcessedSentences] = useState({});
   const [processingSentences, setProcessingSentences] = useState({});
+  const [pageAiProcessing, setPageAiProcessing] = useState(false);
+  const [activeSentenceNotes, setActiveSentenceNotes] = useState(null);
+  const [isCompletedBookView, setIsCompletedBookView] = useState(false);
   const [ollamaStreamPopup, setOllamaStreamPopup] = useState({
     visible: false,
     sentenceIndex: null,
@@ -106,6 +451,19 @@ export default function ImportPage() {
 
   // Bookmark state for reading position
   const [currentReadingPosition, setCurrentReadingPosition] = useState(null);
+
+  useEffect(() => {
+    setInitialLoadComplete(false);
+    setIsCompletedBookView(isBookViewHint);
+    setCurrentPage(1);
+    setActiveSentenceNotes(null);
+    setOllamaStreamPopup({
+      visible: false,
+      sentenceIndex: null,
+      status: 'idle',
+      content: ''
+    });
+  }, [filename, isBookViewHint]);
 
   // Load bookmark on initial load
   useEffect(() => {
@@ -190,6 +548,9 @@ export default function ImportPage() {
       console.log('Initial load for:', filename);
       axios.get(`/api/import/${filename}`).then(res => {
         console.log('File data loaded:', res.data);
+        const isImportSource = res.data?.sourceLocation === 'imports';
+        const shouldUseCompletedView = isBookViewHint || (!isImportSource && !!res.data.isCompletedBookView);
+        setIsCompletedBookView(shouldUseCompletedView);
         setLines(res.data.lines);
 
         // Split all lines into sentences
@@ -257,10 +618,11 @@ export default function ImportPage() {
         }
       }).catch(error => {
         console.error('Error loading file data:', error);
+        setIsCompletedBookView(isBookViewHint);
         setInitialLoadComplete(true);
       });
     }
-  }, [filename, initialLoadComplete]);
+  }, [filename, initialLoadComplete, isBookViewHint]);
 
   const handleFileChange = e => setFile(e.target.files[0]);
 
@@ -891,6 +1253,7 @@ export default function ImportPage() {
         const sentenceData = {
           tokens: responseData.analysis.tokens,
           fullSentenceTranslation: responseData.fullSentenceTranslation || 'N/A',
+          sentenceNotes: Array.isArray(responseData.sentenceNotes) ? responseData.sentenceNotes : [],
           processingType: useRemoteProcessing ? 'remote' : 'local'
         };
 
@@ -1204,6 +1567,105 @@ export default function ImportPage() {
     }, 8000);
   };
 
+  const handleRunAiForCurrentPage = async () => {
+    if (pageAiProcessing) return;
+
+    const pageSentenceEntries = paginatedSentences.filter((entry) => !entry.isLineBreak);
+    const totalPageSentences = pageSentenceEntries.length;
+
+    if (totalPageSentences === 0) {
+      setMessage('No sentences on this page to process');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Run AI processing for all ${totalPageSentences} sentences on page ${currentPage}?`
+    );
+    if (!confirmed) return;
+
+    setPageAiProcessing(true);
+    setMessage(`AI processing page ${currentPage}: 0/${totalPageSentences}`);
+
+    let processedCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
+
+    for (let i = 0; i < pageSentenceEntries.length; i++) {
+      const sentenceIndex = pageSentenceEntries[i].originalIndex;
+      const sentence = sentences[sentenceIndex];
+      const existingSentenceData = processedSentences[sentenceIndex];
+
+      if (!sentence || sentence.isLineBreak || !sentence.text?.trim()) {
+        skippedCount++;
+        continue;
+      }
+
+      // Skip already-remote results to save credits/time.
+      if (existingSentenceData?.processingType === 'remote') {
+        skippedCount++;
+        continue;
+      }
+
+      setProcessingSentences((prev) => ({ ...prev, [sentenceIndex]: true }));
+
+      try {
+        const requestData = {
+          text: sentence.text,
+          sentenceIndex: sentenceIndex,
+          verbMergeOptions: verbMergeOptions,
+          allSentences: sentences.map((s) => s.text),
+          useRemoteProcessing: true,
+          frequencySettings: frequencySettings
+        };
+
+        const response = await axios.post('/api/parse', requestData);
+
+        if (response.data.analysis && response.data.analysis.tokens) {
+          const sentenceData = {
+            tokens: response.data.analysis.tokens,
+            fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
+            sentenceNotes: Array.isArray(response.data.sentenceNotes) ? response.data.sentenceNotes : [],
+            processingType: 'remote'
+          };
+
+          setProcessedSentences((prev) => ({ ...prev, [sentenceIndex]: sentenceData }));
+          await autoSave(sentenceIndex, sentenceData);
+          processedCount++;
+        } else {
+          errorCount++;
+        }
+      } catch (error) {
+        console.error(`AI page processing failed for sentence ${sentenceIndex}:`, error);
+        errorCount++;
+      } finally {
+        setProcessingSentences((prev) => {
+          const updated = { ...prev };
+          delete updated[sentenceIndex];
+          return updated;
+        });
+      }
+
+      setMessage(
+        `AI processing page ${currentPage}: ${processedCount + skippedCount + errorCount}/${totalPageSentences}`
+      );
+    }
+
+    if (errorCount > 0) {
+      setMessage(
+        `AI page processing done: ${processedCount} processed, ${skippedCount} skipped, ${errorCount} errors`
+      );
+    } else {
+      setMessage(
+        `AI page processing done: ${processedCount} processed, ${skippedCount} skipped`
+      );
+    }
+
+    setPageAiProcessing(false);
+    setTimeout(() => {
+      setMessage('');
+    }, 6000);
+  };
+
   const handleSave = async () => {
     setMessage('Saving...');
     try {
@@ -1230,338 +1692,53 @@ export default function ImportPage() {
     }
   };
 
-  // Function to check if a character is kanji
-  const isKanji = (char) => {
-    const code = char.charCodeAt(0);
-    return (code >= 0x4e00 && code <= 0x9faf) || // CJK Unified Ideographs
-      (code >= 0x3400 && code <= 0x4dbf) || // CJK Extension A
-      (code >= 0x20000 && code <= 0x2a6df); // CJK Extension B
+  const getSentenceNoteLines = (sentenceData) => {
+    if (!sentenceData) return [];
+    const raw = sentenceData.sentenceNotes || sentenceData.notes || [];
+    if (!Array.isArray(raw)) return [];
+
+    const lines = [];
+    const seen = new Set();
+
+    for (const note of raw) {
+      let text = '';
+      if (typeof note === 'string') {
+        text = note;
+      } else if (note && typeof note === 'object') {
+        text = note.text || note.note || note.explanation || note.description || '';
+      }
+
+      const normalized = String(text).replace(/\s+/g, ' ').trim();
+      if (!normalized) continue;
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(normalized);
+    }
+
+    return lines.slice(0, 4);
   };
 
-  // Function to check if token contains kanji
-  const hasKanji = (text) => {
-    return text.split('').some(char => isKanji(char));
-  };
+  const renderSentenceTextWithBookmark = (text, isCurrentReading) => {
+    if (!isCurrentReading || !text) {
+      return text;
+    }
 
-  // Component to render tokenized text with mobile-friendly popup functionality and ruby text
-  const TokenizedText = ({ tokens, sentenceIndex }) => {
-    const [activePopup, setActivePopup] = useState(null);
-    const [popupPosition, setPopupPosition] = useState({ x: 0, y: 0 });
-    const [hoveredExpressionId, setHoveredExpressionId] = useState(null);
+    const leadingWhitespace = text.match(/^\s*/)?.[0] || '';
+    const content = text.slice(leadingWhitespace.length);
+    if (!content) {
+      return text;
+    }
 
-    const expressionMetaByToken = React.useMemo(() => {
-      const meta = {};
-      let idx = 0;
-
-      while (idx < tokens.length) {
-        const token = tokens[idx];
-        if (!token?.expressionSurface) {
-          idx += 1;
-          continue;
-        }
-
-        const expressionId = token.expressionId || `expr-${sentenceIndex}-${idx}-${token.expressionSurface}`;
-        const start = idx;
-        let end = idx;
-
-        while (end + 1 < tokens.length) {
-          const nextToken = tokens[end + 1];
-          if (!nextToken?.expressionSurface) break;
-          const nextExpressionId = nextToken.expressionId || expressionId;
-          if (nextExpressionId !== expressionId) break;
-          if (nextToken.expressionSurface !== token.expressionSurface) break;
-          end += 1;
-        }
-
-        for (let i = start; i <= end; i++) {
-          meta[i] = {
-            id: expressionId,
-            surface: token.expressionSurface,
-            start,
-            end
-          };
-        }
-
-        idx = end + 1;
-      }
-
-      return meta;
-    }, [tokens, sentenceIndex]);
-
-    const handleTokenClick = (e, token, tokenIdx) => {
-      console.log('Token clicked:', token, 'Index:', tokenIdx);
-
-      if (token.pos === '記号' || token.surface === '」') {
-        console.log('Skipping punctuation token or closing quote');
-        return; // Skip punctuation and closing quotes
-      }
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      // Auto-save bookmark when user clicks on any token
-      saveReadingBookmark(sentenceIndex);
-
-      // Calculate popup position with better viewport handling
-      const rect = e.currentTarget.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-
-      // Calculate initial position - bottom of popup should be 20 pixels above the click
-      let x = rect.left + (rect.width / 2);
-      let y = rect.top - 20; // Position so bottom of popup is 20px above click
-
-      // Adjust for viewport boundaries
-      const popupWidth = 320; // max-width from CSS
-
-      // Keep popup within horizontal bounds
-      if (x - popupWidth / 2 < 10) {
-        x = popupWidth / 2 + 10;
-      } else if (x + popupWidth / 2 > viewportWidth - 10) {
-        x = viewportWidth - popupWidth / 2 - 10;
-      }
-
-      // Keep popup within vertical bounds - if not enough space above, show below
-      if (y < 10) {
-        y = rect.bottom + 20; // Show below token with 20px gap if not enough space above
-      }
-
-      console.log('Popup position:', { x, y });
-      console.log('Current activePopup:', activePopup);
-
-      setPopupPosition({ x, y });
-      const newActivePopup = activePopup === `${sentenceIndex}-${tokenIdx}` ? null : `${sentenceIndex}-${tokenIdx}`;
-      console.log('Setting activePopup to:', newActivePopup);
-      setActivePopup(newActivePopup);
-    };
-
-    const closePopup = () => {
-      console.log('Closing popup');
-      setActivePopup(null);
-    };
-
-    // Close popup when clicking outside
-    React.useEffect(() => {
-      const handleClickOutside = (e) => {
-        if (activePopup !== null && !e.target.closest('.token-popup') && !e.target.closest('[data-token]')) {
-          console.log('Clicking outside popup, closing');
-          closePopup();
-        }
-      };
-
-      if (activePopup !== null) {
-        document.addEventListener('click', handleClickOutside, true);
-        document.addEventListener('touchstart', handleClickOutside, true);
-      }
-
-      return () => {
-        document.removeEventListener('click', handleClickOutside, true);
-        document.removeEventListener('touchstart', handleClickOutside, true);
-      };
-    }, [activePopup]);
+    const firstUnit = content[0];
+    const rest = content.slice(1);
 
     return (
-      <div style={{ display: 'inline', position: 'relative' }}>
-        {tokens.map((token, tokenIdx) => {
-          // Check if this is a merged verb (from server-side processing)
-          const isMergedVerb = token.pos === '動詞' && (token.pos_detail === 'compound' || token.pos_detail === 'inflected');
-          const isPunctuation = token.pos === '記号' || token.surface === '」';
-          // Check if furigana should be hidden based on frequency settings
-          const shouldHideBasedOnFrequency = token.frequency && token.frequency.shouldHideFurigana;
-          const shouldShowRuby = hasKanji(token.surface) && token.reading && token.reading !== token.surface && !shouldHideBasedOnFrequency;
-          const hasAIData = token.translation && token.translation !== 'N/A';
-
-          // Determine token color based on type and AI analysis
-          let tokenColor = '#f2f2f2';
-          let activeColor;
-
-          if (!isPunctuation) {
-            if (isMergedVerb) {
-              activeColor = hasAIData ? '#4a7c59' : '#2d7d32';
-            } else if (token.pos === '動詞') {
-              activeColor = hasAIData ? '#6b46c1' : '#7c3aed';
-            } else {
-              activeColor = hasAIData ? '#2b6cb0' : '#007bff';
-            }
-          }
-
-          const tokenContent = (
-            <>
-              {shouldShowRuby ? (
-                <ruby style={{ fontSize: 'inherit', pointerEvents: 'none' }}>
-                  {token.surface}
-                  <rt style={{
-                    fontSize: '0.75em',
-                    color: '#ccc',
-                    fontWeight: 'normal',
-                    pointerEvents: 'none'
-                  }}>
-                    {token.reading}
-                  </rt>
-                </ruby>
-              ) : (
-                token.surface
-              )}
-            </>
-          );
-
-          const isActive = activePopup === `${sentenceIndex}-${tokenIdx}`;
-          const expressionMeta = expressionMetaByToken[tokenIdx];
-          const hasExpression = !!expressionMeta;
-          const isExpressionHovered = hasExpression && hoveredExpressionId === expressionMeta.id;
-          const isExpressionStart = isExpressionHovered && tokenIdx === expressionMeta.start;
-          const isExpressionEnd = isExpressionHovered && tokenIdx === expressionMeta.end;
-
-          return (
-            <span
-              key={tokenIdx}
-              data-token={`${sentenceIndex}-${tokenIdx}`}
-              style={{
-                display: 'inline-flex',
-                margin: '0px 1px',
-                padding: '2px 3px',
-                backgroundColor: isActive && !isPunctuation ? activeColor : 'transparent',
-                color: isActive && !isPunctuation ? 'white' : tokenColor,
-                borderRadius: '2px',
-                cursor: isPunctuation ? 'default' : 'pointer',
-                fontSize: '1.1em',
-                border: 'none',
-                fontWeight: 'normal',
-                transition: 'background-color 0.2s ease, color 0.2s ease',
-                minHeight: '28px',
-                minWidth: '16px',
-                alignItems: 'center',
-                justifyContent: 'center',
-                userSelect: 'none',
-                WebkitUserSelect: 'none',
-                WebkitTouchCallout: 'none',
-                lineHeight: '1.5'
-                ,
-                textDecoration: hasExpression ? 'underline 1px dashed #ffd166' : 'none',
-                textUnderlineOffset: hasExpression ? '3px' : undefined,
-                borderTop: isExpressionHovered ? '1px solid #ffd166' : '1px solid transparent',
-                borderBottom: isExpressionHovered ? '3px solid #ffd166' : '3px solid transparent',
-                borderLeft: isExpressionStart ? '1px solid #ffd166' : '1px solid transparent',
-                borderRight: isExpressionEnd ? '1px solid #ffd166' : '1px solid transparent',
-                borderTopLeftRadius: isExpressionStart ? '4px' : '0',
-                borderBottomLeftRadius: isExpressionStart ? '4px' : '0',
-                borderTopRightRadius: isExpressionEnd ? '4px' : '0',
-                borderBottomRightRadius: isExpressionEnd ? '4px' : '0',
-                boxShadow: isExpressionHovered ? 'inset 0 -3px 0 rgba(255, 209, 102, 0.35)' : 'none'
-              }}
-              onClick={(e) => handleTokenClick(e, token, tokenIdx)}
-              onMouseEnter={() => {
-                if (hasExpression) {
-                  setHoveredExpressionId(expressionMeta.id);
-                }
-              }}
-              onMouseLeave={() => {
-                if (hasExpression) {
-                  setHoveredExpressionId((current) => (current === expressionMeta.id ? null : current));
-                }
-              }}
-              onTouchStart={(e) => {
-                if (!isPunctuation) {
-                  e.preventDefault();
-                }
-              }}
-            >
-              {tokenContent}
-            </span>
-          );
-        })}
-
-        {/* Token popup for both mobile and desktop */}
-        {activePopup !== null && activePopup.startsWith(`${sentenceIndex}-`) && (
-          (() => {
-            const tokenIdx = parseInt(activePopup.split('-')[1]);
-            const token = tokens[tokenIdx];
-            if (!token) return null;
-
-            const hasExpression = !!token.expressionSurface;
-            const primaryMeaning = hasExpression
-              ? (token.expressionMeaning || token.translation || 'N/A')
-              : (token.translation || token.contextualMeaning || 'N/A');
-            const shouldShowReading = token.reading && token.reading !== token.surface;
-            const expressionLabel = hasExpression
-              ? (token.expressionSource === 'ai' ? 'Set phrase (AI)' : 'Set phrase')
-              : null;
-
-            return (
-              <div
-                className="token-popup"
-                style={{
-                  position: 'fixed',
-                  left: `${popupPosition.x}px`,
-                  bottom: `${window.innerHeight - popupPosition.y}px`,
-                  transform: 'translateX(-50%)',
-                  backgroundColor: '#1a1a1a',
-                  border: '3px solid #4fc3f7',
-                  borderRadius: '8px',
-                  padding: '16px',
-                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.8)',
-                  zIndex: 99999,
-                  maxWidth: '320px',
-                  minWidth: '220px',
-                  fontSize: '0.95em',
-                  color: '#f2f2f2',
-                  lineHeight: '1.5',
-                  pointerEvents: 'auto',
-                  display: 'block',
-                  visibility: 'visible'
-                }}
-              >
-                <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#4fc3f7' }}>
-                  {token.surface}
-                </div>
-
-                {shouldShowReading && (
-                  <div style={{ marginBottom: '6px', color: '#ccc', fontSize: '0.85em' }}>
-                    {token.reading}
-                  </div>
-                )}
-
-                {hasExpression && (
-                  <div style={{ marginBottom: '8px', color: '#ffd166', fontSize: '0.85em' }}>
-                    <strong>{expressionLabel}:</strong> {token.expressionSurface}
-                  </div>
-                )}
-
-                {primaryMeaning && primaryMeaning !== 'N/A' && (
-                  <div style={{ marginBottom: '6px' }}>
-                    <strong>Meaning:</strong> {primaryMeaning}
-                  </div>
-                )}
-
-                {hasExpression && token.expressionNote && (
-                  <div style={{ marginBottom: '6px', color: '#bdbdbd', fontSize: '0.82em' }}>
-                    {token.expressionNote}
-                  </div>
-                )}
-
-                {/* Close button for mobile */}
-                <button
-                  onClick={closePopup}
-                  style={{
-                    position: 'absolute',
-                    top: '4px',
-                    right: '4px',
-                    background: 'none',
-                    border: 'none',
-                    color: '#888',
-                    fontSize: '16px',
-                    cursor: 'pointer',
-                    padding: '4px',
-                    lineHeight: '1'
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            );
-          })()
-        )}
-      </div>
+      <>
+        {leadingWhitespace}
+        <span className="sentence-first-bookmark">{firstUnit}</span>
+        {rest}
+      </>
     );
   };
 
@@ -1639,14 +1816,29 @@ export default function ImportPage() {
         <div>
           <h3>File: {filename}</h3>
           <div className="controls-section">
-            <button onClick={handleSave} className="btn">Save to Books</button>
-            <button
-              onClick={() => handleReprocessAll()}
-              className="btn"
-              style={{ backgroundColor: '#28a745' }}
-            >
-              Reprocess All Sentences
-            </button>
+            {!isCompletedBookView && (
+              <button onClick={handleSave} className="btn">Save to Books</button>
+            )}
+            {!isCompletedBookView && (
+              <button
+                onClick={handleRunAiForCurrentPage}
+                className="btn"
+                style={{ backgroundColor: '#1d4ed8' }}
+                disabled={pageAiProcessing}
+                title="Run remote AI processing for all sentences on this page"
+              >
+                {pageAiProcessing ? 'AI Page Running...' : `AI This Page (${currentPage})`}
+              </button>
+            )}
+            {!isCompletedBookView && (
+              <button
+                onClick={() => handleReprocessAll()}
+                className="btn"
+                style={{ backgroundColor: '#28a745' }}
+              >
+                Reprocess All Sentences
+              </button>
+            )}
             <button
               onClick={() => setShowTtsOptions(!showTtsOptions)}
               className="btn"
@@ -1978,39 +2170,58 @@ export default function ImportPage() {
                 return <br key={sentenceIndex} />;
               }
 
-              const isProcessed = processedSentences[sentenceIndex];
-              const hasRemoteTranslation = isProcessed && isProcessed.processingType === 'remote' &&
-                isProcessed.fullSentenceTranslation && isProcessed.fullSentenceTranslation !== 'N/A';
-              const isCurrentReading = currentReadingPosition === sentenceIndex;
+          const isProcessed = processedSentences[sentenceIndex];
+          const hasRemoteTranslation = isProcessed && isProcessed.processingType === 'remote' &&
+            isProcessed.fullSentenceTranslation && isProcessed.fullSentenceTranslation !== 'N/A';
+          const isCurrentReading = currentReadingPosition === sentenceIndex;
+          const sentenceNoteLines = getSentenceNoteLines(isProcessed);
+          const hasSentenceNotes = sentenceNoteLines.length > 0;
 
               return (
                 <span key={sentenceIndex} className="sentence-container">
                   {isProcessed ? (
-                    <span
-                      data-sentence={sentenceIndex}
-                      className={isCurrentReading ? 'sentence-current-reading' : ''}
-                    >
-                      <TokenizedText tokens={isProcessed.tokens} sentenceIndex={sentenceIndex} />
+                    <span data-sentence={sentenceIndex}>
+                      <TokenizedText
+                        tokens={isProcessed.tokens}
+                        sentenceIndex={sentenceIndex}
+                        isCurrentReading={isCurrentReading}
+                        onBookmark={saveReadingBookmark}
+                      />
                     </span>
                   ) : (
                     <span
                       data-sentence={sentenceIndex}
-                      className={`sentence-text ${isCurrentReading ? 'sentence-current-reading' : ''}`}
+                      className="sentence-text"
                     >
-                      {sentence.text}
+                      {renderSentenceTextWithBookmark(sentence.text, isCurrentReading)}
                     </span>
                   )}
 
                   {/* Processing buttons - inline after sentence - hide for sentences that are just closing quotes */}
                   {sentence.text.trim() !== '」' && (
                     <span className="sentence-controls">
-                      <button
-                        onClick={() => handleSentenceProcess(sentenceIndex, true)}
-                        className={`sentence-btn remote ${processingSentences[sentenceIndex] ? 'processing' : ''}`}
-                        title="Process using Ollama with live streamed response"
-                      >
-                        R
-                      </button>
+                      {!isCompletedBookView && (
+                        <button
+                          onClick={() => handleSentenceProcess(sentenceIndex, true)}
+                          className={`sentence-btn remote ${processingSentences[sentenceIndex] ? 'processing' : ''}`}
+                          title="Process using Ollama with live streamed response"
+                        >
+                          R
+                        </button>
+                      )}
+
+                      {hasSentenceNotes && (
+                        <button
+                          onClick={() => {
+                            saveReadingBookmark(sentenceIndex);
+                            setActiveSentenceNotes((prev) => (prev === sentenceIndex ? null : sentenceIndex));
+                          }}
+                          className="sentence-btn notes"
+                          title="Show sentence notes"
+                        >
+                          📝
+                        </button>
+                      )}
 
                       {/* Text-to-speech with timing button */}
                       <button
@@ -2068,6 +2279,23 @@ export default function ImportPage() {
                           document.getElementById(`translation-popup-${sentenceIndex}`).style.display = 'none';
                         }}
                         className="translation-popup-close"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+
+                  {hasSentenceNotes && activeSentenceNotes === sentenceIndex && (
+                    <div className="sentence-notes-popup">
+                      <div className="sentence-notes-title">Notes</div>
+                      {sentenceNoteLines.map((line, noteIndex) => (
+                        <div key={`${sentenceIndex}-note-${noteIndex}`} className="sentence-note-line">
+                          {line}
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => setActiveSentenceNotes(null)}
+                        className="sentence-notes-close"
                       >
                         ×
                       </button>
