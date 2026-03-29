@@ -7,6 +7,12 @@ class JapaneseService {
   constructor() {
     this.tokenizer = null;
     this.jmdictDb = null;
+
+    if (process.env.NODE_ENV === 'test' || process.env.SKIP_LANGUAGE_INIT === 'true') {
+      console.log('[JMDict] Skipping language resource initialization');
+      return;
+    }
+
     this.initializeTokenizer();
     this.initializeJMDict();
   }

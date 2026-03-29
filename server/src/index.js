@@ -3,6 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { config, logConfig } from './config/index.js';
 import ollamaService from './services/ollamaService.js';
 import japaneseService from './services/japaneseService.js';
@@ -13,6 +14,9 @@ import ttsRouter from './routes/tts.js';
 logConfig();
 
 const app = express();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const clientDistPath = path.resolve(__dirname, '../../client/dist');
 
 // Ensure directories exist
 [config.uploadDir, config.booksDir].forEach(dir => {
@@ -33,10 +37,49 @@ app.use((req, res, next) => {
 });
 
 // Multer setup for file uploads
-const upload = multer({ dest: config.uploadDir });
+const maxUploadSizeBytes = parseInt(process.env.MAX_UPLOAD_SIZE_BYTES || '', 10) || 10 * 1024 * 1024;
+const upload = multer({
+  dest: config.uploadDir,
+  limits: {
+    fileSize: maxUploadSizeBytes,
+    files: 1
+  },
+  fileFilter: (req, file, cb) => {
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    if (extension !== '.txt') {
+      cb(new Error('Only .txt files are allowed'));
+      return;
+    }
+    cb(null, true);
+  }
+});
+
+function uploadSingleTxt(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          error: `File too large. Maximum size is ${Math.floor(maxUploadSizeBytes / (1024 * 1024))}MB`
+        });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+
+    return res.status(400).json({ error: err.message || 'Invalid upload request' });
+  });
+}
 
 // Test services on startup
-ollamaService.testConnection();
+const shouldRunExternalChecks =
+  process.env.NODE_ENV !== 'test' && process.env.SKIP_EXTERNAL_CHECKS !== 'true';
+
+if (shouldRunExternalChecks) {
+  ollamaService.testConnection();
+} else {
+  console.log('[Startup] Skipping external service checks');
+}
 
 // Mount routes
 app.use('/api/books', booksRouter);
@@ -51,7 +94,7 @@ app.get('/api/imports', (req, res) => {
 });
 
 // Upload book (txt) with automatic local processing
-app.post('/api/import', upload.single('file'), async (req, res) => {
+app.post('/api/import', uploadSingleTxt, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
   const filename = req.file.filename;
@@ -565,6 +608,23 @@ app.post('/api/parse', async (req, res) => {
   }
 });
 
-app.listen(config.port, () => {
-  console.log(`Server running on port ${config.port}`);
-});
+// Serve built React app when available (used in containerized/prod mode).
+if (fs.existsSync(clientDistPath)) {
+  console.log(`[Static] Serving client from: ${clientDistPath}`);
+  app.use(express.static(clientDistPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+} else {
+  console.log('[Static] Client build not found, skipping static file serving');
+}
+
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(config.port, () => {
+    console.log(`Server running on port ${config.port}`);
+  });
+}
+
+export default app;
+export { app };
