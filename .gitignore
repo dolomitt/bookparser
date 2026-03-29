@@ -37,3 +37,4 @@ server/imports
 
 # Misc
 *.log
+server/jmdict-eng-3.6.2.json

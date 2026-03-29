@@ -33,29 +33,12 @@ class JapaneseService {
   async initializeJMDict() {
     try {
       console.log('[JMDict] Initializing JMDict dictionary...');
-      // Try to use existing database first, if that fails, parse from JSON
-      try {
-        console.log('[JMDict] Attempting to load existing database...');
-        const jmdictSetup = await setupJmdict('./jmdict-db', 'jmdict-eng-3.6.1.json');
-        this.jmdictDb = jmdictSetup.db;
-        console.log('[JMDict] ✅ Dictionary initialized from existing database');
-        console.log('[JMDict] Dictionary date:', jmdictSetup.dictDate);
-        console.log('[JMDict] Dictionary version:', jmdictSetup.version);
-      } catch (dbError) {
-        console.log('[JMDict] ⚠️ Existing database not found or corrupted, parsing from JSON file...');
-        console.log('[JMDict] This may take a few minutes...');
-        try {
-          // Parse from JSON file (this will take some time)
-          const jmdictSetup = await setupJmdict('./jmdict-db', 'jmdict-eng-3.6.1.json');
-          this.jmdictDb = jmdictSetup.db;
-          console.log('[JMDict] ✅ Dictionary initialized from JSON file');
-          console.log('[JMDict] Dictionary date:', jmdictSetup.dictDate);
-          console.log('[JMDict] Dictionary version:', jmdictSetup.version);
-        } catch (jsonError) {
-          console.error('[JMDict] ❌ Failed to parse JSON file:', jsonError);
-          throw jsonError;
-        }
-      }
+      console.log('[JMDict] Attempting to open/create dictionary database...');
+      const jmdictSetup = await setupJmdict('./jmdict-db', 'jmdict-eng-3.6.1.json');
+      this.jmdictDb = jmdictSetup.db;
+      console.log('[JMDict] ✅ Dictionary initialized');
+      console.log('[JMDict] Dictionary date:', jmdictSetup.dictDate);
+      console.log('[JMDict] Dictionary version:', jmdictSetup.version);
     } catch (err) {
       console.error('[JMDict] ❌ Failed to initialize JMDict dictionary:', err);
       console.log('[JMDict] Dictionary will be unavailable - using AI translations only');
@@ -144,6 +127,41 @@ class JapaneseService {
       throw new Error('Kuromoji tokenizer not initialized');
     }
     return this.tokenizer.tokenize(text);
+  }
+
+  // Split lexicalized grammar compounds into learner-friendly pieces.
+  // Example: "にあたる" -> "に" + "あたる"
+  splitGrammarCompoundTokens(tokens, options = {}) {
+    const { splitGrammarCompounds = true } = options;
+    if (!splitGrammarCompounds) return tokens;
+
+    const splitMap = {
+      'にあたる': [
+        { surface_form: 'に', reading: 'ニ', pos: '助詞', pos_detail_1: '格助詞', pos_detail_2: '*', pos_detail_3: '*', basic_form: 'に', pronunciation: 'ニ' },
+        { surface_form: 'あたる', reading: 'アタル', pos: '動詞', pos_detail_1: '自立', pos_detail_2: '*', pos_detail_3: '*', basic_form: 'あたる', pronunciation: 'アタル' }
+      ]
+    };
+
+    const expanded = [];
+
+    for (const token of tokens) {
+      const template = splitMap[token.surface_form];
+      if (!template) {
+        expanded.push(token);
+        continue;
+      }
+
+      for (const part of template) {
+        expanded.push({
+          ...token,
+          ...part,
+          isSplitGrammarToken: true,
+          originalCompound: token.surface_form
+        });
+      }
+    }
+
+    return expanded;
   }
 
   // Function to merge punctuation tokens

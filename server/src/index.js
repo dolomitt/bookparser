@@ -124,10 +124,13 @@ app.post('/api/import', uploadSingleTxt, async (req, res) => {
         if (japaneseService.tokenizer) {
           // Use Kuromoji for Japanese tokenization
           const rawTokens = japaneseService.tokenize(line);
+          const grammarSplitTokens = japaneseService.splitGrammarCompoundTokens(rawTokens, {
+            splitGrammarCompounds: true
+          });
 
           // Apply basic token merging
           const tokens = japaneseService.mergeVerbTokens(
-            japaneseService.mergePunctuationTokens(rawTokens),
+            japaneseService.mergePunctuationTokens(grammarSplitTokens),
             {
               mergeAuxiliaryVerbs: true,
               mergeVerbParticles: true,
@@ -440,11 +443,12 @@ app.post('/api/parse', async (req, res) => {
     if (japaneseService.tokenizer) {
       // Use Kuromoji for Japanese tokenization
       const rawTokens = japaneseService.tokenize(text);
+      const grammarSplitTokens = japaneseService.splitGrammarCompoundTokens(rawTokens, verbMergeOptions);
       //console.log('Raw Kuromoji tokens:', rawTokens.slice(0, 5)); // Log first 5 tokens for debugging
 
       // Apply punctuation merging first
       let tokensAfterPunctuation = verbMergeOptions.mergePunctuation !== false ?
-        japaneseService.mergePunctuationTokens(rawTokens) : rawTokens;
+        japaneseService.mergePunctuationTokens(grammarSplitTokens) : grammarSplitTokens;
 
       // Apply verb merging based on options
       let tokens;
