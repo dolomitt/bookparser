@@ -15,6 +15,7 @@ export const config = {
     timeout: parseInt(process.env.BOOKPARSER_OLLAMA_TIMEOUT) || 120000, // 120 seconds default
     maxRetries: parseInt(process.env.BOOKPARSER_OLLAMA_MAX_RETRIES) || 2,
     maxTokens: parseInt(process.env.BOOKPARSER_OLLAMA_MAX_TOKENS) || 10000, // Fixed response token limit
+    summaryMaxTokens: parseInt(process.env.BOOKPARSER_OLLAMA_SUMMARY_MAX_TOKENS) || 16000,
     contextMode: (process.env.BOOKPARSER_CONTEXT_MODE || 'full').toLowerCase(),
     contextWindow: parseInt(process.env.BOOKPARSER_CONTEXT_WINDOW || '', 10),
     get baseUrl() {
@@ -43,6 +44,7 @@ export function logConfig() {
   console.log('BOOKPARSER_OLLAMA_MODEL:', config.ollama.model);
   console.log('BOOKPARSER_OLLAMA_TIMEOUT:', config.ollama.timeout + 'ms');
   console.log('BOOKPARSER_OLLAMA_MAX_RETRIES:', config.ollama.maxRetries);
+  console.log('BOOKPARSER_OLLAMA_SUMMARY_MAX_TOKENS:', config.ollama.summaryMaxTokens);
   console.log('BOOKPARSER_CONTEXT_MODE:', config.ollama.contextMode);
   if (!Number.isNaN(config.ollama.contextWindow)) {
     console.log('BOOKPARSER_CONTEXT_WINDOW:', config.ollama.contextWindow);

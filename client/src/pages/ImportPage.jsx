@@ -383,6 +383,10 @@ export default function ImportPage() {
   const [pageAiProcessing, setPageAiProcessing] = useState(false);
   const [activeSentenceNotes, setActiveSentenceNotes] = useState(null);
   const [isCompletedBookView, setIsCompletedBookView] = useState(false);
+  const [bookSummaryTitle, setBookSummaryTitle] = useState('');
+  const [bookSummarySentences, setBookSummarySentences] = useState([]);
+  const [bookSummaryGeneratedAt, setBookSummaryGeneratedAt] = useState(null);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [ollamaStreamPopup, setOllamaStreamPopup] = useState({
     visible: false,
     sentenceIndex: null,
@@ -455,6 +459,9 @@ export default function ImportPage() {
   useEffect(() => {
     setInitialLoadComplete(false);
     setIsCompletedBookView(isBookViewHint);
+    setBookSummaryTitle('');
+    setBookSummarySentences([]);
+    setBookSummaryGeneratedAt(null);
     setCurrentPage(1);
     setActiveSentenceNotes(null);
     setOllamaStreamPopup({
@@ -551,6 +558,13 @@ export default function ImportPage() {
         const isImportSource = res.data?.sourceLocation === 'imports';
         const shouldUseCompletedView = isBookViewHint || (!isImportSource && !!res.data.isCompletedBookView);
         setIsCompletedBookView(shouldUseCompletedView);
+        setBookSummaryTitle(String(res.data.existingSummaryTitle || '').trim());
+        setBookSummarySentences(
+          Array.isArray(res.data.existingSummarySentences)
+            ? res.data.existingSummarySentences.map((sentence) => String(sentence || '').trim()).filter(Boolean)
+            : []
+        );
+        setBookSummaryGeneratedAt(res.data.existingSummaryGeneratedAt || null);
         setLines(res.data.lines);
 
         // Split all lines into sentences
@@ -619,6 +633,9 @@ export default function ImportPage() {
       }).catch(error => {
         console.error('Error loading file data:', error);
         setIsCompletedBookView(isBookViewHint);
+        setBookSummaryTitle('');
+        setBookSummarySentences([]);
+        setBookSummaryGeneratedAt(null);
         setInitialLoadComplete(true);
       });
     }
@@ -1666,6 +1683,31 @@ export default function ImportPage() {
     }, 6000);
   };
 
+  const handleGenerateSummary = async () => {
+    if (!filename || isGeneratingSummary) return;
+
+    setIsGeneratingSummary(true);
+    setMessage('Generating title + 3-sentence summary with Ollama...');
+
+    try {
+      const response = await axios.post(`/api/import/${filename}/summarize`);
+      const nextSummarySentences = Array.isArray(response.data?.summarySentences)
+        ? response.data.summarySentences.map((sentence) => String(sentence || '').trim()).filter(Boolean)
+        : [];
+      const nextSummaryTitle = String(response.data?.summaryTitle || '').trim();
+
+      setBookSummaryTitle(nextSummaryTitle);
+      setBookSummarySentences(nextSummarySentences);
+      setBookSummaryGeneratedAt(response.data?.generatedAt || new Date().toISOString());
+      setMessage('Summary generated.');
+    } catch (error) {
+      console.error('Summary generation failed:', error);
+      setMessage('Failed to generate summary');
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  };
+
   const handleSave = async () => {
     setMessage('Saving...');
     try {
@@ -1675,6 +1717,9 @@ export default function ImportPage() {
         originalLines: lines,
         processedSentences: processedSentences,
         sentences: sentences,
+        summaryTitle: bookSummaryTitle,
+        summarySentences: bookSummarySentences,
+        summaryGeneratedAt: bookSummaryGeneratedAt,
         verbMergeOptions: verbMergeOptions,
         metadata: {
           totalLines: lines.length,
@@ -1840,6 +1885,15 @@ export default function ImportPage() {
               </button>
             )}
             <button
+              onClick={handleGenerateSummary}
+              className="btn"
+              style={{ backgroundColor: '#7c3aed' }}
+              disabled={isGeneratingSummary}
+              title="Generate a title and 3-sentence summary for this book"
+            >
+              {isGeneratingSummary ? 'Summarizing...' : 'Generate Summary'}
+            </button>
+            <button
               onClick={() => setShowTtsOptions(!showTtsOptions)}
               className="btn"
             >
@@ -1858,6 +1912,27 @@ export default function ImportPage() {
               {showFrequencyOptions ? 'Hide' : 'Show'} Frequency Options
             </button>
           </div>
+
+          {bookSummarySentences.length > 0 && (
+            <div className="import-summary-note">
+              <div className="import-summary-title">Book Summary (3 sentences)</div>
+              {bookSummaryTitle && (
+                <div className="import-summary-potential-title">
+                  Potential title: {bookSummaryTitle}
+                </div>
+              )}
+              <ol className="import-summary-list">
+                {bookSummarySentences.map((sentence, idx) => (
+                  <li key={`summary-${idx}`}>{sentence}</li>
+                ))}
+              </ol>
+              {bookSummaryGeneratedAt && (
+                <div className="import-summary-meta">
+                  Generated: {new Date(bookSummaryGeneratedAt).toLocaleString()}
+                </div>
+              )}
+            </div>
+          )}
 
           {showTtsOptions && (
             <div className="options-panel">

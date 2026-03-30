@@ -408,6 +408,127 @@ Return JSON only:
       }
     }
   }
+
+  extractJsonPayload(responseText) {
+    try {
+      return JSON.parse(responseText);
+    } catch (parseError) {
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw parseError;
+      }
+      return JSON.parse(jsonMatch[0]);
+    }
+  }
+
+  normalizeSummaryTitle(payload) {
+    const rawTitle = payload?.summaryTitle ?? payload?.title ?? payload?.potentialTitle;
+    const normalized = String(rawTitle || '').replace(/\s+/g, ' ').trim();
+    return normalized || null;
+  }
+
+  normalizeSummarySentences(payload, maxSentences = 3) {
+    const fromArray = Array.isArray(payload?.summarySentences)
+      ? payload.summarySentences
+      : [];
+
+    let sentences = fromArray
+      .map((sentence) => String(sentence || '').trim())
+      .filter(Boolean);
+
+    if (sentences.length === 0 && typeof payload?.summary === 'string') {
+      sentences = payload.summary
+        .split(/(?<=[.!?])\s+/)
+        .map((sentence) => sentence.trim())
+        .filter(Boolean);
+    }
+
+    if (sentences.length === 0 && typeof payload?.text === 'string') {
+      sentences = payload.text
+        .split(/(?<=[.!?])\s+/)
+        .map((sentence) => sentence.trim())
+        .filter(Boolean);
+    }
+
+    return sentences.slice(0, maxSentences);
+  }
+
+  async summarizeText(sourceText, maxSentences = 3) {
+    const normalizedInput = String(sourceText || '').trim();
+    if (!normalizedInput) {
+      return [];
+    }
+
+    const maxInputChars = 30000;
+    const clippedInput = normalizedInput.length > maxInputChars
+      ? `${normalizedInput.slice(0, maxInputChars)}\n\n[Truncated due to length]`
+      : normalizedInput;
+
+    const numPredict = Math.max(this.maxTokens, config.ollama.summaryMaxTokens || this.maxTokens);
+    console.log(`[Ollama] Generating summary with num_predict=${numPredict} and input length=${clippedInput.length}`);
+
+    const prompt = `Summarize this Japanese text in exactly ${maxSentences} concise English sentences.
+Focus on key events, themes, and context.
+Return JSON only:
+{
+  "summaryTitle": "A short potential title in English (max 10 words)",
+  "summarySentences": [
+    "Sentence 1",
+    "Sentence 2",
+    "Sentence 3"
+  ]
+}
+
+Text:
+${clippedInput}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), config.ollama.timeout);
+
+    try {
+      const response = await fetch(`${this.baseUrl}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: this.model,
+          prompt,
+          stream: false,
+          format: 'json',
+          think: this.think,
+          options: {
+            temperature: 0.2,
+            top_p: 0.9,
+            top_k: 40,
+            num_predict: numPredict
+          }
+        }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Ollama summary API error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      const payload = this.extractJsonPayload(data.response || '{}');
+      const summaryTitle = this.normalizeSummaryTitle(payload);
+      const summarySentences = this.normalizeSummarySentences(payload, maxSentences);
+
+      if (summarySentences.length === 0) {
+        throw new Error('Ollama summary response did not include summary sentences');
+      }
+
+      return {
+        summaryTitle,
+        summarySentences
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 export default new OllamaService();

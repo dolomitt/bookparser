@@ -164,6 +164,58 @@ test('GET /api/import/:filename loads originalLines from .book fallback', async 
   assert.equal(response.body.isCompletedBookView, true);
 });
 
+test('GET /api/import/:filename returns saved summary from .book file', async () => {
+  const filename = 'summary.txt';
+  fs.writeFileSync(
+    path.join(booksDir, `${filename}.book`),
+    JSON.stringify({
+      content: {
+        originalLines: ['line a', 'line b'],
+        summary: {
+          title: 'Space Launch Preview',
+          sentences: ['One.', 'Two.', 'Three.'],
+          generatedAt: '2026-03-29T00:00:00.000Z'
+        }
+      }
+    }),
+    'utf-8'
+  );
+
+  const response = await request(app).get(`/api/import/${filename}`);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.existingSummaryTitle, 'Space Launch Preview');
+  assert.deepEqual(response.body.existingSummarySentences, ['One.', 'Two.', 'Three.']);
+  assert.equal(response.body.existingSummaryGeneratedAt, '2026-03-29T00:00:00.000Z');
+});
+
+test('POST /api/import/:filename/summarize returns and persists summary', async () => {
+  const filename = 'summarize-me.txt';
+  fs.writeFileSync(path.join(uploadsDir, filename), '最初の文。\n次の文。', 'utf-8');
+
+  const { default: ollamaService } = await import('../src/services/ollamaService.js');
+  const originalSummarizeText = ollamaService.summarizeText;
+  ollamaService.summarizeText = async () => ({
+    summaryTitle: 'Launch Window Update',
+    summarySentences: ['One.', 'Two.', 'Three.']
+  });
+
+  try {
+    const response = await request(app).post(`/api/import/${filename}/summarize`).send({});
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    assert.equal(response.body.summaryTitle, 'Launch Window Update');
+    assert.deepEqual(response.body.summarySentences, ['One.', 'Two.', 'Three.']);
+
+    const bookJson = JSON.parse(fs.readFileSync(path.join(booksDir, `${filename}.book`), 'utf-8'));
+    assert.equal(bookJson.content.summary.title, 'Launch Window Update');
+    assert.deepEqual(bookJson.content.summary.sentences, ['One.', 'Two.', 'Three.']);
+  } finally {
+    ollamaService.summarizeText = originalSummarizeText;
+  }
+});
+
 test('POST /api/text-to-speech validates required text input', async () => {
   const response = await request(app)
     .post('/api/text-to-speech')
@@ -240,6 +292,9 @@ test('POST /api/import/:filename/save stores processedSentences in .book file', 
       originalLines: ['保存テスト。'],
       processedData: {},
       processedSentences,
+      summaryTitle: 'Save Test Summary',
+      summarySentences: ['One.', 'Two.', 'Three.'],
+      summaryGeneratedAt: '2026-03-29T01:02:03.000Z',
       verbMergeOptions: { mergePunctuation: true },
       metadata: {
         savedAt: new Date().toISOString(),
@@ -255,6 +310,9 @@ test('POST /api/import/:filename/save stores processedSentences in .book file', 
 
   const bookJson = JSON.parse(fs.readFileSync(bookFilePath, 'utf-8'));
   assert.deepEqual(bookJson.content.processedSentences, processedSentences);
+  assert.equal(bookJson.content.summary.title, 'Save Test Summary');
+  assert.deepEqual(bookJson.content.summary.sentences, ['One.', 'Two.', 'Three.']);
+  assert.equal(bookJson.content.summary.generatedAt, '2026-03-29T01:02:03.000Z');
   assert.equal(bookJson.metadata.processedSentences, 1);
 });
 

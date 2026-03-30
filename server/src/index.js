@@ -338,6 +338,9 @@ app.get('/api/import/:filename', (req, res) => {
   let processedData = {};
   let processedSentences = {};
   let verbMergeOptions = {};
+  let summaryTitle = null;
+  let summarySentences = [];
+  let summaryGeneratedAt = null;
 
   if (hasCompletedBook) {
     try {
@@ -345,6 +348,14 @@ app.get('/api/import/:filename', (req, res) => {
       processedData = bookData.content?.processedData || {};
       processedSentences = bookData.content?.processedSentences || {};
       verbMergeOptions = bookData.settings?.verbMergeOptions || {};
+      const summaryData = bookData.content?.summary || {};
+      summaryTitle = summaryData.title ? String(summaryData.title).trim() : null;
+      if (Array.isArray(summaryData.sentences)) {
+        summarySentences = summaryData.sentences.map((sentence) => String(sentence || '').trim()).filter(Boolean);
+      } else if (Array.isArray(bookData.content?.summarySentences)) {
+        summarySentences = bookData.content.summarySentences.map((sentence) => String(sentence || '').trim()).filter(Boolean);
+      }
+      summaryGeneratedAt = summaryData.generatedAt || null;
       console.log(`Found existing processed data for ${req.params.filename} with ${Object.keys(processedData).length} processed lines and ${Object.keys(processedSentences).length} processed sentences`);
     } catch (error) {
       console.error('Error reading book file:', error);
@@ -356,9 +367,82 @@ app.get('/api/import/:filename', (req, res) => {
     existingProcessedData: processedData,
     existingProcessedSentences: processedSentences,
     existingVerbMergeOptions: verbMergeOptions,
+    existingSummaryTitle: summaryTitle,
+    existingSummarySentences: summarySentences,
+    existingSummaryGeneratedAt: summaryGeneratedAt,
     sourceLocation: sourceLocation,
     isCompletedBookView: sourceLocation === 'books' || hasCompletedBook
   });
+});
+
+app.post('/api/import/:filename/summarize', async (req, res) => {
+  const loadResult = loadLinesForImportFilename(req.params.filename);
+  if (!loadResult) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  const { lines } = loadResult;
+  const textForSummary = lines
+    .map((line) => String(line || '').trim())
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+
+  if (!textForSummary) {
+    return res.status(400).json({ error: 'No text available to summarize' });
+  }
+
+  try {
+    const summaryResult = await ollamaService.summarizeText(textForSummary, 3);
+    const summaryTitle = Array.isArray(summaryResult)
+      ? null
+      : (String(summaryResult?.summaryTitle || '').trim() || null);
+    const summarySentences = Array.isArray(summaryResult)
+      ? summaryResult.map((sentence) => String(sentence || '').trim()).filter(Boolean).slice(0, 3)
+      : (Array.isArray(summaryResult?.summarySentences)
+        ? summaryResult.summarySentences.map((sentence) => String(sentence || '').trim()).filter(Boolean).slice(0, 3)
+        : []);
+    const generatedAt = new Date().toISOString();
+    const bookFilePath = path.join(config.booksDir, `${req.params.filename}.book`);
+
+    let bookData = {};
+    if (fs.existsSync(bookFilePath)) {
+      try {
+        bookData = JSON.parse(fs.readFileSync(bookFilePath, 'utf-8'));
+      } catch (error) {
+        console.error('Error reading existing book file for summary:', error);
+        bookData = {};
+      }
+    }
+
+    if (!bookData.content) bookData.content = {};
+    if (!Array.isArray(bookData.content.originalLines)) {
+      bookData.content.originalLines = lines;
+    }
+    if (!bookData.metadata) bookData.metadata = {};
+    if (!bookData.settings) bookData.settings = {};
+
+    bookData.content.summary = {
+      title: summaryTitle,
+      sentences: summarySentences,
+      generatedAt
+    };
+    bookData.metadata.lastUpdated = generatedAt;
+    bookData.metadata.summarySentences = summarySentences.length;
+    bookData.metadata.originalFilename = req.params.filename;
+
+    fs.writeFileSync(bookFilePath, JSON.stringify(bookData, null, 2), 'utf-8');
+
+    res.json({
+      success: true,
+      summaryTitle,
+      summarySentences,
+      generatedAt
+    });
+  } catch (error) {
+    console.error('Error generating summary:', error);
+    res.status(500).json({ error: 'Failed to generate summary' });
+  }
 });
 
 // Save individual processed sentence (for auto-save)
@@ -418,8 +502,38 @@ app.post('/api/import/:filename/save', (req, res) => {
     return res.status(404).json({ error: 'File not found' });
   }
 
-  const { bookname, originalLines, processedData, processedSentences, verbMergeOptions, metadata } = req.body;
+  const {
+    bookname,
+    originalLines,
+    processedData,
+    processedSentences,
+    verbMergeOptions,
+    metadata,
+    summaryTitle,
+    summarySentences,
+    summaryGeneratedAt
+  } = req.body;
   const bookFileName = bookname || req.params.filename;
+  const existingBookPath = path.join(config.booksDir, `${bookFileName}.book`);
+  let existingSummary = null;
+
+  if (fs.existsSync(existingBookPath)) {
+    try {
+      const existingBookData = JSON.parse(fs.readFileSync(existingBookPath, 'utf-8'));
+      existingSummary = existingBookData?.content?.summary || null;
+    } catch (error) {
+      console.error('Error reading existing book summary during save:', error);
+    }
+  }
+
+  const normalizedSummarySentences = Array.isArray(summarySentences)
+    ? summarySentences.map((sentence) => String(sentence || '').trim()).filter(Boolean).slice(0, 3)
+    : (Array.isArray(existingSummary?.sentences)
+      ? existingSummary.sentences.map((sentence) => String(sentence || '').trim()).filter(Boolean).slice(0, 3)
+      : []);
+  const normalizedSummaryTitle = String(summaryTitle || existingSummary?.title || '').trim() || null;
+
+  const normalizedSummaryGeneratedAt = summaryGeneratedAt || existingSummary?.generatedAt || null;
 
   // Create comprehensive book data structure
   const completeBookData = {
@@ -439,7 +553,12 @@ app.post('/api/import/:filename/save', (req, res) => {
     content: {
       originalLines: originalLines || [],
       processedData: processedData || {},
-      processedSentences: processedSentences || {}
+      processedSentences: processedSentences || {},
+      summary: {
+        title: normalizedSummaryTitle,
+        sentences: normalizedSummarySentences,
+        generatedAt: normalizedSummaryGeneratedAt
+      }
     }
   };
 
