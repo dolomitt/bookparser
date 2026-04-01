@@ -28,10 +28,13 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Add request logging middleware
+const requestLogsEnabled = process.env.BOOKPARSER_REQUEST_LOGS === 'true';
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  if (req.body && Object.keys(req.body).length > 0) {
-    console.log('Request body keys:', Object.keys(req.body));
+  if (requestLogsEnabled) {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    if (req.body && Object.keys(req.body).length > 0) {
+      console.log('Request body keys:', Object.keys(req.body));
+    }
   }
   next();
 });

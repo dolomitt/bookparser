@@ -84,8 +84,10 @@ class OllamaService {
     this.modelLoadCacheMs = config.ollama.modelLoadCacheMs;
     this.maxRetries = config.ollama.maxRetries;
     this.maxTokens = config.ollama.maxTokens;
+    this.verboseLogs = process.env.BOOKPARSER_VERBOSE_LOGS === 'true';
     this.healthStatusByBaseUrl = new Map();
     this.inFlightByBaseUrl = new Map(this.baseUrls.map((baseUrl) => [baseUrl, 0]));
+    this.serverAvailabilityWaiters = [];
     this.modelLoadedStatusByBaseUrl = new Map();
     this.modelLoadInFlightByBaseUrl = new Map();
     this.contextMode = config.ollama.contextMode === 'compact' ? 'compact' : 'full';
@@ -93,6 +95,12 @@ class OllamaService {
     this.think = thinkEnv !== undefined
       ? (thinkEnv === 'true' ? true : thinkEnv === 'false' ? false : thinkEnv)
       : false;
+  }
+
+  log(...args) {
+    if (this.verboseLogs) {
+      console.log(...args);
+    }
   }
 
   getRotatedBaseUrls() {
@@ -245,7 +253,7 @@ class OllamaService {
 
     const loadPromise = (async () => {
       try {
-        console.log(`[Ollama] Model "${this.model}" is not loaded on ${baseUrl}; warming up before timed request...`);
+        this.log(`[Ollama] Model "${this.model}" is not loaded on ${baseUrl}; warming up before timed request...`);
         await this.warmupModel(baseUrl);
         const isLoadedAfterWarmup = await this.checkModelLoaded(baseUrl, { force: true });
         if (!isLoadedAfterWarmup) {
@@ -320,7 +328,23 @@ class OllamaService {
     }
   }
 
-  reserveLeastLoadedBaseUrl(baseUrls) {
+  waitForServerAvailability() {
+    return new Promise((resolve) => {
+      this.serverAvailabilityWaiters.push(resolve);
+    });
+  }
+
+  notifyServerAvailability() {
+    if (this.serverAvailabilityWaiters.length === 0) {
+      return;
+    }
+    const waiters = this.serverAvailabilityWaiters.splice(0, this.serverAvailabilityWaiters.length);
+    for (const resolve of waiters) {
+      resolve();
+    }
+  }
+
+  async reserveLeastLoadedBaseUrl(baseUrls) {
     const candidates = Array.from(new Set(baseUrls || []))
       .filter(Boolean)
       .filter((baseUrl) => this.inFlightByBaseUrl.has(baseUrl));
@@ -329,19 +353,26 @@ class OllamaService {
       return null;
     }
 
-    let selected = candidates[0];
-    let selectedLoad = this.inFlightByBaseUrl.get(selected) || 0;
+    while (true) {
+      let selected = candidates[0];
+      let selectedLoad = this.inFlightByBaseUrl.get(selected) || 0;
 
-    for (const baseUrl of candidates) {
-      const load = this.inFlightByBaseUrl.get(baseUrl) || 0;
-      if (load < selectedLoad) {
-        selected = baseUrl;
-        selectedLoad = load;
+      for (const baseUrl of candidates) {
+        const load = this.inFlightByBaseUrl.get(baseUrl) || 0;
+        if (load < selectedLoad) {
+          selected = baseUrl;
+          selectedLoad = load;
+        }
       }
-    }
 
-    this.inFlightByBaseUrl.set(selected, selectedLoad + 1);
-    return selected;
+      // Strict guard: at most one in-flight request per server.
+      if (selectedLoad === 0) {
+        this.inFlightByBaseUrl.set(selected, 1);
+        return selected;
+      }
+
+      await this.waitForServerAvailability();
+    }
   }
 
   releaseReservedBaseUrl(baseUrl) {
@@ -349,7 +380,11 @@ class OllamaService {
       return;
     }
     const current = this.inFlightByBaseUrl.get(baseUrl) || 0;
-    this.inFlightByBaseUrl.set(baseUrl, Math.max(0, current - 1));
+    const next = Math.max(0, current - 1);
+    this.inFlightByBaseUrl.set(baseUrl, next);
+    if (next === 0) {
+      this.notifyServerAvailability();
+    }
   }
 
   buildSummaryPrompt(sourceText, maxSentences) {
@@ -481,7 +516,7 @@ ${sourceText}`;
       try {
         if (attempt > 1) {
           const waitTime = Math.pow(2, attempt - 2) * 1000;
-          console.log(`[Ollama] Summary chunk retry ${attempt - 1}/${this.maxRetries} after ${waitTime}ms`);
+          this.log(`[Ollama] Summary chunk retry ${attempt - 1}/${this.maxRetries} after ${waitTime}ms`);
           await new Promise((resolve) => setTimeout(resolve, waitTime));
         }
 
@@ -534,7 +569,7 @@ ${sourceText}`;
 
   async getHealthyBaseUrlsForRequest() {
     const candidateBaseUrls = [...this.baseUrls];
-    console.log('[Ollama] Candidate servers for this request:', candidateBaseUrls.join(', '));
+    this.log('[Ollama] Candidate servers for this request:', candidateBaseUrls.join(', '));
 
     const healthStatuses = await Promise.all(
       candidateBaseUrls.map((baseUrl) => this.checkBaseUrlHealth(baseUrl))
@@ -545,7 +580,7 @@ ${sourceText}`;
       throw new Error(`No healthy Ollama servers available: ${candidateBaseUrls.join(', ')}`);
     }
 
-    console.log('[Ollama] Healthy servers for this request:', healthyBaseUrls.join(', '));
+    this.log('[Ollama] Healthy servers for this request:', healthyBaseUrls.join(', '));
     return healthyBaseUrls;
   }
 
@@ -587,7 +622,7 @@ ${sourceText}`;
 
   // Test Ollama connection and list available models
   async testConnection() {
-    console.log(`[Ollama] Testing connection to ${this.baseUrls.length} Ollama server(s)...`);
+    this.log(`[Ollama] Testing connection to ${this.baseUrls.length} Ollama server(s)...`);
 
     for (const baseUrl of this.baseUrls) {
       try {
@@ -595,42 +630,42 @@ ${sourceText}`;
         if (isHealthy) {
           const response = await fetch(`${baseUrl}/api/tags`);
           if (!response.ok) {
-            console.log(`[Ollama] ❌ Failed to connect to ${baseUrl}: ${response.status} ${response.statusText}`);
+            this.log(`[Ollama] ❌ Failed to connect to ${baseUrl}: ${response.status} ${response.statusText}`);
             continue;
           }
           const data = await response.json();
-          console.log(`[Ollama] ✅ Connected to ${baseUrl}`);
-          console.log('[Ollama] Available models:', data.models?.map(m => m.name) || 'No models found');
+          this.log(`[Ollama] ✅ Connected to ${baseUrl}`);
+          this.log('[Ollama] Available models:', data.models?.map(m => m.name) || 'No models found');
 
           // Check if our configured model exists
           const modelExists = data.models?.some(m => m.name === this.model);
           if (modelExists) {
-            console.log(`[Ollama] ✅ Model "${this.model}" is available on ${baseUrl}`);
+            this.log(`[Ollama] ✅ Model "${this.model}" is available on ${baseUrl}`);
           } else {
-            console.log(`[Ollama] ⚠️ Model "${this.model}" not found on ${baseUrl}. Available models:`, data.models?.map(m => m.name));
+            this.log(`[Ollama] ⚠️ Model "${this.model}" not found on ${baseUrl}. Available models:`, data.models?.map(m => m.name));
           }
         } else {
           const reason = this.healthStatusByBaseUrl.get(baseUrl)?.reason;
-          console.log(`[Ollama] ❌ Health check failed for ${baseUrl}${reason ? ` (${reason})` : ''}`);
+          this.log(`[Ollama] ❌ Health check failed for ${baseUrl}${reason ? ` (${reason})` : ''}`);
         }
       } catch (error) {
-        console.log(`[Ollama] ❌ Connection test failed for ${baseUrl}:`, error.message);
+        this.log(`[Ollama] ❌ Connection test failed for ${baseUrl}:`, error.message);
       }
     }
   }
 
   // Get Ollama analysis for tokens with retry logic
   async getAnalysis(originalText, tokens, contextLines = {}, maxRetries = this.maxRetries, onChunk = null) {
-    console.log('[Ollama] Starting Ollama analysis...');
-    console.log('[Ollama] Original text:', originalText);
-    console.log('[Ollama] Number of tokens:', tokens.length);
+    this.log('[Ollama] Starting Ollama analysis...');
+    this.log('[Ollama] Original text:', originalText);
+    this.log('[Ollama] Number of tokens:', tokens.length);
     const healthyBaseUrls = await this.getHealthyBaseUrlsForRequest();
     const attemptedBaseUrls = new Set();
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
       const untriedBaseUrls = healthyBaseUrls.filter((baseUrl) => !attemptedBaseUrls.has(baseUrl));
       const candidateBaseUrls = untriedBaseUrls.length > 0 ? untriedBaseUrls : healthyBaseUrls;
-      const activeBaseUrl = this.reserveLeastLoadedBaseUrl(candidateBaseUrls);
+      const activeBaseUrl = await this.reserveLeastLoadedBaseUrl(candidateBaseUrls);
 
       if (!activeBaseUrl) {
         throw new Error('No available Ollama servers could be reserved for analysis');
@@ -639,21 +674,21 @@ ${sourceText}`;
       attemptedBaseUrls.add(activeBaseUrl);
       try {
         const currentLoad = this.inFlightByBaseUrl.get(activeBaseUrl) || 0;
-        console.log(`[Ollama] Assigned analysis request to ${activeBaseUrl} (in-flight: ${currentLoad})`);
+        this.log(`[Ollama] Assigned analysis request to ${activeBaseUrl} (in-flight: ${currentLoad})`);
 
         if (attempt > 1) {
-          console.log(`[Ollama] Retry attempt ${attempt - 1}/${maxRetries} via ${activeBaseUrl}`);
+          this.log(`[Ollama] Retry attempt ${attempt - 1}/${maxRetries} via ${activeBaseUrl}`);
           // Exponential backoff: wait 2^(attempt-2) seconds before retry
           const waitTime = Math.pow(2, attempt - 2) * 1000;
-          console.log(`[Ollama] Waiting ${waitTime}ms before retry...`);
+          this.log(`[Ollama] Waiting ${waitTime}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
         }
 
         const promptTokens = this.buildPromptTokens(tokens);
         const tokenList = promptTokens.map((token) => this.getTokenSurface(token)).filter(Boolean).join(' | ');
-        console.log('[Ollama] Token list for analysis:', tokenList);
+        this.log('[Ollama] Token list for analysis:', tokenList);
         if (this.contextMode === 'compact') {
-          console.log(
+          this.log(
             `[Ollama] Compact mode: prompt tokens reduced from ${tokens.length} to ${promptTokens.length}`
           );
         }
@@ -674,12 +709,12 @@ ${sourceText}`;
           });
         }
 
-        console.log('[Ollama] Context text:', contextText);
+        this.log('[Ollama] Context text:', contextText);
 
         // Use fixed token limit for response
         const fixedNumPredict = this.maxTokens;
 
-        console.log(`[Ollama] Using fixed response limit: ${fixedNumPredict} tokens for ${promptTokens.length} prompt tokens`);
+        this.log(`[Ollama] Using fixed response limit: ${fixedNumPredict} tokens for ${promptTokens.length} prompt tokens`);
 
         const prompt = `Translate this Japanese sentence and analyze listed tokens.
 Identify fixed expressions/set phrases (if any) and include them.
@@ -714,9 +749,9 @@ Return JSON only:
   ]
 }`;
 
-        console.log('[Ollama] 🚀 Sending request to Ollama API...');
-        console.log('[Ollama] Using model:', this.model);
-        console.log('[Ollama] Prompt length:', prompt.length, 'characters');
+        this.log('[Ollama] 🚀 Sending request to Ollama API...');
+        this.log('[Ollama] Using model:', this.model);
+        this.log('[Ollama] Prompt length:', prompt.length, 'characters');
 
         const startTime = Date.now();
 
@@ -741,12 +776,12 @@ Return JSON only:
           shouldStream ? 'analysis-stream' : 'analysis'
         );
 
-        console.log(`[Ollama] Response status: ${response.status} ${response.statusText}`);
+        this.log(`[Ollama] Response status: ${response.status} ${response.statusText}`);
 
         const endTime = Date.now();
 
-        console.log('[Ollama] ✅ Received response from Ollama API');
-        console.log('[Ollama] Response time:', endTime - startTime, 'ms');
+        this.log('[Ollama] ✅ Received response from Ollama API');
+        this.log('[Ollama] Response time:', endTime - startTime, 'ms');
 
         let responseText = '';
         if (shouldStream) {
@@ -814,28 +849,28 @@ Return JSON only:
           }
 
           if (tailExtracted.remaining.trim()) {
-            console.log('[Ollama] Unparsed streaming tail length:', tailExtracted.remaining.trim().length);
+            this.log('[Ollama] Unparsed streaming tail length:', tailExtracted.remaining.trim().length);
           }
 
-          console.log('[Ollama] Streamed chunk count:', streamedChunkCount);
-          console.log('[Ollama] Streamed thinking chunk count:', streamedThinkingChunkCount);
+          this.log('[Ollama] Streamed chunk count:', streamedChunkCount);
+          this.log('[Ollama] Streamed thinking chunk count:', streamedThinkingChunkCount);
         } else {
           const data = await response.json();
           responseText = data.response;
         }
 
-        console.log('[Ollama] Raw response content:', responseText);
+        this.log('[Ollama] Raw response content:', responseText);
 
         // Try to parse JSON response - handle cases where there's text before the JSON
         try {
           // First try to parse the response directly
           const parsedResponse = JSON.parse(responseText);
-          console.log('[Ollama] ✅ Successfully parsed JSON response');
-          //console.log('[Ollama] Full line translation:', parsedResponse.fullLineTranslation);
-          console.log('[Ollama] Number of token analyses:', parsedResponse.tokens?.length || 0);
+          this.log('[Ollama] ✅ Successfully parsed JSON response');
+          //this.log('[Ollama] Full line translation:', parsedResponse.fullLineTranslation);
+          this.log('[Ollama] Number of token analyses:', parsedResponse.tokens?.length || 0);
           return parsedResponse;
         } catch (parseError) {
-          console.log('[Ollama] Direct JSON parse failed, trying to extract JSON from response...');
+          this.log('[Ollama] Direct JSON parse failed, trying to extract JSON from response...');
 
           // Try to find JSON object in the response
           try {
@@ -844,9 +879,9 @@ Return JSON only:
             if (jsonMatch) {
               const jsonString = jsonMatch[0];
               const parsedResponse = JSON.parse(jsonString);
-              console.log('[Ollama] ✅ Successfully extracted and parsed JSON from response');
-              //console.log('[Ollama] Full line translation:', parsedResponse.fullLineTranslation);
-              console.log('[Ollama] Number of token analyses:', parsedResponse.tokens?.length || 0);
+              this.log('[Ollama] ✅ Successfully extracted and parsed JSON from response');
+              //this.log('[Ollama] Full line translation:', parsedResponse.fullLineTranslation);
+              this.log('[Ollama] Number of token analyses:', parsedResponse.tokens?.length || 0);
               return parsedResponse;
             } else {
               console.error('[Ollama] ❌ No JSON object found in response');
@@ -890,7 +925,7 @@ Return JSON only:
         }
 
         // Otherwise, continue to next retry attempt
-        console.log(`[Ollama] Will retry... (${maxRetries + 1 - attempt} attempts remaining)`);
+        this.log(`[Ollama] Will retry... (${maxRetries + 1 - attempt} attempts remaining)`);
       } finally {
         this.releaseReservedBaseUrl(activeBaseUrl);
       }
@@ -951,7 +986,7 @@ Return JSON only:
     const clippedInput = normalizedInput.length > maxInputChars
       ? `${normalizedInput.slice(0, maxInputChars)}\n\n[Truncated due to length]`
       : normalizedInput;
-    console.log(`[Ollama] Generating summary on primary server with input length=${clippedInput.length}`);
+    this.log(`[Ollama] Generating summary on primary server with input length=${clippedInput.length}`);
 
     const summaryBaseUrl = this.baseUrls[0];
     const primaryHealthy = await this.checkBaseUrlHealth(summaryBaseUrl);
@@ -960,12 +995,21 @@ Return JSON only:
       throw new Error(`Primary summary server unavailable (${summaryBaseUrl}): ${reason}`);
     }
 
-    return this.summarizeChunkWithRetries(
-      clippedInput,
-      maxSentences,
-      [summaryBaseUrl],
-      0
-    );
+    const reservedSummaryBaseUrl = await this.reserveLeastLoadedBaseUrl([summaryBaseUrl]);
+    if (!reservedSummaryBaseUrl) {
+      throw new Error(`Primary summary server could not be reserved (${summaryBaseUrl})`);
+    }
+
+    try {
+      return this.summarizeChunkWithRetries(
+        clippedInput,
+        maxSentences,
+        [summaryBaseUrl],
+        0
+      );
+    } finally {
+      this.releaseReservedBaseUrl(reservedSummaryBaseUrl);
+    }
   }
 }
 

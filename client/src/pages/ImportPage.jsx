@@ -1602,6 +1602,12 @@ export default function ImportPage() {
 
     setPageAiProcessing(true);
     setMessage(`AI processing page ${currentPage}: 0/${totalPageSentences}`);
+    setOllamaStreamPopup({
+      visible: true,
+      sentenceIndex: null,
+      status: `page ${currentPage}: 0/${totalPageSentences}`,
+      content: `Starting AI processing for page ${currentPage}...\n`
+    });
 
     let processedCount = 0;
     let skippedCount = 0;
@@ -1624,6 +1630,12 @@ export default function ImportPage() {
       }
 
       setProcessingSentences((prev) => ({ ...prev, [sentenceIndex]: true }));
+      setOllamaStreamPopup((prev) => ({
+        ...prev,
+        visible: true,
+        status: `page ${currentPage}: ${processedCount + skippedCount + errorCount}/${totalPageSentences}`,
+        content: `${prev.content}Processing sentence ${sentenceIndex}...\n`
+      }));
 
       try {
         const requestData = {
@@ -1654,6 +1666,12 @@ export default function ImportPage() {
       } catch (error) {
         console.error(`AI page processing failed for sentence ${sentenceIndex}:`, error);
         errorCount++;
+        setOllamaStreamPopup((prev) => ({
+          ...prev,
+          visible: true,
+          status: `page ${currentPage}: error`,
+          content: `${prev.content}Error on sentence ${sentenceIndex}: ${error.message || 'unknown error'}\n`
+        }));
       } finally {
         setProcessingSentences((prev) => {
           const updated = { ...prev };
@@ -1665,6 +1683,12 @@ export default function ImportPage() {
       setMessage(
         `AI processing page ${currentPage}: ${processedCount + skippedCount + errorCount}/${totalPageSentences}`
       );
+      setOllamaStreamPopup((prev) => ({
+        ...prev,
+        visible: true,
+        status: `page ${currentPage}: ${processedCount + skippedCount + errorCount}/${totalPageSentences}`,
+        content: `${prev.content}Progress: ${processedCount + skippedCount + errorCount}/${totalPageSentences} (${processedCount} done, ${skippedCount} skipped, ${errorCount} errors)\n`
+      }));
     }
 
     if (errorCount > 0) {
@@ -1676,6 +1700,13 @@ export default function ImportPage() {
         `AI page processing done: ${processedCount} processed, ${skippedCount} skipped`
       );
     }
+
+    setOllamaStreamPopup((prev) => ({
+      ...prev,
+      visible: true,
+      status: `page ${currentPage}: completed`,
+      content: `${prev.content}Completed page ${currentPage}: ${processedCount} processed, ${skippedCount} skipped, ${errorCount} errors\n`
+    }));
 
     setPageAiProcessing(false);
     setTimeout(() => {
@@ -2413,7 +2444,10 @@ export default function ImportPage() {
                 }}
               >
                 <div>
-                  <strong>Ollama Live</strong> (R: sentence {ollamaStreamPopup.sentenceIndex})
+                  <strong>Ollama Live</strong>{' '}
+                  {Number.isInteger(ollamaStreamPopup.sentenceIndex)
+                    ? `(R: sentence ${ollamaStreamPopup.sentenceIndex})`
+                    : '(R: page processing)'}
                   <div style={{ fontSize: '0.8em', color: '#9ecae1' }}>
                     Status: {ollamaStreamPopup.status}
                   </div>

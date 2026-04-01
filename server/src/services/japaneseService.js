@@ -7,6 +7,7 @@ class JapaneseService {
   constructor() {
     this.tokenizer = null;
     this.jmdictDb = null;
+    this.logLookupMisses = process.env.BOOKPARSER_JMDICT_LOG_MISSES === 'true';
 
     if (process.env.NODE_ENV === 'test' || process.env.SKIP_LANGUAGE_INIT === 'true') {
       console.log('[JMDict] Skipping language resource initialization');
@@ -103,7 +104,9 @@ class JapaneseService {
         //console.log(`[JMDict] ✅ Found translation for "${word}": "${meanings}"`);
         return lookupResult;
       } else {
-        console.log(`[JMDict] ❌ No results found for "${word}" (reading: "${reading}")`);
+        if (this.logLookupMisses) {
+          console.log(`[JMDict] ❌ No results found for "${word}" (reading: "${reading}")`);
+        }
       }
     } catch (error) {
       console.error(`[JMDict] ❌ Error looking up word "${word}":`, error);
