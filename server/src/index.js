@@ -831,6 +831,10 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
       let dictLookup = null;
       if (token.pos !== '記号') {
         dictLookup = await japaneseService.lookupInJMDict(token.surface_form, token.reading);
+        const basicForm = String(token.basic_form || '').trim();
+        if (!dictLookup && basicForm && basicForm !== token.surface_form) {
+          dictLookup = await japaneseService.lookupInJMDict(basicForm, token.reading);
+        }
       }
 
       let translation = 'N/A';

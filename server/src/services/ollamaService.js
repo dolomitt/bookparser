@@ -71,16 +71,482 @@ function extractJsonObjectsFromBuffer(buffer) {
 
 class OllamaService {
   constructor() {
-    this.baseUrl = config.ollama.baseUrl;
+    this.baseUrls = Array.isArray(config.ollama.baseUrls) && config.ollama.baseUrls.length > 0
+      ? [...config.ollama.baseUrls]
+      : [config.ollama.baseUrl];
+    this.baseUrl = this.baseUrls[0];
+    this.nextBaseUrlIndex = 0;
     this.model = config.ollama.model;
     this.timeout = config.ollama.timeout;
+    this.healthCheckTimeout = config.ollama.healthTimeout;
+    this.healthCacheMs = config.ollama.healthCacheMs;
+    this.modelLoadTimeout = config.ollama.modelLoadTimeout;
+    this.modelLoadCacheMs = config.ollama.modelLoadCacheMs;
     this.maxRetries = config.ollama.maxRetries;
     this.maxTokens = config.ollama.maxTokens;
+    this.healthStatusByBaseUrl = new Map();
+    this.inFlightByBaseUrl = new Map(this.baseUrls.map((baseUrl) => [baseUrl, 0]));
+    this.modelLoadedStatusByBaseUrl = new Map();
+    this.modelLoadInFlightByBaseUrl = new Map();
     this.contextMode = config.ollama.contextMode === 'compact' ? 'compact' : 'full';
     const thinkEnv = process.env.BOOKPARSER_OLLAMA_THINK;
     this.think = thinkEnv !== undefined
       ? (thinkEnv === 'true' ? true : thinkEnv === 'false' ? false : thinkEnv)
       : false;
+  }
+
+  getRotatedBaseUrls() {
+    if (this.baseUrls.length <= 1) {
+      return [...this.baseUrls];
+    }
+
+    const startIndex = this.nextBaseUrlIndex % this.baseUrls.length;
+    this.nextBaseUrlIndex = (startIndex + 1) % this.baseUrls.length;
+    return [
+      ...this.baseUrls.slice(startIndex),
+      ...this.baseUrls.slice(0, startIndex)
+    ];
+  }
+
+  getBaseUrlForAttempt(rotatedBaseUrls, attempt) {
+    if (!Array.isArray(rotatedBaseUrls) || rotatedBaseUrls.length === 0) {
+      return this.baseUrl;
+    }
+
+    const index = (attempt - 1) % rotatedBaseUrls.length;
+    return rotatedBaseUrls[index];
+  }
+
+  isHealthStatusFresh(entry) {
+    if (!entry || typeof entry.checkedAt !== 'number') {
+      return false;
+    }
+    return (Date.now() - entry.checkedAt) <= this.healthCacheMs;
+  }
+
+  setHealthStatus(baseUrl, healthy, reason = '') {
+    this.healthStatusByBaseUrl.set(baseUrl, {
+      healthy: Boolean(healthy),
+      reason: String(reason || ''),
+      checkedAt: Date.now()
+    });
+  }
+
+  isModelLoadedStatusFresh(entry) {
+    if (!entry || typeof entry.checkedAt !== 'number') {
+      return false;
+    }
+    return (Date.now() - entry.checkedAt) <= this.modelLoadCacheMs;
+  }
+
+  setModelLoadedStatus(baseUrl, loaded, reason = '') {
+    this.modelLoadedStatusByBaseUrl.set(baseUrl, {
+      loaded: Boolean(loaded),
+      reason: String(reason || ''),
+      checkedAt: Date.now()
+    });
+  }
+
+  isTargetModelRunning(models = []) {
+    const expected = String(this.model || '').trim();
+    if (!expected) {
+      return false;
+    }
+
+    return models.some((model) => {
+      const candidates = [
+        model?.name,
+        model?.model
+      ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+
+      return candidates.includes(expected);
+    });
+  }
+
+  async checkModelLoaded(baseUrl, { force = false } = {}) {
+    const cached = this.modelLoadedStatusByBaseUrl.get(baseUrl);
+    if (!force && this.isModelLoadedStatusFresh(cached)) {
+      return cached.loaded;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.healthCheckTimeout);
+
+    try {
+      const response = await fetch(`${baseUrl}/api/ps`, { signal: controller.signal });
+      if (!response.ok) {
+        this.setModelLoadedStatus(baseUrl, false, `ps returned ${response.status}`);
+        return false;
+      }
+
+      const data = await response.json();
+      const loaded = this.isTargetModelRunning(Array.isArray(data?.models) ? data.models : []);
+      this.setModelLoadedStatus(
+        baseUrl,
+        loaded,
+        loaded ? '' : `model "${this.model}" not loaded`
+      );
+      return loaded;
+    } catch (error) {
+      this.setModelLoadedStatus(baseUrl, false, error?.message || 'model load check failed');
+      return false;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  async warmupModel(baseUrl) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.modelLoadTimeout);
+
+    try {
+      const response = await fetch(`${baseUrl}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          prompt: ' ',
+          stream: false,
+          keep_alive: '10m',
+          options: {
+            num_predict: 0,
+            temperature: 0
+          }
+        }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`warmup failed: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      this.setModelLoadedStatus(baseUrl, true);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  async ensureModelLoaded(baseUrl) {
+    const alreadyLoaded = await this.checkModelLoaded(baseUrl);
+    if (alreadyLoaded) {
+      return;
+    }
+
+    const inFlight = this.modelLoadInFlightByBaseUrl.get(baseUrl);
+    if (inFlight) {
+      await inFlight;
+      return;
+    }
+
+    const loadPromise = (async () => {
+      try {
+        console.log(`[Ollama] Model "${this.model}" is not loaded on ${baseUrl}; warming up before timed request...`);
+        await this.warmupModel(baseUrl);
+        const isLoadedAfterWarmup = await this.checkModelLoaded(baseUrl, { force: true });
+        if (!isLoadedAfterWarmup) {
+          const reason = this.modelLoadedStatusByBaseUrl.get(baseUrl)?.reason || 'unknown reason';
+          throw new Error(`model "${this.model}" still not loaded after warmup (${reason})`);
+        }
+      } catch (error) {
+        this.setModelLoadedStatus(baseUrl, false, error?.message || 'warmup failed');
+        throw error;
+      } finally {
+        this.modelLoadInFlightByBaseUrl.delete(baseUrl);
+      }
+    })();
+
+    this.modelLoadInFlightByBaseUrl.set(baseUrl, loadPromise);
+    await loadPromise;
+  }
+
+  getOrderedBaseUrlsForAttempt(baseUrls, attempt = 1) {
+    if (!Array.isArray(baseUrls) || baseUrls.length === 0) {
+      return [];
+    }
+
+    if (baseUrls.length === 1) {
+      return [...baseUrls];
+    }
+
+    const shift = (attempt - 1) % baseUrls.length;
+    return [
+      ...baseUrls.slice(shift),
+      ...baseUrls.slice(0, shift)
+    ];
+  }
+
+  async generateOnBaseUrl(baseUrl, payload, requestType = 'analysis') {
+    await this.ensureModelLoaded(baseUrl);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await fetch(`${baseUrl}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.setHealthStatus(baseUrl, false, `${requestType} returned ${response.status}`);
+        throw new Error(`${baseUrl}: HTTP ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      this.setHealthStatus(baseUrl, true);
+      return response;
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        this.setHealthStatus(baseUrl, false, `${requestType} timeout`);
+        throw new Error(`${baseUrl}: request timed out after ${this.timeout / 1000} seconds`);
+      }
+
+      if (error.code === 'ECONNREFUSED' || /fetch failed/i.test(error.message || '')) {
+        this.setHealthStatus(baseUrl, false, error.message);
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  reserveLeastLoadedBaseUrl(baseUrls) {
+    const candidates = Array.from(new Set(baseUrls || []))
+      .filter(Boolean)
+      .filter((baseUrl) => this.inFlightByBaseUrl.has(baseUrl));
+
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    let selected = candidates[0];
+    let selectedLoad = this.inFlightByBaseUrl.get(selected) || 0;
+
+    for (const baseUrl of candidates) {
+      const load = this.inFlightByBaseUrl.get(baseUrl) || 0;
+      if (load < selectedLoad) {
+        selected = baseUrl;
+        selectedLoad = load;
+      }
+    }
+
+    this.inFlightByBaseUrl.set(selected, selectedLoad + 1);
+    return selected;
+  }
+
+  releaseReservedBaseUrl(baseUrl) {
+    if (!baseUrl || !this.inFlightByBaseUrl.has(baseUrl)) {
+      return;
+    }
+    const current = this.inFlightByBaseUrl.get(baseUrl) || 0;
+    this.inFlightByBaseUrl.set(baseUrl, Math.max(0, current - 1));
+  }
+
+  buildSummaryPrompt(sourceText, maxSentences) {
+    return `Summarize this Japanese text in exactly ${maxSentences} concise English sentences.
+Focus on key events, themes, and context.
+Return JSON only:
+{
+  "summaryTitle": "A short potential title in English (max 10 words)",
+  "summarySentences": [
+    "Sentence 1",
+    "Sentence 2",
+    "Sentence 3"
+  ]
+}
+
+Text:
+${sourceText}`;
+  }
+
+  extractSummaryResult(data, maxSentences) {
+    const payload = this.extractJsonPayload(data.response || '{}');
+    const summaryTitle = this.normalizeSummaryTitle(payload);
+    const summarySentences = this.normalizeSummarySentences(payload, maxSentences);
+
+    if (summarySentences.length === 0) {
+      throw new Error('Ollama summary response did not include summary sentences');
+    }
+
+    return {
+      summaryTitle,
+      summarySentences
+    };
+  }
+
+  splitSummaryTextIntoChunks(sourceText, targetChunks) {
+    const cleanText = String(sourceText || '').trim();
+    if (!cleanText) {
+      return [];
+    }
+
+    const chunksRequested = Math.max(1, Number(targetChunks) || 1);
+    if (chunksRequested === 1 || cleanText.length < 4000) {
+      return [cleanText];
+    }
+
+    const paragraphs = cleanText
+      .split(/\n+/)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+
+    const pieces = paragraphs.length > 0
+      ? paragraphs
+      : cleanText
+        .split(/(?<=[。！？.!?])\s+/)
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+
+    if (pieces.length <= 1) {
+      return [cleanText];
+    }
+
+    const targetChars = Math.ceil(cleanText.length / chunksRequested);
+    const chunks = [];
+    let current = '';
+
+    for (const piece of pieces) {
+      const separator = current ? '\n' : '';
+      const candidate = `${current}${separator}${piece}`;
+      const canCloseCurrent =
+        current.length > 0 &&
+        candidate.length > targetChars &&
+        chunks.length < chunksRequested - 1;
+
+      if (canCloseCurrent) {
+        chunks.push(current.trim());
+        current = piece;
+      } else {
+        current = candidate;
+      }
+    }
+
+    if (current.trim()) {
+      chunks.push(current.trim());
+    }
+
+    return chunks.filter(Boolean);
+  }
+
+  async summarizeChunkWithFailover(chunkText, maxSentences, baseUrls, startOffset = 0) {
+    if (!Array.isArray(baseUrls) || baseUrls.length === 0) {
+      throw new Error('No healthy Ollama servers available for summary chunk');
+    }
+
+    const orderedBaseUrls = this.getOrderedBaseUrlsForAttempt(baseUrls, startOffset + 1);
+    const prompt = this.buildSummaryPrompt(chunkText, maxSentences);
+    let lastError = null;
+
+    for (const baseUrl of orderedBaseUrls) {
+      try {
+        const response = await this.generateOnBaseUrl(baseUrl, {
+          model: this.model,
+          prompt,
+          stream: false,
+          format: 'json',
+          think: this.think,
+          options: {
+            temperature: 0.2,
+            top_p: 0.9,
+            top_k: 40,
+            num_predict: Math.max(this.maxTokens, config.ollama.summaryMaxTokens || this.maxTokens)
+          }
+        }, 'summary');
+
+        const data = await response.json();
+        return this.extractSummaryResult(data, maxSentences);
+      } catch (error) {
+        lastError = error;
+        console.warn(`[Ollama] Summary chunk fallback from ${baseUrl}: ${error.message}`);
+      }
+    }
+
+    throw lastError || new Error('Failed to summarize chunk on all available servers');
+  }
+
+  async summarizeChunkWithRetries(chunkText, maxSentences, baseUrls, startOffset = 0) {
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= this.maxRetries + 1; attempt++) {
+      try {
+        if (attempt > 1) {
+          const waitTime = Math.pow(2, attempt - 2) * 1000;
+          console.log(`[Ollama] Summary chunk retry ${attempt - 1}/${this.maxRetries} after ${waitTime}ms`);
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
+        }
+
+        return await this.summarizeChunkWithFailover(
+          chunkText,
+          maxSentences,
+          baseUrls,
+          startOffset + attempt - 1
+        );
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError || new Error('Failed to summarize chunk after retries');
+  }
+
+  async checkBaseUrlHealth(baseUrl, { force = false } = {}) {
+    const cached = this.healthStatusByBaseUrl.get(baseUrl);
+    if (!force && this.isHealthStatusFresh(cached)) {
+      return cached.healthy;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.healthCheckTimeout);
+
+    try {
+      const response = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
+      if (!response.ok) {
+        this.setHealthStatus(baseUrl, false, `tags returned ${response.status}`);
+        return false;
+      }
+
+      const data = await response.json();
+      const modelExists = data.models?.some((model) => model.name === this.model);
+      if (!modelExists) {
+        this.setHealthStatus(baseUrl, false, `model "${this.model}" missing`);
+        return false;
+      }
+
+      this.setHealthStatus(baseUrl, true);
+      return true;
+    } catch (error) {
+      this.setHealthStatus(baseUrl, false, error?.message || 'health check failed');
+      return false;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  async getHealthyBaseUrlsForRequest() {
+    const candidateBaseUrls = [...this.baseUrls];
+    console.log('[Ollama] Candidate servers for this request:', candidateBaseUrls.join(', '));
+
+    const healthStatuses = await Promise.all(
+      candidateBaseUrls.map((baseUrl) => this.checkBaseUrlHealth(baseUrl))
+    );
+    const healthyBaseUrls = candidateBaseUrls.filter((baseUrl, index) => healthStatuses[index]);
+
+    if (healthyBaseUrls.length === 0) {
+      throw new Error(`No healthy Ollama servers available: ${candidateBaseUrls.join(', ')}`);
+    }
+
+    console.log('[Ollama] Healthy servers for this request:', healthyBaseUrls.join(', '));
+    return healthyBaseUrls;
   }
 
   getTokenSurface(token) {
@@ -121,26 +587,35 @@ class OllamaService {
 
   // Test Ollama connection and list available models
   async testConnection() {
-    try {
-      console.log('[Ollama] Testing connection to Ollama server...');
-      const response = await fetch(`${this.baseUrl}/api/tags`);
-      if (response.ok) {
-        const data = await response.json();
-        console.log('[Ollama] ✅ Connected to Ollama server');
-        console.log('[Ollama] Available models:', data.models?.map(m => m.name) || 'No models found');
+    console.log(`[Ollama] Testing connection to ${this.baseUrls.length} Ollama server(s)...`);
 
-        // Check if our configured model exists
-        const modelExists = data.models?.some(m => m.name === this.model);
-        if (modelExists) {
-          console.log(`[Ollama] ✅ Model "${this.model}" is available`);
+    for (const baseUrl of this.baseUrls) {
+      try {
+        const isHealthy = await this.checkBaseUrlHealth(baseUrl, { force: true });
+        if (isHealthy) {
+          const response = await fetch(`${baseUrl}/api/tags`);
+          if (!response.ok) {
+            console.log(`[Ollama] ❌ Failed to connect to ${baseUrl}: ${response.status} ${response.statusText}`);
+            continue;
+          }
+          const data = await response.json();
+          console.log(`[Ollama] ✅ Connected to ${baseUrl}`);
+          console.log('[Ollama] Available models:', data.models?.map(m => m.name) || 'No models found');
+
+          // Check if our configured model exists
+          const modelExists = data.models?.some(m => m.name === this.model);
+          if (modelExists) {
+            console.log(`[Ollama] ✅ Model "${this.model}" is available on ${baseUrl}`);
+          } else {
+            console.log(`[Ollama] ⚠️ Model "${this.model}" not found on ${baseUrl}. Available models:`, data.models?.map(m => m.name));
+          }
         } else {
-          console.log(`[Ollama] ⚠️ Model "${this.model}" not found. Available models:`, data.models?.map(m => m.name));
+          const reason = this.healthStatusByBaseUrl.get(baseUrl)?.reason;
+          console.log(`[Ollama] ❌ Health check failed for ${baseUrl}${reason ? ` (${reason})` : ''}`);
         }
-      } else {
-        console.log(`[Ollama] ❌ Failed to connect: ${response.status} ${response.statusText}`);
+      } catch (error) {
+        console.log(`[Ollama] ❌ Connection test failed for ${baseUrl}:`, error.message);
       }
-    } catch (error) {
-      console.log(`[Ollama] ❌ Connection test failed:`, error.message);
     }
   }
 
@@ -149,11 +624,25 @@ class OllamaService {
     console.log('[Ollama] Starting Ollama analysis...');
     console.log('[Ollama] Original text:', originalText);
     console.log('[Ollama] Number of tokens:', tokens.length);
+    const healthyBaseUrls = await this.getHealthyBaseUrlsForRequest();
+    const attemptedBaseUrls = new Set();
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      const untriedBaseUrls = healthyBaseUrls.filter((baseUrl) => !attemptedBaseUrls.has(baseUrl));
+      const candidateBaseUrls = untriedBaseUrls.length > 0 ? untriedBaseUrls : healthyBaseUrls;
+      const activeBaseUrl = this.reserveLeastLoadedBaseUrl(candidateBaseUrls);
+
+      if (!activeBaseUrl) {
+        throw new Error('No available Ollama servers could be reserved for analysis');
+      }
+
+      attemptedBaseUrls.add(activeBaseUrl);
       try {
+        const currentLoad = this.inFlightByBaseUrl.get(activeBaseUrl) || 0;
+        console.log(`[Ollama] Assigned analysis request to ${activeBaseUrl} (in-flight: ${currentLoad})`);
+
         if (attempt > 1) {
-          console.log(`[Ollama] Retry attempt ${attempt - 1}/${maxRetries}`);
+          console.log(`[Ollama] Retry attempt ${attempt - 1}/${maxRetries} via ${activeBaseUrl}`);
           // Exponential backoff: wait 2^(attempt-2) seconds before retry
           const waitTime = Math.pow(2, attempt - 2) * 1000;
           console.log(`[Ollama] Waiting ${waitTime}ms before retry...`);
@@ -231,42 +720,28 @@ Return JSON only:
 
         const startTime = Date.now();
 
-        // Create AbortController for timeout - configurable timeout for larger models
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), config.ollama.timeout);
-
         const shouldStream = typeof onChunk === 'function';
+        const requestPayload = {
+          model: this.model,
+          prompt: prompt,
+          stream: shouldStream,
+          format: 'json',
+          think: this.think,
+          options: {
+            temperature: 0.3,
+            top_p: 0.9,
+            top_k: 40,
+            num_predict: fixedNumPredict // Fixed response length
+          }
+        };
 
-        const response = await fetch(`${this.baseUrl}/api/generate`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: this.model,
-            prompt: prompt,
-            stream: shouldStream,
-            format: 'json',
-            think: this.think,
-            options: {
-              temperature: 0.3,
-              top_p: 0.9,
-              top_k: 40,
-              num_predict: fixedNumPredict // Fixed response length
-            }
-          }),
-          signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
+        const response = await this.generateOnBaseUrl(
+          activeBaseUrl,
+          requestPayload,
+          shouldStream ? 'analysis-stream' : 'analysis'
+        );
 
         console.log(`[Ollama] Response status: ${response.status} ${response.statusText}`);
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.log(`[Ollama] Error response body:`, errorText);
-          throw new Error(`Ollama API error: ${response.status} ${response.statusText} - ${errorText}`);
-        }
 
         const endTime = Date.now();
 
@@ -385,19 +860,30 @@ Return JSON only:
           }
         }
       } catch (error) {
-        console.error(`[Ollama] ❌ Ollama API error (attempt ${attempt}):`, error);
-        console.error('[Ollama] Error type:', error.constructor.name);
-        console.error('[Ollama] Error message:', error.message);
+        const isTimeoutError =
+          error.name === 'AbortError' ||
+          /timed out|timeout/i.test(error.message || '');
+
+        if (isTimeoutError) {
+          console.warn(`[Ollama] ⚠️ Request timeout (attempt ${attempt} on ${activeBaseUrl})`);
+        } else {
+          console.error(`[Ollama] ❌ Ollama API error (attempt ${attempt} on ${activeBaseUrl}):`, error);
+          console.error('[Ollama] Error type:', error.constructor.name);
+          console.error('[Ollama] Error message:', error.message);
+        }
+        if (isTimeoutError || error.code === 'ECONNREFUSED' || /fetch failed/i.test(error.message || '')) {
+          this.setHealthStatus(activeBaseUrl, false, error.message);
+        }
 
         if (error.code === 'ECONNREFUSED') {
-          console.error('[Ollama] Cannot connect to Ollama server at:', this.baseUrl);
-        } else if (error.name === 'AbortError') {
+          console.error('[Ollama] Cannot connect to Ollama server at:', activeBaseUrl);
+        } else if (isTimeoutError) {
           console.error(`[Ollama] Request timed out after ${config.ollama.timeout / 1000} seconds`);
         }
 
         // If this is the last attempt, throw the error
         if (attempt === maxRetries + 1) {
-          if (error.name === 'AbortError') {
+          if (isTimeoutError) {
             throw new Error('Ollama request timed out - try using local processing instead');
           }
           throw error;
@@ -405,6 +891,8 @@ Return JSON only:
 
         // Otherwise, continue to next retry attempt
         console.log(`[Ollama] Will retry... (${maxRetries + 1 - attempt} attempts remaining)`);
+      } finally {
+        this.releaseReservedBaseUrl(activeBaseUrl);
       }
     }
   }
@@ -463,71 +951,21 @@ Return JSON only:
     const clippedInput = normalizedInput.length > maxInputChars
       ? `${normalizedInput.slice(0, maxInputChars)}\n\n[Truncated due to length]`
       : normalizedInput;
+    console.log(`[Ollama] Generating summary on primary server with input length=${clippedInput.length}`);
 
-    const numPredict = Math.max(this.maxTokens, config.ollama.summaryMaxTokens || this.maxTokens);
-    console.log(`[Ollama] Generating summary with num_predict=${numPredict} and input length=${clippedInput.length}`);
-
-    const prompt = `Summarize this Japanese text in exactly ${maxSentences} concise English sentences.
-Focus on key events, themes, and context.
-Return JSON only:
-{
-  "summaryTitle": "A short potential title in English (max 10 words)",
-  "summarySentences": [
-    "Sentence 1",
-    "Sentence 2",
-    "Sentence 3"
-  ]
-}
-
-Text:
-${clippedInput}`;
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), config.ollama.timeout);
-
-    try {
-      const response = await fetch(`${this.baseUrl}/api/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: this.model,
-          prompt,
-          stream: false,
-          format: 'json',
-          think: this.think,
-          options: {
-            temperature: 0.2,
-            top_p: 0.9,
-            top_k: 40,
-            num_predict: numPredict
-          }
-        }),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Ollama summary API error: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      const payload = this.extractJsonPayload(data.response || '{}');
-      const summaryTitle = this.normalizeSummaryTitle(payload);
-      const summarySentences = this.normalizeSummarySentences(payload, maxSentences);
-
-      if (summarySentences.length === 0) {
-        throw new Error('Ollama summary response did not include summary sentences');
-      }
-
-      return {
-        summaryTitle,
-        summarySentences
-      };
-    } finally {
-      clearTimeout(timeoutId);
+    const summaryBaseUrl = this.baseUrls[0];
+    const primaryHealthy = await this.checkBaseUrlHealth(summaryBaseUrl);
+    if (!primaryHealthy) {
+      const reason = this.healthStatusByBaseUrl.get(summaryBaseUrl)?.reason || 'health check failed';
+      throw new Error(`Primary summary server unavailable (${summaryBaseUrl}): ${reason}`);
     }
+
+    return this.summarizeChunkWithRetries(
+      clippedInput,
+      maxSentences,
+      [summaryBaseUrl],
+      0
+    );
   }
 }
 
