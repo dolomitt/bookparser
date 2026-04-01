@@ -472,6 +472,28 @@ export default function ImportPage() {
     });
   }, [filename, isBookViewHint]);
 
+  useEffect(() => {
+    const handleOutsideNotesClick = (event) => {
+      if (activeSentenceNotes === null) return;
+
+      const clickedInsideNotes = event.target.closest('.sentence-notes-popup');
+      const clickedNotesButton = event.target.closest('.sentence-btn.notes');
+      if (!clickedInsideNotes && !clickedNotesButton) {
+        setActiveSentenceNotes(null);
+      }
+    };
+
+    if (activeSentenceNotes !== null) {
+      document.addEventListener('click', handleOutsideNotesClick, true);
+      document.addEventListener('touchstart', handleOutsideNotesClick, true);
+    }
+
+    return () => {
+      document.removeEventListener('click', handleOutsideNotesClick, true);
+      document.removeEventListener('touchstart', handleOutsideNotesClick, true);
+    };
+  }, [activeSentenceNotes]);
+
   // Load bookmark on initial load
   useEffect(() => {
     if (filename && initialLoadComplete) {
@@ -1612,6 +1634,8 @@ export default function ImportPage() {
     let processedCount = 0;
     let skippedCount = 0;
     let errorCount = 0;
+    const allSentenceTexts = sentences.map((s) => s.text);
+    const sentenceIndexesToProcess = [];
 
     for (let i = 0; i < pageSentenceEntries.length; i++) {
       const sentenceIndex = pageSentenceEntries[i].originalIndex;
@@ -1629,67 +1653,92 @@ export default function ImportPage() {
         continue;
       }
 
-      setProcessingSentences((prev) => ({ ...prev, [sentenceIndex]: true }));
+      sentenceIndexesToProcess.push(sentenceIndex);
+    }
+
+    const updateProgress = () => {
+      const completed = processedCount + skippedCount + errorCount;
+      setMessage(`AI processing page ${currentPage}: ${completed}/${totalPageSentences}`);
       setOllamaStreamPopup((prev) => ({
         ...prev,
         visible: true,
-        status: `page ${currentPage}: ${processedCount + skippedCount + errorCount}/${totalPageSentences}`,
-        content: `${prev.content}Processing sentence ${sentenceIndex}...\n`
+        status: `page ${currentPage}: ${completed}/${totalPageSentences}`,
+        content: `${prev.content}Progress: ${completed}/${totalPageSentences} (${processedCount} done, ${skippedCount} skipped, ${errorCount} errors)\n`
       }));
+    };
 
-      try {
-        const requestData = {
-          text: sentence.text,
-          sentenceIndex: sentenceIndex,
-          verbMergeOptions: verbMergeOptions,
-          allSentences: sentences.map((s) => s.text),
-          useRemoteProcessing: true,
-          frequencySettings: frequencySettings
-        };
+    updateProgress();
 
-        const response = await axios.post('/api/parse', requestData);
+    let cursor = 0;
+    const configuredConcurrency = Number(import.meta.env.VITE_AI_PAGE_CONCURRENCY || 4);
+    const workerCount = Math.max(1, Math.min(configuredConcurrency, sentenceIndexesToProcess.length || 1));
 
-        if (response.data.analysis && response.data.analysis.tokens) {
-          const sentenceData = {
-            tokens: response.data.analysis.tokens,
-            fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
-            sentenceNotes: Array.isArray(response.data.sentenceNotes) ? response.data.sentenceNotes : [],
-            processingType: 'remote'
-          };
-
-          setProcessedSentences((prev) => ({ ...prev, [sentenceIndex]: sentenceData }));
-          await autoSave(sentenceIndex, sentenceData);
-          processedCount++;
-        } else {
-          errorCount++;
+    const runWorker = async () => {
+      while (true) {
+        const currentCursor = cursor;
+        cursor += 1;
+        if (currentCursor >= sentenceIndexesToProcess.length) {
+          return;
         }
-      } catch (error) {
-        console.error(`AI page processing failed for sentence ${sentenceIndex}:`, error);
-        errorCount++;
+
+        const sentenceIndex = sentenceIndexesToProcess[currentCursor];
+        const sentence = sentences[sentenceIndex];
+
+        setProcessingSentences((prev) => ({ ...prev, [sentenceIndex]: true }));
         setOllamaStreamPopup((prev) => ({
           ...prev,
           visible: true,
-          status: `page ${currentPage}: error`,
-          content: `${prev.content}Error on sentence ${sentenceIndex}: ${error.message || 'unknown error'}\n`
+          status: `page ${currentPage}: ${processedCount + skippedCount + errorCount}/${totalPageSentences}`,
+          content: `${prev.content}Processing sentence ${sentenceIndex}...\n`
         }));
-      } finally {
-        setProcessingSentences((prev) => {
-          const updated = { ...prev };
-          delete updated[sentenceIndex];
-          return updated;
-        });
-      }
 
-      setMessage(
-        `AI processing page ${currentPage}: ${processedCount + skippedCount + errorCount}/${totalPageSentences}`
-      );
-      setOllamaStreamPopup((prev) => ({
-        ...prev,
-        visible: true,
-        status: `page ${currentPage}: ${processedCount + skippedCount + errorCount}/${totalPageSentences}`,
-        content: `${prev.content}Progress: ${processedCount + skippedCount + errorCount}/${totalPageSentences} (${processedCount} done, ${skippedCount} skipped, ${errorCount} errors)\n`
-      }));
-    }
+        try {
+          const requestData = {
+            text: sentence.text,
+            sentenceIndex: sentenceIndex,
+            verbMergeOptions: verbMergeOptions,
+            allSentences: allSentenceTexts,
+            useRemoteProcessing: true,
+            frequencySettings: frequencySettings
+          };
+
+          const response = await axios.post('/api/parse', requestData);
+
+          if (response.data.analysis && response.data.analysis.tokens) {
+            const sentenceData = {
+              tokens: response.data.analysis.tokens,
+              fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
+              sentenceNotes: Array.isArray(response.data.sentenceNotes) ? response.data.sentenceNotes : [],
+              processingType: 'remote'
+            };
+
+            setProcessedSentences((prev) => ({ ...prev, [sentenceIndex]: sentenceData }));
+            await autoSave(sentenceIndex, sentenceData);
+            processedCount++;
+          } else {
+            errorCount++;
+          }
+        } catch (error) {
+          console.error(`AI page processing failed for sentence ${sentenceIndex}:`, error);
+          errorCount++;
+          setOllamaStreamPopup((prev) => ({
+            ...prev,
+            visible: true,
+            status: `page ${currentPage}: error`,
+            content: `${prev.content}Error on sentence ${sentenceIndex}: ${error.message || 'unknown error'}\n`
+          }));
+        } finally {
+          setProcessingSentences((prev) => {
+            const updated = { ...prev };
+            delete updated[sentenceIndex];
+            return updated;
+          });
+          updateProgress();
+        }
+      }
+    };
+
+    await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
 
     if (errorCount > 0) {
       setMessage(

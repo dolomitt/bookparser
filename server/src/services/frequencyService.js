@@ -6,17 +6,24 @@ class FrequencyService {
         this.frequencyData = new Map(); // lemma -> frequency (highest)
         this.readingData = new Map(); // lemma -> { kun: {reading, frequency}, on: {reading, frequency} }
         this.initialized = false;
-        console.log('[Frequency] FrequencyService constructor called');
+        this.verboseLogs = process.env.BOOKPARSER_FREQUENCY_VERBOSE === 'true';
+        this.log('[Frequency] FrequencyService constructor called');
         this.initializeFrequencyData();
+    }
+
+    log(...args) {
+        if (this.verboseLogs) {
+            console.log(...args);
+        }
     }
 
     // Initialize frequency data from BCCWJ file only
     async initializeFrequencyData() {
         try {
-            console.log('[Frequency] Initializing Japanese word frequency data...');
+            this.log('[Frequency] Initializing Japanese word frequency data...');
             await this.loadBCCWJData();
             this.initialized = true;
-            console.log(`[Frequency] ✅ Frequency data initialized with ${this.frequencyData.size} entries`);
+            this.log(`[Frequency] ✅ Frequency data initialized with ${this.frequencyData.size} entries`);
         } catch (error) {
             console.error('[Frequency] ❌ Failed to initialize frequency data:', error);
             this.initialized = true;
@@ -28,12 +35,12 @@ class FrequencyService {
         const bccwjPath = path.join(process.cwd(), 'BCCWJ_frequencylist_suw_ver1_0.tsv');
 
         if (!fs.existsSync(bccwjPath)) {
-            console.log('[Frequency] BCCWJ file not found');
+            this.log('[Frequency] BCCWJ file not found');
             return;
         }
 
         try {
-            console.log('[Frequency] Loading BCCWJ frequency data...');
+            this.log('[Frequency] Loading BCCWJ frequency data...');
 
             const stream = fs.createReadStream(bccwjPath, { encoding: 'utf8' });
             let buffer = '';
@@ -84,7 +91,7 @@ class FrequencyService {
                                     this.frequencyData.set(lemma, frequency);
 
                                     // Debug: log only specific word "僕" for testing
-                                    if (lemma === '僕') {
+                                    if (this.verboseLogs && lemma === '僕') {
                                         console.log(`[Frequency] Updated: lemma="${lemma}" frequency=${frequency} wType=${wType} reading=${lForm}`);
                                     }
                                 }
@@ -96,18 +103,18 @@ class FrequencyService {
                 });
 
                 stream.on('end', () => {
-                    console.log(`[Frequency] ✅ Loaded ${loadedCount} BCCWJ frequency entries`);
+                    this.log(`[Frequency] ✅ Loaded ${loadedCount} BCCWJ frequency entries`);
                     resolve();
                 });
 
                 stream.on('error', (error) => {
-                    console.log(`[Frequency] ⚠️ Error reading BCCWJ file:`, error.message);
+                    this.log(`[Frequency] ⚠️ Error reading BCCWJ file:`, error.message);
                     resolve();
                 });
             });
 
         } catch (error) {
-            console.log(`[Frequency] ⚠️ Could not load BCCWJ data:`, error.message);
+            this.log(`[Frequency] ⚠️ Could not load BCCWJ data:`, error.message);
         }
     }
 
@@ -135,7 +142,7 @@ class FrequencyService {
             }
 
             // Debug logging for specific word
-            if (lemma === '僕') {
+            if (this.verboseLogs && lemma === '僕') {
                 console.log(`[Frequency] Context lookup for "${lemma}" reading="${reading}" (${katakanaReading})`);
                 console.log(`[Frequency] Available readings:`, readingInfo);
             }

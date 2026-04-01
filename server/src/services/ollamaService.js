@@ -293,6 +293,8 @@ class OllamaService {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const startedAt = Date.now();
+    console.log(`[Ollama] -> ${requestType} ${baseUrl}`);
 
     try {
       const response = await fetch(`${baseUrl}/api/generate`, {
@@ -311,16 +313,21 @@ class OllamaService {
       }
 
       this.setHealthStatus(baseUrl, true);
+      const durationMs = Date.now() - startedAt;
+      console.log(`[Ollama] <- ${requestType} ${baseUrl} (${durationMs}ms)`);
       return response;
     } catch (error) {
+      const durationMs = Date.now() - startedAt;
       if (error.name === 'AbortError') {
         this.setHealthStatus(baseUrl, false, `${requestType} timeout`);
+        console.warn(`[Ollama] xx ${requestType} ${baseUrl} timeout (${durationMs}ms)`);
         throw new Error(`${baseUrl}: request timed out after ${this.timeout / 1000} seconds`);
       }
 
       if (error.code === 'ECONNREFUSED' || /fetch failed/i.test(error.message || '')) {
         this.setHealthStatus(baseUrl, false, error.message);
       }
+      console.warn(`[Ollama] xx ${requestType} ${baseUrl} failed (${durationMs}ms): ${error.message || 'request failed'}`);
 
       throw error;
     } finally {

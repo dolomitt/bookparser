@@ -8,6 +8,7 @@ class JapaneseService {
     this.tokenizer = null;
     this.jmdictDb = null;
     this.logLookupMisses = process.env.BOOKPARSER_JMDICT_LOG_MISSES === 'true';
+    this.frequencyVerboseLogs = process.env.BOOKPARSER_FREQUENCY_VERBOSE === 'true';
 
     if (process.env.NODE_ENV === 'test' || process.env.SKIP_LANGUAGE_INIT === 'true') {
       console.log('[JMDict] Skipping language resource initialization');
@@ -451,8 +452,10 @@ class JapaneseService {
 
   // Enhance tokens with frequency-based furigana visibility
   enhanceTokensWithFrequency(tokens, frequencySettings = {}) {
-    console.log('[Frequency] enhanceTokensWithFrequency called with settings:', frequencySettings);
-    console.log('[Frequency] Processing', tokens.length, 'tokens');
+    if (this.frequencyVerboseLogs) {
+      console.log('[Frequency] enhanceTokensWithFrequency called with settings:', frequencySettings);
+      console.log('[Frequency] Processing', tokens.length, 'tokens');
+    }
 
     const {
       hideFrequentFurigana = true,
@@ -474,7 +477,7 @@ class JapaneseService {
         const frequencyCategory = frequencyService.getFrequencyCategory(token.surface_form, lemma, token.reading);
 
         // Only log for specific testing word "僕"
-        if (lemma === '僕') {
+        if (this.frequencyVerboseLogs && lemma === '僕') {
           console.log(`[Frequency] Token: "${token.surface_form}" (lemma: "${lemma}", reading: "${token.reading}") -> frequency: ${frequency}, shouldHide: ${frequency >= frequencyThreshold}`);
         }
 
