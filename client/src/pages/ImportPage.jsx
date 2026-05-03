@@ -376,6 +376,8 @@ export default function ImportPage() {
   const [sentences, setSentences] = useState([]);
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [articleUrl, setArticleUrl] = useState('');
+  const [urlImporting, setUrlImporting] = useState(false);
   const [message, setMessage] = useState('');
   const [sentenceMessages, setSentenceMessages] = useState({});
   const [processedSentences, setProcessedSentences] = useState({});
@@ -686,6 +688,30 @@ export default function ImportPage() {
       setMessage('Upload failed');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleUrlImport = async () => {
+    const trimmedUrl = articleUrl.trim();
+    if (!trimmedUrl) {
+      setMessage('Enter an article URL first');
+      return;
+    }
+
+    setUrlImporting(true);
+    setMessage('Importing article...');
+
+    try {
+      const res = await axios.post('/api/import/url', { url: trimmedUrl });
+      setMessage(`Imported article: ${res.data.originalname || trimmedUrl} (${res.data.totalLines} lines)`);
+      setArticleUrl('');
+      navigate(`/import/${res.data.filename}`);
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'URL import failed';
+      const details = err.response?.data?.details;
+      setMessage(details ? `${errorMessage}: ${details}` : errorMessage);
+    } finally {
+      setUrlImporting(false);
     }
   };
 
@@ -1930,11 +1956,38 @@ export default function ImportPage() {
     <div className="container">
       <h2>Import Books</h2>
       {!filename && (
-        <div>
-          <input type="file" ref={fileInput} onChange={handleFileChange} accept=".txt" />
-          <button onClick={handleUpload} disabled={uploading} className="btn">
-            {uploading ? 'Uploading...' : 'Upload'}
-          </button>
+        <div className="import-source-panel">
+          <div className="import-source-row">
+            <input type="file" ref={fileInput} onChange={handleFileChange} accept=".txt" />
+            <button onClick={handleUpload} disabled={uploading} className="btn">
+              {uploading ? 'Uploading...' : 'Upload'}
+            </button>
+          </div>
+
+          <div className="import-source-separator">or</div>
+
+          <div className="url-import-form">
+            <input
+              type="url"
+              value={articleUrl}
+              onChange={(event) => setArticleUrl(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  handleUrlImport();
+                }
+              }}
+              placeholder="https://wired.jp/article/the-unseen-impact-of-war-on-the-environment/"
+              className="url-import-input"
+            />
+            <button
+              onClick={handleUrlImport}
+              disabled={urlImporting}
+              className="btn"
+            >
+              {urlImporting ? 'Importing...' : 'Import URL'}
+            </button>
+          </div>
         </div>
       )}
       {filename && (

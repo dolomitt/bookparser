@@ -42,3 +42,35 @@ test('splitGrammarCompoundTokens can be disabled', () => {
   assert.equal(output.length, 1);
   assert.equal(output[0].surface_form, 'にあたる');
 });
+
+test('mergeNounCompounds keeps adjacent noun compounds as one reader token', () => {
+  const input = [
+    { surface_form: '生態', reading: 'セイタイ', pos: '名詞', pos_detail_1: '一般', basic_form: '生態', pronunciation: 'セイタイ' },
+    { surface_form: '系', reading: 'ケイ', pos: '名詞', pos_detail_1: '接尾', basic_form: '系', pronunciation: 'ケイ' },
+    { surface_form: 'の', reading: 'ノ', pos: '助詞', pos_detail_1: '連体化', basic_form: 'の', pronunciation: 'ノ' },
+    { surface_form: '破壊', reading: 'ハカイ', pos: '名詞', pos_detail_1: 'サ変接続', basic_form: '破壊', pronunciation: 'ハカイ' }
+  ];
+
+  const output = japaneseService.mergeNounCompounds(input);
+
+  assert.equal(output.length, 3);
+  assert.equal(output[0].surface_form, '生態系');
+  assert.equal(output[0].reading, 'セイタイケイ');
+  assert.equal(output[0].pos_detail_1, 'compound');
+  assert.equal(output[0].originalTokens.length, 2);
+  assert.equal(output[1].surface_form, 'の');
+  assert.equal(output[2].surface_form, '破壊');
+});
+
+test('mergeNounCompounds can be disabled', () => {
+  const input = [
+    { surface_form: '生態', reading: 'セイタイ', pos: '名詞', pos_detail_1: '一般', basic_form: '生態', pronunciation: 'セイタイ' },
+    { surface_form: '系', reading: 'ケイ', pos: '名詞', pos_detail_1: '接尾', basic_form: '系', pronunciation: 'ケイ' }
+  ];
+
+  const output = japaneseService.mergeNounCompounds(input, { mergeNounCompounds: false });
+
+  assert.equal(output.length, 2);
+  assert.equal(output[0].surface_form, '生態');
+  assert.equal(output[1].surface_form, '系');
+});

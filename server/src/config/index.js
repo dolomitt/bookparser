@@ -48,6 +48,18 @@ export const config = {
   uploadDir: process.env.UPLOAD_DIR || './imports',
   booksDir: process.env.BOOKS_DIR || './books',
 
+  crawl4ai: {
+    baseUrl: (process.env.CRAWL4AI_BASE_URL || '').replace(/\/+$/, ''),
+    token: process.env.CRAWL4AI_TOKEN || '',
+    timeout: parseInt(process.env.CRAWL4AI_TIMEOUT) || 60000
+  },
+
+  firecrawl: {
+    apiKey: process.env.FIRECRAWL_API_KEY || '',
+    apiUrl: (process.env.FIRECRAWL_API_URL || 'https://api.firecrawl.dev/v2').replace(/\/+$/, ''),
+    timeout: parseInt(process.env.FIRECRAWL_TIMEOUT) || 45000
+  },
+
   ollama: {
     host: ollamaHost,
     port: ollamaPort,
@@ -84,6 +96,9 @@ export function logConfig() {
   console.log('PORT:', config.port);
   console.log('UPLOAD_DIR:', config.uploadDir);
   console.log('BOOKS_DIR:', config.booksDir);
+  console.log('CRAWL4AI_BASE_URL:', config.crawl4ai.baseUrl || '[not configured]');
+  console.log('FIRECRAWL_API_URL:', config.firecrawl.apiUrl);
+  console.log('FIRECRAWL_API_KEY:', config.firecrawl.apiKey ? '[configured]' : '[not configured]');
   console.log('BOOKPARSER_OLLAMA_HOST:', config.ollama.host);
   console.log('BOOKPARSER_OLLAMA_PORT:', config.ollama.port);
   console.log('BOOKPARSER_OLLAMA_BASE_URLS:', config.ollama.baseUrls.join(', '));

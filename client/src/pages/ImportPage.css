@@ -11,6 +11,42 @@
   color: #f2f2f2;
 }
 
+.import-source-panel {
+  display: grid;
+  gap: 16px;
+  max-width: 860px;
+}
+
+.import-source-row,
+.url-import-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.import-source-separator {
+  color: #aaa;
+  font-size: 0.9em;
+}
+
+.url-import-input {
+  flex: 1 1 420px;
+  min-width: 260px;
+  padding: 10px 12px;
+  background-color: #1a1a1a;
+  color: #f2f2f2;
+  border: 1px solid #555;
+  border-radius: 4px;
+  font-size: 0.95em;
+}
+
+.url-import-input:focus {
+  outline: none;
+  border-color: #4fc3f7;
+  box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.18);
+}
+
 /* Options panels */
 .options-panel {
   margin-bottom: 20px;
@@ -502,6 +538,18 @@
 
 /* Mobile responsive styles */
 @media (max-width: 768px) {
+  .import-source-row,
+  .url-import-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .url-import-input {
+    flex-basis: auto;
+    min-width: 0;
+    width: 100%;
+  }
+
   .tts-options-grid {
     grid-template-columns: 1fr;
     gap: 20px;

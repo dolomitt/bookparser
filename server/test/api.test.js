@@ -32,6 +32,10 @@ before(async () => {
   process.env.UPLOAD_DIR = uploadsDir;
   process.env.BOOKS_DIR = booksDir;
   process.env.PORT = '0';
+  process.env.CRAWL4AI_BASE_URL = 'http://crawl4ai.test';
+  process.env.CRAWL4AI_TIMEOUT = '10000';
+  process.env.FIRECRAWL_API_KEY = '';
+  process.env.FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v2';
 
   const serverModule = await import('../src/index.js');
   app = serverModule.app || serverModule.default;
@@ -119,6 +123,135 @@ test('GET /api/imports excludes imports that already have completed .book files'
   assert.ok(Array.isArray(response.body));
   assert.ok(response.body.includes(pendingName));
   assert.ok(!response.body.includes(completedName));
+});
+
+test('POST /api/import/url rejects invalid URLs', async () => {
+  const response = await request(app)
+    .post('/api/import/url')
+    .send({ url: 'file:///tmp/article.html' });
+
+  assert.equal(response.status, 400);
+  assert.match(response.body.error, /valid http or https URL/);
+});
+
+test('POST /api/import/url imports readable article text into the imports directory', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => ({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: async () => {
+      assert.equal(url, 'http://crawl4ai.test/crawl');
+      const body = JSON.parse(options.body);
+      assert.deepEqual(body.urls, ['https://example.com/news/article']);
+
+      return {
+        success: true,
+        results: [{
+          success: true,
+          metadata: {
+            title: '戦争と環境'
+          },
+          markdown: {
+            raw_markdown: '# 戦争と環境\nこれはテスト記事です。\n環境への影響を説明します。\n'
+          }
+        }]
+      };
+    },
+    text: async () => ''
+  });
+
+  try {
+    const response = await request(app)
+      .post('/api/import/url')
+      .send({ url: 'https://example.com/news/article' });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.provider, 'crawl4ai');
+    assert.equal(response.body.filename, 'example.com-article.txt');
+    assert.equal(response.body.totalLines, 3);
+
+    const importedText = fs.readFileSync(path.join(uploadsDir, response.body.filename), 'utf-8');
+    assert.match(importedText, /これはテスト記事です。/);
+    assert.match(importedText, /環境への影響を説明します。/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('POST /api/import/url removes page chrome from Crawl4AI article markdown', async () => {
+  const originalFetch = globalThis.fetch;
+  const title = '\u6226\u4e89\u3068\u74b0\u5883';
+  const firstParagraph = '\u3053\u308c\u306f\u672c\u6587\u306e\u6700\u521d\u306e\u6bb5\u843d\u3067\u3059\u3002';
+  const secondParagraph = '\u3053\u308c\u306f\u672c\u6587\u306e\u7d9a\u304d\u3067\u3059\u3002';
+  const thirdParagraph = '\u3053\u308c\u306f\u30b5\u30a4\u30c9\u30d0\u30fc\u5f8c\u306e\u672c\u6587\u3067\u3059\u3002';
+
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: async () => ({
+      success: true,
+      results: [{
+        success: true,
+        metadata: {
+          title: `${title} | Example`
+        },
+        markdown: {
+          raw_markdown: [
+            'Privacy Center',
+            'Skip to main content',
+            title,
+            'Business',
+            'Culture',
+            'Latest',
+            'Author Name',
+            '2026.05.03',
+            title,
+            firstParagraph,
+            'Most Popular',
+            'Business',
+            '\u95a2\u4fc2\u306e\u306a\u3044\u898b\u51fa\u3057',
+            'By SOMEONE',
+            'Business',
+            '\u5225\u306e\u95a2\u4fc2\u306e\u306a\u3044\u898b\u51fa\u3057',
+            'By SOMEONE ELSE',
+            'Business',
+            '\u3082\u3046\u4e00\u3064\u95a2\u4fc2\u306e\u306a\u3044\u898b\u51fa\u3057',
+            'By THIRD',
+            secondParagraph,
+            thirdParagraph,
+            'Related Articles',
+            '\u95a2\u9023\u8a18\u4e8b\u306e\u898b\u51fa\u3057'
+          ].join('\n')
+        }
+      }]
+    }),
+    text: async () => ''
+  });
+
+  try {
+    const response = await request(app)
+      .post('/api/import/url')
+      .send({ url: 'https://example.com/news/chrome' });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.totalLines, 4);
+
+    const importedLines = fs
+      .readFileSync(path.join(uploadsDir, response.body.filename), 'utf-8')
+      .trim()
+      .split('\n');
+
+    assert.deepEqual(importedLines, [
+      title,
+      firstParagraph,
+      secondParagraph,
+      thirdParagraph
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('GET /api/import/:filename loads from books directory when import file is missing', async () => {

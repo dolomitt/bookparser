@@ -248,6 +248,61 @@ class JapaneseService {
     return mergedTokens;
   }
 
+  isMergeableNounToken(token) {
+    if (!token || token.pos !== '名詞') return false;
+    if (token.isSplitGrammarToken) return false;
+    if (token.pos_detail_1 === '非自立' || token.pos_detail_1 === '代名詞') return false;
+    return true;
+  }
+
+  mergeNounCompounds(tokens, options = {}) {
+    const { mergeNounCompounds = true } = options;
+    if (!mergeNounCompounds) return tokens;
+
+    const mergedTokens = [];
+    let i = 0;
+
+    while (i < tokens.length) {
+      const currentToken = tokens[i];
+
+      if (!this.isMergeableNounToken(currentToken)) {
+        mergedTokens.push(currentToken);
+        i += 1;
+        continue;
+      }
+
+      const nounGroup = [currentToken];
+      let j = i + 1;
+
+      while (j < tokens.length && this.isMergeableNounToken(tokens[j])) {
+        nounGroup.push(tokens[j]);
+        j += 1;
+      }
+
+      if (nounGroup.length > 1) {
+        mergedTokens.push({
+          surface_form: nounGroup.map(t => t.surface_form).join(''),
+          reading: nounGroup.map(t => t.reading || t.surface_form).join(''),
+          pos: '名詞',
+          pos_detail_1: 'compound',
+          pos_detail_2: currentToken.pos_detail_2,
+          pos_detail_3: currentToken.pos_detail_3,
+          basic_form: nounGroup.map(t => t.basic_form || t.surface_form).join(''),
+          pronunciation: nounGroup.map(t => t.pronunciation || t.reading || t.surface_form).join(''),
+          isCompoundNoun: true,
+          originalTokens: nounGroup,
+          mergeReason: 'noun_compound'
+        });
+      } else {
+        mergedTokens.push(currentToken);
+      }
+
+      i = j;
+    }
+
+    return mergedTokens;
+  }
+
   // Function to merge verb tokens with all inflections into single units
   mergeVerbTokens(tokens, options = {}) {
     const {

@@ -151,6 +151,353 @@ function resolveSourceTextPath(filename) {
   return null;
 }
 
+function validateImportUrl(value) {
+  try {
+    const parsed = new URL(String(value || '').trim());
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function decodeHtmlEntities(text) {
+  const namedEntities = {
+    amp: '&',
+    lt: '<',
+    gt: '>',
+    quot: '"',
+    apos: "'",
+    nbsp: ' '
+  };
+
+  return String(text || '').replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, entity) => {
+    if (entity[0] === '#') {
+      const isHex = entity[1]?.toLowerCase() === 'x';
+      const codePoint = parseInt(entity.slice(isHex ? 2 : 1), isHex ? 16 : 10);
+      if (Number.isFinite(codePoint)) {
+        try {
+          return String.fromCodePoint(codePoint);
+        } catch {
+          return match;
+        }
+      }
+      return match;
+    }
+
+    return namedEntities[entity.toLowerCase()] || match;
+  });
+}
+
+function extractTagContent(html, tagName) {
+  const pattern = new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)<\\/${tagName}>`, 'i');
+  const match = String(html || '').match(pattern);
+  return match ? match[1] : '';
+}
+
+function htmlToPlainText(html) {
+  const source = String(html || '');
+  const mainHtml =
+    extractTagContent(source, 'article') ||
+    extractTagContent(source, 'main') ||
+    extractTagContent(source, 'body') ||
+    source;
+
+  return decodeHtmlEntities(
+    mainHtml
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, ' ')
+      .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, ' ')
+      .replace(/<(?:p|div|section|article|main|header|footer|h[1-6]|li|br)\b[^>]*>/gi, '\n')
+      .replace(/<\/(?:p|div|section|article|main|header|footer|h[1-6]|li)>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+  );
+}
+
+function markdownToPlainText(markdown) {
+  return String(markdown || '')
+    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
+    .replace(/`{1,3}([^`]*)`{1,3}/g, '$1')
+    .replace(/^\s{0,3}> ?/gm, '')
+    .replace(/^\s{0,3}#{1,6}\s*/gm, '')
+    .replace(/[*_~]{1,3}/g, '')
+    .replace(/<[^>]+>/g, ' ');
+}
+
+function getMarkdownText(markdown) {
+  if (!markdown) return '';
+  if (typeof markdown === 'string') return markdown;
+  return markdown.raw_markdown || markdown.fit_markdown || markdown.markdown_with_citations || '';
+}
+
+function normalizeTitleForMatching(title) {
+  return String(title || '')
+    .split(/\s+[|｜-]\s+|[|｜]/)[0]
+    .replace(/\s+/g, '')
+    .trim();
+}
+
+function lineMatchesTitle(line, title) {
+  const normalizedTitle = normalizeTitleForMatching(title);
+  if (!normalizedTitle || normalizedTitle.length < 4) return false;
+
+  const normalizedLine = String(line || '').replace(/\s+/g, '').trim();
+  return normalizedLine === normalizedTitle || normalizedLine.includes(normalizedTitle);
+}
+
+function trimArticleStart(lines, title = '') {
+  const titleIndexes = [];
+
+  lines.forEach((line, index) => {
+    if (lineMatchesTitle(line, title)) {
+      titleIndexes.push(index);
+    }
+  });
+
+  if (titleIndexes.length > 1) {
+    return lines.slice(titleIndexes[titleIndexes.length - 1]);
+  }
+
+  if (titleIndexes.length === 1 && titleIndexes[0] > 10) {
+    return lines.slice(titleIndexes[0]);
+  }
+
+  return lines;
+}
+
+function cleanArticleLines(lines, title = '') {
+  const trimmedLines = trimArticleStart(lines, title);
+  const cleaned = [];
+  let skipSidebarLines = 0;
+
+  const stopPatterns = [
+    /^Related Articles$/i,
+    /^Topics\b/i,
+    /^Newsletter$/i,
+    /^SEE MORE STORIES$/i,
+    /^©\s*\d{4}/i
+  ];
+
+  const skipPatterns = [
+    /^Privacy Center$/i,
+    /^Privacy Policy$/i,
+    /^Powered by$/i,
+    /^Skip to main content$/i,
+    /^Open Navigation Menu$/i,
+    /^Menu$/i,
+    /^Subscribe$/i,
+    /^MAGAZINE$/i,
+    /^My Account$/i,
+    /^Promotion$/i,
+    /^EnglishDeutsch/i,
+    /^ILLUSTRATION-/i,
+    /^By [A-Z]/,
+    /WIRED.*サブスクリプションサービス/,
+    /関連記事はこちら/,
+    /詳しくはこちら。?$/,
+    /^雑誌『WIRED』日本版$/
+  ];
+
+  for (const line of trimmedLines) {
+    if (stopPatterns.some((pattern) => pattern.test(line))) {
+      break;
+    }
+
+    if (/^Most Popular$/i.test(line)) {
+      skipSidebarLines = 9;
+      continue;
+    }
+
+    if (skipSidebarLines > 0) {
+      skipSidebarLines -= 1;
+      continue;
+    }
+
+    if (skipPatterns.some((pattern) => pattern.test(line))) {
+      continue;
+    }
+
+    cleaned.push(line);
+  }
+
+  return cleaned;
+}
+
+function normalizeArticleLines(text, article = {}) {
+  const rawLines = String(text || '')
+    .replace(/\r\n?/g, '\n')
+    .split(/\n{2,}|\n/)
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^https?:\/\//i.test(line));
+
+  return cleanArticleLines(rawLines, article.title).slice(0, 1200);
+}
+
+function getTitleFromHtml(html) {
+  const titleMatch = String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (!titleMatch) return '';
+  return decodeHtmlEntities(titleMatch[1]).replace(/\s+/g, ' ').trim();
+}
+
+function buildUrlImportFilename(articleUrl, title = '') {
+  const parsed = new URL(articleUrl);
+  const hostPart = parsed.hostname.replace(/^www\./i, '');
+  const pathParts = parsed.pathname.split('/').map((part) => part.trim()).filter(Boolean);
+  const lastPathPart = pathParts[pathParts.length - 1] || '';
+  const rawBase = `${hostPart}-${lastPathPart || title || 'article'}`;
+  const slug = rawBase
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 100) || 'article';
+
+  let filename = `${slug}.txt`;
+  let candidatePath = path.join(config.uploadDir, filename);
+  let counter = 2;
+  while (fs.existsSync(candidatePath) || fs.existsSync(path.join(config.booksDir, `${filename}.book`))) {
+    filename = `${slug}-${counter}.txt`;
+    candidatePath = path.join(config.uploadDir, filename);
+    counter += 1;
+  }
+
+  return filename;
+}
+
+async function scrapeArticleWithCrawl4AI(articleUrl) {
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  if (config.crawl4ai.token) {
+    headers.Authorization = `Bearer ${config.crawl4ai.token}`;
+  }
+
+  const response = await fetch(`${config.crawl4ai.baseUrl}/crawl`, {
+    method: 'POST',
+    headers,
+    signal: AbortSignal.timeout(config.crawl4ai.timeout),
+    body: JSON.stringify({
+      urls: [articleUrl],
+      browser_config: {
+        type: 'BrowserConfig',
+        params: {
+          headless: true
+        }
+      },
+      crawler_config: {
+        type: 'CrawlerRunConfig',
+        params: {
+          stream: false,
+          cache_mode: 'bypass'
+        }
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`Crawl4AI crawl failed (${response.status}): ${errorText || response.statusText}`);
+  }
+
+  const payload = await response.json();
+  const result = Array.isArray(payload?.results) ? payload.results[0] : payload;
+
+  if (!result?.success && result?.success !== undefined) {
+    throw new Error(result.error_message || 'Crawl4AI could not crawl this URL');
+  }
+
+  const markdown = getMarkdownText(result?.markdown);
+  const title = result?.metadata?.title || '';
+  const fallbackHtmlText = result?.cleaned_html ? htmlToPlainText(result.cleaned_html) : '';
+
+  return {
+    provider: 'crawl4ai',
+    title: String(title || '').trim(),
+    text: markdown ? markdownToPlainText(markdown) : fallbackHtmlText
+  };
+}
+
+async function scrapeArticleWithFirecrawl(articleUrl) {
+  const response = await fetch(`${config.firecrawl.apiUrl}/scrape`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.firecrawl.apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      url: articleUrl,
+      formats: ['markdown'],
+      onlyMainContent: true,
+      timeout: config.firecrawl.timeout
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`Firecrawl scrape failed (${response.status}): ${errorText || response.statusText}`);
+  }
+
+  const payload = await response.json();
+  const data = payload?.data || payload;
+  const markdown = data?.markdown || payload?.markdown || '';
+  const metadata = data?.metadata || payload?.metadata || {};
+  const title = metadata.title || metadata.ogTitle || metadata.pageTitle || '';
+
+  return {
+    provider: 'firecrawl',
+    title: String(title || '').trim(),
+    text: markdownToPlainText(markdown)
+  };
+}
+
+async function scrapeArticleDirectly(articleUrl) {
+  const response = await fetch(articleUrl, {
+    headers: {
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7',
+      'User-Agent': 'Bookparser/1.0 (+https://localhost)'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Article fetch failed (${response.status}): ${response.statusText}`);
+  }
+
+  const rawText = await response.text();
+  const contentType = response.headers.get('content-type') || '';
+  const isHtml = contentType.includes('html') || /<html[\s>]/i.test(rawText);
+
+  return {
+    provider: 'direct',
+    title: isHtml ? getTitleFromHtml(rawText) : '',
+    text: isHtml ? htmlToPlainText(rawText) : rawText
+  };
+}
+
+async function scrapeArticle(articleUrl) {
+  if (config.crawl4ai.baseUrl) {
+    try {
+      return await scrapeArticleWithCrawl4AI(articleUrl);
+    } catch (error) {
+      console.warn('[URL Import] Crawl4AI failed, falling back:', error.message);
+    }
+  }
+
+  if (config.firecrawl.apiKey) {
+    try {
+      return await scrapeArticleWithFirecrawl(articleUrl);
+    } catch (error) {
+      console.warn('[URL Import] Firecrawl failed, falling back to direct fetch:', error.message);
+    }
+  }
+
+  return scrapeArticleDirectly(articleUrl);
+}
+
 // Upload book (txt) with automatic local processing
 app.post('/api/import', uploadSingleTxt, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -188,7 +535,9 @@ app.post('/api/import', uploadSingleTxt, async (req, res) => {
 
           // Apply basic token merging
           const tokens = japaneseService.mergeVerbTokens(
-            japaneseService.mergePunctuationTokens(grammarSplitTokens),
+            japaneseService.mergeNounCompounds(
+              japaneseService.mergePunctuationTokens(grammarSplitTokens)
+            ),
             {
               mergeAuxiliaryVerbs: true,
               mergeVerbParticles: true,
@@ -325,6 +674,45 @@ app.post('/api/import', uploadSingleTxt, async (req, res) => {
       originalname: originalname,
       autoProcessed: false,
       error: 'Auto-processing failed, manual processing required'
+    });
+  }
+});
+
+// Import an article from a URL as a plain text source file.
+app.post('/api/import/url', async (req, res) => {
+  const parsedUrl = validateImportUrl(req.body?.url);
+  if (!parsedUrl) {
+    return res.status(400).json({ error: 'A valid http or https URL is required' });
+  }
+
+  try {
+    const articleUrl = parsedUrl.toString();
+    const article = await scrapeArticle(articleUrl);
+    const lines = normalizeArticleLines(article.text, article);
+
+    if (lines.length === 0) {
+      return res.status(422).json({ error: 'No readable article text found at that URL' });
+    }
+
+    const filename = buildUrlImportFilename(articleUrl, article.title);
+    const importPath = path.join(config.uploadDir, filename);
+    fs.writeFileSync(importPath, `${lines.join('\n')}\n`, 'utf-8');
+
+    const originalname = article.title || parsedUrl.hostname;
+    console.log(`[URL Import] Imported ${lines.length} lines from ${articleUrl} via ${article.provider}: ${filename}`);
+
+    res.json({
+      filename,
+      originalname,
+      sourceUrl: articleUrl,
+      provider: article.provider,
+      totalLines: lines.length
+    });
+  } catch (error) {
+    console.error('[URL Import] Failed to import article:', error);
+    res.status(502).json({
+      error: 'Failed to import article from URL',
+      details: error.message
     });
   }
 });
@@ -776,9 +1164,15 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
     let tokens;
     if (verbMergeOptions.useCompoundDetection) {
       const compoundTokens = japaneseService.detectCompoundVerbs(tokensAfterPunctuation);
-      tokens = japaneseService.mergeVerbTokens(compoundTokens, verbMergeOptions);
+      tokens = japaneseService.mergeVerbTokens(
+        japaneseService.mergeNounCompounds(compoundTokens, verbMergeOptions),
+        verbMergeOptions
+      );
     } else {
-      tokens = japaneseService.mergeVerbTokens(tokensAfterPunctuation, verbMergeOptions);
+      tokens = japaneseService.mergeVerbTokens(
+        japaneseService.mergeNounCompounds(tokensAfterPunctuation, verbMergeOptions),
+        verbMergeOptions
+      );
     }
 
     const words = tokens.filter(token =>
