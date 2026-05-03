@@ -38,7 +38,7 @@ export default function MainPage() {
           </div>
           <div className="stat-card">
             <div className="stat-number">{processedBooks.length}</div>
-            <div className="stat-label">Processed</div>
+            <div className="stat-label">Reading</div>
           </div>
         </div>
       </div>
@@ -56,11 +56,11 @@ export default function MainPage() {
 
       {/* Books Grid */}
       <div className="content-grid">
-        {/* Processed Books */}
+        {/* Reading Resources */}
         {processedBooks.length > 0 && (
           <div className="section-card">
             <div className="section-header">
-              <h2>📊 Processed Books</h2>
+              <h2>📊 Reading</h2>
               <span className="section-count">{processedBooks.length}</span>
             </div>
             <div className="books-grid">
@@ -75,7 +75,7 @@ export default function MainPage() {
                     <div className="book-icon">🔍</div>
                     <div className="book-info">
                       <h4>{displayName}</h4>
-                      <span className="book-type">Fully Analyzed</span>
+                      <span className="book-type">Reading</span>
                     </div>
                     <div className="book-arrow">→</div>
                   </Link>
@@ -111,11 +111,11 @@ export default function MainPage() {
           </div>
         )}
 
-        {/* Imports in Progress */}
+        {/* Drafts */}
         {imports.length > 0 && (
           <div className="section-card">
             <div className="section-header">
-              <h2>⚡ Imports in Progress</h2>
+              <h2>⚡ Drafts</h2>
               <span className="section-count">{imports.length}</span>
             </div>
             <div className="books-grid">
@@ -128,7 +128,7 @@ export default function MainPage() {
                   <div className="book-icon">⏳</div>
                   <div className="book-info">
                     <h4>{file}</h4>
-                    <span className="book-type">Processing...</span>
+                    <span className="book-type">Draft</span>
                   </div>
                   <div className="book-arrow">→</div>
                 </Link>

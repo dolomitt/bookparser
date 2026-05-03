@@ -2,19 +2,40 @@
 
 /* Main content area */
 .import-content {
-  padding: 20px;
+  padding: 18px;
   background-color: #1a1a1a;
   border-radius: 8px;
   border: 1px solid #444;
   font-size: 1.1em;
   line-height: 1.8;
   color: #f2f2f2;
+  overflow-wrap: anywhere;
 }
 
 .import-source-panel {
   display: grid;
   gap: 16px;
   max-width: 860px;
+}
+
+.container > div > h3 {
+  line-height: 1.35;
+}
+
+.import-file-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.import-file-heading > span:first-child {
+  font-size: 0.85em;
+  color: #bdbdbd;
+}
+
+.import-file-name {
+  font-size: 0.95em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .import-source-row,
@@ -526,10 +547,14 @@
 /* Button controls */
 .controls-section {
   margin-bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
 }
 
 .controls-section .btn {
-  margin-left: 10px;
+  margin: 0;
 }
 
 .controls-section .btn:first-child {
@@ -561,29 +586,38 @@
   }
 
   .sentence-controls {
-    flex-wrap: wrap;
-    gap: 6px;
+    gap: 3px;
+    margin-left: 3px;
+    vertical-align: middle;
   }
 
   .sentence-btn {
-    min-height: 44px;
-    padding: 10px 12px;
-    font-size: 0.9em;
+    min-height: 32px;
+    min-width: 32px;
+    padding: 6px 8px;
+    font-size: 0.8em;
     touch-action: manipulation;
   }
 
+  [data-token] {
+    margin: 0 !important;
+    padding: 1px 2px !important;
+    min-height: 28px !important;
+    min-width: auto !important;
+  }
+
   .token {
-    min-height: 32px;
-    min-width: 20px;
-    padding: 3px 4px;
+    min-height: 28px;
+    min-width: auto;
+    padding: 1px 2px;
   }
 
   .token-popup {
-    max-width: 90vw;
-    min-width: 250px;
+    max-width: none;
+    min-width: 0;
     font-size: 1em;
-    padding: 16px;
-    border-radius: 12px;
+    padding: 14px;
+    border-radius: 8px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   }
 
@@ -597,13 +631,19 @@
   }
 
   .controls-section {
-    display: flex;
+    align-items: stretch;
     flex-direction: column;
-    gap: 10px;
   }
 
   .controls-section .btn {
-    margin-left: 0;
+    width: 100%;
+  }
+
+  .ollama-stream-popup {
+    inset: auto 8px 8px 8px !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: 60vh !important;
   }
 }
 
@@ -613,14 +653,19 @@
   }
 
   .import-content {
-    padding: 16px;
-    font-size: 1em;
+    margin-left: -8px;
+    margin-right: -8px;
+    padding: 12px;
+    font-size: 1rem;
+    line-height: 1.75;
+    border-radius: 0;
   }
 
   .sentence-btn {
-    min-height: 48px;
-    padding: 12px 16px;
-    font-size: 0.95em;
+    min-height: 32px;
+    min-width: 32px;
+    padding: 6px 8px;
+    font-size: 0.8em;
   }
 }
 
@@ -727,11 +772,12 @@ button {
   .pagination-controls {
     flex-wrap: wrap;
     gap: 8px;
+    padding: 14px 0;
   }
 
   .pagination-btn {
     padding: 10px 14px;
-    min-width: 50px;
+    min-width: 64px;
     font-size: 0.9em;
   }
 
@@ -742,16 +788,21 @@ button {
 
 @media (max-width: 480px) {
   .pagination-controls {
-    flex-direction: column;
-    gap: 15px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .pagination-pages {
-    order: -1;
+    grid-column: 1 / -1;
+    justify-content: center;
+    flex-wrap: wrap;
   }
 
   .pagination-btn {
     min-height: 44px;
+    min-width: 0;
+    width: 100%;
     touch-action: manipulation;
   }
 }

@@ -6,10 +6,10 @@ import ImportPage from './pages/ImportPage';
 
 export default function App() {
   return (
-    <div>
-      <nav style={{ padding: '1em', background: '#222', color: '#fff' }}>
-        <Link to="/" style={{ marginRight: 16, color: '#fff' }}>Books</Link>
-        <Link to="/import" style={{ color: '#fff' }}>Import</Link>
+    <div className="app-shell">
+      <nav className="app-nav">
+        <Link to="/">Books</Link>
+        <Link to="/import">Import</Link>
       </nav>
       <Routes>
         <Route path="/" element={<MainPage />} />

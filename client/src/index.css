@@ -3,6 +3,22 @@ body {
   color: #f2f2f2;
   font-family: 'Segoe UI', Arial, sans-serif;
   margin: 0;
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
 }
 
 .container {
@@ -12,31 +28,71 @@ body {
   border-radius: 8px;
   padding: 2em;
   box-shadow: 0 2px 8px #0008;
-  width: 90%;
+  width: min(90%, 960px);
+}
+
+.container h1,
+.container h2,
+.container h3 {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 768px) {
   .container {
-    width: 95%;
-    margin: 1em auto;
-    padding: 1em;
+    width: 100%;
+    margin: 0;
+    padding: 16px;
+    border-radius: 0;
+    box-shadow: none;
   }
 }
 
-nav {
+.app-nav {
   background: #222;
-  padding: 1em 2em;
-  font-size: 1.2em;
+  color: #fff;
+  display: flex;
+  gap: 8px;
+  padding: 12px max(16px, env(safe-area-inset-left));
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 1px solid #333;
 }
 
-nav a {
+.app-nav a {
   color: #fff;
   text-decoration: none;
-  margin-right: 1.5em;
+  border-radius: 6px;
+  min-height: 44px;
+  padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-nav a:hover {
-  text-decoration: underline;
+.app-nav a:hover {
+  background: #333;
+  text-decoration: none;
+}
+
+@media (max-width: 480px) {
+  .container h2 {
+    font-size: 1.45rem;
+  }
+
+  .container h3 {
+    font-size: 1rem;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  .app-nav {
+    padding: 8px 10px;
+  }
+
+  .app-nav a {
+    flex: 1;
+  }
 }
 
 .btn {
@@ -48,6 +104,7 @@ nav a:hover {
   margin-top: 1em;
   cursor: pointer;
   font-size: 1em;
+  min-height: 44px;
 }
 
 .btn-small {
@@ -117,16 +174,6 @@ nav a:hover {
     touch-action: manipulation;
   }
   
-  /* Improve touch targets for tokens */
-  .token-popup {
-    font-size: 1em !important;
-    padding: 16px !important;
-    max-width: 90vw !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    top: 20px !important;
-    position: fixed !important;
-  }
 }
 
 /* Prevent text selection on tokens for better mobile experience */
@@ -148,21 +195,21 @@ button {
 .home-container {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 2rem;
-  min-height: 100vh;
+  padding: 24px;
+  min-height: calc(100vh - 69px);
 }
 
 .hero-section {
   text-align: center;
-  margin-bottom: 3rem;
-  padding: 3rem 2rem;
+  margin-bottom: 24px;
+  padding: 32px 24px;
   background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
-  border-radius: 16px;
+  border-radius: 8px;
   border: 1px solid #333;
 }
 
 .hero-title {
-  font-size: 3rem;
+  font-size: 2.5rem;
   font-weight: 700;
   margin: 0 0 1rem 0;
   background: linear-gradient(135deg, #4fc3f7 0%, #29b6f6 50%, #0288d1 100%);
@@ -182,17 +229,16 @@ button {
 }
 
 .hero-stats {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 160px));
   justify-content: center;
-  gap: 2rem;
-  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .stat-card {
   background: #333;
-  padding: 1.5rem;
-  border-radius: 12px;
-  min-width: 120px;
+  padding: 16px;
+  border-radius: 8px;
   border: 1px solid #444;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
@@ -217,15 +263,15 @@ button {
 }
 
 .quick-actions {
-  margin-bottom: 3rem;
+  margin-bottom: 24px;
 }
 
 .action-card {
   display: flex;
   align-items: center;
-  padding: 2rem;
+  padding: 20px;
   background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-  border-radius: 16px;
+  border-radius: 8px;
   text-decoration: none;
   color: white;
   transition: all 0.3s ease;
@@ -265,8 +311,8 @@ button {
 
 .section-card {
   background: #2a2a2a;
-  border-radius: 16px;
-  padding: 2rem;
+  border-radius: 8px;
+  padding: 20px;
   border: 1px solid #333;
 }
 
@@ -296,16 +342,16 @@ button {
 
 .books-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   gap: 1rem;
 }
 
 .book-card {
   display: flex;
   align-items: center;
-  padding: 1.5rem;
+  padding: 16px;
   background: #333;
-  border-radius: 12px;
+  border-radius: 8px;
   text-decoration: none;
   color: #f2f2f2;
   transition: all 0.3s ease;
@@ -411,11 +457,15 @@ button {
 /* Responsive Design */
 @media (max-width: 768px) {
   .home-container {
-    padding: 1rem;
+    padding: 12px;
+  }
+
+  .hero-section {
+    padding: 20px 14px;
   }
 
   .hero-title {
-    font-size: 2rem;
+    font-size: 1.75rem;
   }
 
   .hero-subtitle {
@@ -423,20 +473,25 @@ button {
   }
 
   .hero-stats {
-    gap: 1rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .stat-card {
-    padding: 1rem;
-    min-width: 100px;
+    padding: 12px 8px;
   }
 
   .stat-number {
-    font-size: 2rem;
+    font-size: 1.5rem;
+  }
+
+  .stat-label {
+    font-size: 0.72rem;
+    overflow-wrap: anywhere;
   }
 
   .action-card {
-    padding: 1.5rem;
+    padding: 16px;
   }
 
   .action-icon {
@@ -449,36 +504,18 @@ button {
   }
 
   .section-card {
-    padding: 1.5rem;
+    padding: 14px;
   }
 }
 
 @media (max-width: 480px) {
-  .hero-stats {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .stat-card {
-    width: 100%;
-    max-width: 200px;
-  }
-
   .action-card {
-    flex-direction: column;
-    text-align: center;
+    align-items: flex-start;
   }
 
   .action-icon {
-    margin-right: 0;
-    margin-bottom: 1rem;
-  }
-
-  /* Mobile-specific styles for token popup */
-  .token-popup {
-    max-width: 90vw !important;
-    min-width: 250px !important;
-    font-size: 0.95em !important;
+    margin-right: 12px;
+    margin-bottom: 0;
   }
 
   /* Ensure buttons are touch-friendly on mobile */
@@ -494,30 +531,12 @@ button {
   }
 }
 
-/* Additional mobile touch improvements */
 @media (max-width: 768px) {
-  .token-popup {
-    padding: 16px !important;
-    border-radius: 12px !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
-  }
-
-  /* Better touch targets for tokens */
   .import-line-content span {
     min-height: 32px !important;
     min-width: 20px !important;
     padding: 3px 4px !important;
   }
-}
-
-/* Ensure popup is always visible */
-.token-popup {
-  position: fixed !important;
-  z-index: 999999 !important;
-  pointer-events: auto !important;
-  display: block !important;
-  visibility: visible !important;
-  opacity: 1 !important;
 }
 
 /* Ensure container doesn't clip popups */
@@ -534,6 +553,3 @@ button {
 }
 
 /* Debug styles - remove these after testing */
-.token-popup {
-  border: 3px solid #ff0000 !important; /* Red border to make popup visible during debugging */
-}

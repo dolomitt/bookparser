@@ -125,6 +125,98 @@ class JapaneseService {
     });
   }
 
+  normalizeDigits(text) {
+    return String(text || '').replace(/[０-９]/g, (char) =>
+      String.fromCharCode(char.charCodeAt(0) - 0xfee0)
+    );
+  }
+
+  readJapaneseNumber(number) {
+    const value = Number.parseInt(this.normalizeDigits(number), 10);
+    if (!Number.isInteger(value) || value < 0 || value > 99) {
+      return null;
+    }
+
+    const ones = ['', 'いち', 'に', 'さん', 'よん', 'ご', 'ろく', 'なな', 'はち', 'きゅう'];
+    if (value < 10) return ones[value] || null;
+    if (value === 10) return 'じゅう';
+    if (value < 20) return `じゅう${ones[value - 10]}`;
+
+    const tens = Math.floor(value / 10);
+    const remainder = value % 10;
+    return `${ones[tens]}じゅう${ones[remainder]}`;
+  }
+
+  readJapaneseMonth(month) {
+    const value = Number.parseInt(this.normalizeDigits(month), 10);
+    const months = {
+      1: 'いちがつ',
+      2: 'にがつ',
+      3: 'さんがつ',
+      4: 'しがつ',
+      5: 'ごがつ',
+      6: 'ろくがつ',
+      7: 'しちがつ',
+      8: 'はちがつ',
+      9: 'くがつ',
+      10: 'じゅうがつ',
+      11: 'じゅういちがつ',
+      12: 'じゅうにがつ'
+    };
+    return months[value] || null;
+  }
+
+  readJapaneseDay(day) {
+    const value = Number.parseInt(this.normalizeDigits(day), 10);
+    const specialDays = {
+      1: 'ついたち',
+      2: 'ふつか',
+      3: 'みっか',
+      4: 'よっか',
+      5: 'いつか',
+      6: 'むいか',
+      7: 'なのか',
+      8: 'ようか',
+      9: 'ここのか',
+      10: 'とおか',
+      14: 'じゅうよっか',
+      20: 'はつか',
+      24: 'にじゅうよっか'
+    };
+    if (specialDays[value]) return specialDays[value];
+    if (value >= 1 && value <= 31) {
+      const numberReading = this.readJapaneseNumber(value);
+      return numberReading ? `${numberReading}にち` : null;
+    }
+    return null;
+  }
+
+  normalizeTokenReading(surface, reading) {
+    const normalizedSurface = this.normalizeDigits(surface);
+    const fullDateMatch = normalizedSurface.match(/^(\d{1,2})月(\d{1,2})日$/);
+    if (fullDateMatch) {
+      const monthReading = this.readJapaneseMonth(fullDateMatch[1]);
+      const dayReading = this.readJapaneseDay(fullDateMatch[2]);
+      if (monthReading && dayReading) {
+        return `${monthReading}${dayReading}`;
+      }
+    }
+
+    const monthMatch = normalizedSurface.match(/^(\d{1,2})月$/);
+    if (monthMatch) {
+      const monthReading = this.readJapaneseMonth(monthMatch[1]);
+      if (monthReading) return monthReading;
+    }
+
+    const dayMatch = normalizedSurface.match(/^(\d{1,2})日$/);
+    if (dayMatch) {
+      const dayReading = this.readJapaneseDay(dayMatch[1]);
+      if (dayReading) return dayReading;
+    }
+
+    return this.katakanaToHiragana(reading);
+  }
+
   // Tokenize text using Kuromoji
   tokenize(text) {
     if (!this.tokenizer) {

@@ -74,3 +74,11 @@ test('mergeNounCompounds can be disabled', () => {
   assert.equal(output[0].surface_form, '生態');
   assert.equal(output[1].surface_form, '系');
 });
+
+test('normalizeTokenReading uses natural readings for numeric Japanese dates', () => {
+  assert.equal(japaneseService.normalizeTokenReading('3月8日', '3ツキ8ニチ'), 'さんがつようか');
+  assert.equal(japaneseService.normalizeTokenReading('３月８日', '3ツキ8ニチ'), 'さんがつようか');
+  assert.equal(japaneseService.normalizeTokenReading('4月', '4ツキ'), 'しがつ');
+  assert.equal(japaneseService.normalizeTokenReading('20日', '20ニチ'), 'はつか');
+  assert.equal(japaneseService.normalizeTokenReading('24日', '24ニチ'), 'にじゅうよっか');
+});

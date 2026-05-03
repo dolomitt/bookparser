@@ -287,7 +287,29 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
           return (
             <div
               className="token-popup"
-              style={{
+              style={window.innerWidth <= 768 ? {
+                position: 'fixed',
+                left: '12px',
+                right: '12px',
+                bottom: '12px',
+                transform: 'none',
+                backgroundColor: '#1a1a1a',
+                border: '2px solid #4fc3f7',
+                borderRadius: '8px',
+                padding: '14px',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.8)',
+                zIndex: 99999,
+                maxWidth: 'none',
+                minWidth: '0',
+                maxHeight: '55vh',
+                overflowY: 'auto',
+                fontSize: '0.95em',
+                color: '#f2f2f2',
+                lineHeight: '1.5',
+                pointerEvents: 'auto',
+                display: 'block',
+                visibility: 'visible'
+              } : {
                 position: 'fixed',
                 left: `${popupPosition.x}px`,
                 bottom: `${window.innerHeight - popupPosition.y}px`,
@@ -1836,7 +1858,7 @@ export default function ImportPage() {
       };
 
       await axios.post(`/api/import/${filename}/save`, bookData);
-      setMessage('Saved to books with all processed data!');
+      setMessage('Moved to reading.');
     } catch (error) {
       console.error('Save error:', error);
       setMessage('Save failed');
@@ -1992,7 +2014,10 @@ export default function ImportPage() {
       )}
       {filename && (
         <div>
-          <h3>File: {filename}</h3>
+          <h3 className="import-file-heading">
+            <span>File</span>
+            <span className="import-file-name">{filename}</span>
+          </h3>
           <div className="controls-section">
             {!isCompletedBookView && (
               <button onClick={handleSave} className="btn">Save to Books</button>
@@ -2518,6 +2543,7 @@ export default function ImportPage() {
 
           {ollamaStreamPopup.visible && (
             <div
+              className="ollama-stream-popup"
               style={{
                 position: 'fixed',
                 right: '16px',

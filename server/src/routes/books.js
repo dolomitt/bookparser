@@ -5,11 +5,47 @@ import { config } from '../config/index.js';
 
 const router = express.Router();
 
+function isCompletedBookFile(bookPath) {
+  if (!bookPath.endsWith('.book')) return true;
+
+  try {
+    const bookData = JSON.parse(fs.readFileSync(bookPath, 'utf-8'));
+    const metadata = bookData?.metadata || {};
+
+    if (metadata.status === 'reading' || metadata.status === 'completed' || metadata.completed === true || metadata.savedToBooks === true) {
+      return true;
+    }
+
+    if (metadata.status === 'draft' || metadata.completed === false || metadata.autoProcessed === true) {
+      return false;
+    }
+
+    if (metadata.lastUpdated && !metadata.savedAt) {
+      return false;
+    }
+
+    // Legacy completed books did not always include explicit status metadata.
+    return Object.keys(metadata).length === 0 || !!metadata.savedAt || !!metadata.version;
+  } catch {
+    return true;
+  }
+}
+
 // List all books
 router.get('/', (req, res) => {
   fs.readdir(config.booksDir, (err, files) => {
     if (err) return res.status(500).json({ error: 'Cannot read books directory' });
-    res.json(files);
+    const visibleBooks = files.filter((file) => {
+      if (file === '.gitkeep') return false;
+      if (!file.endsWith('.book')) return true;
+
+      const sourceImportPath = path.join(config.uploadDir, file.replace(/\.book$/, ''));
+      if (!fs.existsSync(sourceImportPath)) return true;
+
+      return isCompletedBookFile(path.join(config.booksDir, file));
+    });
+
+    res.json(visibleBooks);
   });
 });
 

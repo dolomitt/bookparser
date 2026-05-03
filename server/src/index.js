@@ -95,11 +95,36 @@ app.get('/api/imports', (req, res) => {
     const pendingImports = files.filter((file) => {
       if (file === '.gitkeep') return false;
       const completedBookPath = path.join(config.booksDir, `${file}.book`);
-      return !fs.existsSync(completedBookPath);
+      return !fs.existsSync(completedBookPath) || !isCompletedBookFile(completedBookPath);
     });
     res.json(pendingImports);
   });
 });
+
+function isCompletedBookFile(bookPath) {
+  if (!bookPath.endsWith('.book')) return true;
+
+  try {
+    const bookData = JSON.parse(fs.readFileSync(bookPath, 'utf-8'));
+    const metadata = bookData?.metadata || {};
+
+    if (metadata.status === 'reading' || metadata.status === 'completed' || metadata.completed === true || metadata.savedToBooks === true) {
+      return true;
+    }
+
+    if (metadata.status === 'draft' || metadata.completed === false || metadata.autoProcessed === true) {
+      return false;
+    }
+
+    if (metadata.lastUpdated && !metadata.savedAt) {
+      return false;
+    }
+
+    return Object.keys(metadata).length === 0 || !!metadata.savedAt || !!metadata.version;
+  } catch {
+    return true;
+  }
+}
 
 function loadLinesForImportFilename(filename) {
   const importTextPath = path.join(config.uploadDir, filename);
@@ -550,7 +575,7 @@ app.post('/api/import', uploadSingleTxt, async (req, res) => {
           const basicTokens = tokens.map(token => ({
             surface_form: token.surface_form,
             basic_form: token.basic_form,
-            reading: japaneseService.katakanaToHiragana(token.reading),
+            reading: japaneseService.normalizeTokenReading(token.surface_form, token.reading),
             pos: token.pos,
             pos_detail: token.pos_detail_1,
             isSplitGrammarToken: token.isSplitGrammarToken || false,
@@ -633,7 +658,9 @@ app.post('/api/import', uploadSingleTxt, async (req, res) => {
         processedLines: processedCount,
         version: '1.0',
         autoProcessed: true,
-        processingType: 'local_dictionary'
+        processingType: 'local_dictionary',
+        status: 'draft',
+        completed: false
       },
       settings: {
         verbMergeOptions: {
@@ -871,6 +898,8 @@ app.post('/api/import/:filename/save-sentence', (req, res) => {
     // Update the specific sentence
     bookData.content.processedSentences[sentenceIndex] = sentenceData;
     bookData.settings.verbMergeOptions = verbMergeOptions;
+    bookData.metadata.status = bookData.metadata.status === 'reading' ? 'reading' : 'draft';
+    bookData.metadata.completed = bookData.metadata.status === 'reading';
     bookData.metadata.lastUpdated = timestamp;
     bookData.metadata.processedSentences = Object.keys(bookData.content.processedSentences).length;
     bookData.metadata.originalFilename = req.params.filename;
@@ -935,7 +964,10 @@ app.post('/api/import/:filename/save', (req, res) => {
       totalLines: metadata?.totalLines || 0,
       processedLines: metadata?.processedLines || 0,
       processedSentences: metadata?.processedSentences || Object.keys(processedSentences || {}).length,
-      version: '1.0'
+      version: '1.0',
+      status: 'reading',
+      completed: true,
+      savedToBooks: true
     },
     settings: {
       verbMergeOptions: verbMergeOptions || {},
@@ -1185,7 +1217,7 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
       surface_form: token.surface_form,
       basic_form: token.basic_form,
       surface: token.surface_form,
-      reading: japaneseService.katakanaToHiragana(token.reading),
+      reading: japaneseService.normalizeTokenReading(token.surface_form, token.reading),
       pos: token.pos,
       pos_detail: token.pos_detail_1,
       isSplitGrammarToken: token.isSplitGrammarToken || false,

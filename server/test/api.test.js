@@ -112,17 +112,54 @@ test('GET /api/imports returns files in import directory', async () => {
 test('GET /api/imports excludes imports that already have completed .book files', async () => {
   const completedName = 'done.txt';
   fs.writeFileSync(path.join(uploadsDir, completedName), 'line 1', 'utf-8');
-  fs.writeFileSync(path.join(booksDir, `${completedName}.book`), '{}', 'utf-8');
+  fs.writeFileSync(
+    path.join(booksDir, `${completedName}.book`),
+    JSON.stringify({ metadata: { status: 'reading', completed: true } }),
+    'utf-8'
+  );
 
   const pendingName = 'pending.txt';
   fs.writeFileSync(path.join(uploadsDir, pendingName), 'line 1', 'utf-8');
+
+  const draftName = 'draft.txt';
+  fs.writeFileSync(path.join(uploadsDir, draftName), 'line 1', 'utf-8');
+  fs.writeFileSync(
+    path.join(booksDir, `${draftName}.book`),
+    JSON.stringify({ metadata: { status: 'draft', completed: false } }),
+    'utf-8'
+  );
 
   const response = await request(app).get('/api/imports');
 
   assert.equal(response.status, 200);
   assert.ok(Array.isArray(response.body));
   assert.ok(response.body.includes(pendingName));
+  assert.ok(response.body.includes(draftName));
   assert.ok(!response.body.includes(completedName));
+});
+
+test('GET /api/books excludes draft progress files that still have import sources', async () => {
+  const draftName = 'draft-resource.txt';
+  fs.writeFileSync(path.join(uploadsDir, draftName), 'line 1', 'utf-8');
+  fs.writeFileSync(
+    path.join(booksDir, `${draftName}.book`),
+    JSON.stringify({ metadata: { status: 'draft', completed: false } }),
+    'utf-8'
+  );
+
+  const completedName = 'completed-resource.txt';
+  fs.writeFileSync(path.join(uploadsDir, completedName), 'line 1', 'utf-8');
+  fs.writeFileSync(
+    path.join(booksDir, `${completedName}.book`),
+    JSON.stringify({ metadata: { status: 'reading', completed: true } }),
+    'utf-8'
+  );
+
+  const response = await request(app).get('/api/books');
+
+  assert.equal(response.status, 200);
+  assert.ok(!response.body.includes(`${draftName}.book`));
+  assert.ok(response.body.includes(`${completedName}.book`));
 });
 
 test('POST /api/import/url rejects invalid URLs', async () => {
@@ -447,6 +484,9 @@ test('POST /api/import/:filename/save stores processedSentences in .book file', 
   assert.deepEqual(bookJson.content.summary.sentences, ['One.', 'Two.', 'Three.']);
   assert.equal(bookJson.content.summary.generatedAt, '2026-03-29T01:02:03.000Z');
   assert.equal(bookJson.metadata.processedSentences, 1);
+  assert.equal(bookJson.metadata.status, 'reading');
+  assert.equal(bookJson.metadata.completed, true);
+  assert.equal(bookJson.metadata.savedToBooks, true);
 });
 
 test('POST /api/import/:filename/save-sentence works when only books copy exists', async () => {
@@ -471,4 +511,6 @@ test('POST /api/import/:filename/save-sentence works when only books copy exists
   assert.equal(response.status, 200);
   const stored = JSON.parse(fs.readFileSync(path.join(booksDir, `${filename}.book`), 'utf-8'));
   assert.deepEqual(stored.content.processedSentences['0'], sentenceData);
+  assert.equal(stored.metadata.status, 'draft');
+  assert.equal(stored.metadata.completed, false);
 });
