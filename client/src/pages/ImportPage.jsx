@@ -38,9 +38,18 @@ const hasKanji = (text) => {
   return text.split('').some((char) => isKanjiChar(char));
 };
 
-function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBookmark }) {
+const JLPT_LEVEL_RANK = { N5: 1, N4: 2, N3: 3, N2: 4, N1: 5 };
+
+const isKnownJlptGrammar = (token, jlptSettings = {}) => {
+  const knownLevel = jlptSettings.knownLevel;
+  const grammarLevel = token?.jlptGrammar?.level;
+  if (!knownLevel || !grammarLevel) return false;
+  return JLPT_LEVEL_RANK[grammarLevel] <= JLPT_LEVEL_RANK[knownLevel];
+};
+
+function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBookmark, jlptSettings = {} }) {
   const [activePopup, setActivePopup] = useState(null);
-  const [popupPosition, setPopupPosition] = useState({ x: 0, y: 0 });
+  const [popupPosition, setPopupPosition] = useState({ x: 0, top: null, bottom: null });
   const [hoveredExpressionId, setHoveredExpressionId] = useState(null);
   const [hoveredTokenIdx, setHoveredTokenIdx] = useState(null);
 
@@ -100,26 +109,31 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
 
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
 
     let x = rect.left + (rect.width / 2);
-    let y = rect.top - 20;
+    const popupWidth = 440;
+    const estimatedPopupHeight = 240;
+    const gap = 24;
+    const margin = 12;
 
-    const popupWidth = 320;
-
-    if (x - popupWidth / 2 < 10) {
-      x = popupWidth / 2 + 10;
-    } else if (x + popupWidth / 2 > viewportWidth - 10) {
-      x = viewportWidth - popupWidth / 2 - 10;
+    if (x - popupWidth / 2 < margin) {
+      x = popupWidth / 2 + margin;
+    } else if (x + popupWidth / 2 > viewportWidth - margin) {
+      x = viewportWidth - popupWidth / 2 - margin;
     }
 
-    if (y < 10) {
-      y = rect.bottom + 20;
+    let top = null;
+    let bottom = viewportHeight - rect.top + gap;
+    if (rect.top - estimatedPopupHeight - gap < margin) {
+      top = Math.min(rect.bottom + gap, viewportHeight - estimatedPopupHeight - margin);
+      bottom = null;
     }
 
-    console.log('Popup position:', { x, y });
+    console.log('Popup position:', { x, top, bottom });
     console.log('Current activePopup:', activePopup);
 
-    setPopupPosition({ x, y });
+    setPopupPosition({ x, top, bottom });
     const newActivePopup = activePopup === `${sentenceIndex}-${tokenIdx}` ? null : `${sentenceIndex}-${tokenIdx}`;
     console.log('Setting activePopup to:', newActivePopup);
     setActivePopup(newActivePopup);
@@ -177,9 +191,10 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
               <ruby style={{ fontSize: 'inherit', pointerEvents: 'none' }}>
                 {token.surface}
                 <rt style={{
-                  fontSize: '0.75em',
-                  color: '#ccc',
+                  fontSize: '0.52em',
+                  color: '#d6d6d6',
                   fontWeight: 'normal',
+                  lineHeight: '1.1',
                   pointerEvents: 'none'
                 }}>
                   {token.reading}
@@ -193,8 +208,16 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
 
         const isActive = activePopup === `${sentenceIndex}-${tokenIdx}`;
         const isBookmarkToken = isCurrentReading && tokenIdx === 0;
+        const tokenJlptGrammar = token.jlptGrammar || null;
+        const showJlptGrammar = jlptSettings.showGrammar !== false && !!tokenJlptGrammar;
+        const shouldFilterKnownJlptGrammar =
+          showJlptGrammar &&
+          jlptSettings.hideKnownGrammar !== false &&
+          isKnownJlptGrammar(token, jlptSettings);
+        const hasVisibleJlptGrammar = showJlptGrammar && !shouldFilterKnownJlptGrammar;
         const expressionMeta = expressionMetaByToken[tokenIdx];
-        const hasExpression = !!expressionMeta;
+        const hasExpression = !!expressionMeta && !shouldFilterKnownJlptGrammar;
+        const hasGrammarHighlight = hasExpression || hasVisibleJlptGrammar;
         const isExpressionHovered = hasExpression && hoveredExpressionId === expressionMeta.id;
         const isTokenHovered = hoveredTokenIdx === tokenIdx && !isPunctuation;
 
@@ -203,34 +226,34 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
             key={tokenIdx}
             data-token={`${sentenceIndex}-${tokenIdx}`}
             style={{
-              display: 'inline-flex',
-              margin: '0px 1px',
-              padding: '2px 3px',
+              display: 'inline-block',
+              margin: '0 2px',
+              padding: '0 2px',
               backgroundColor: isActive && !isPunctuation
                 ? activeColor
                 : (isBookmarkToken
                   ? 'rgba(156, 39, 176, 0.18)'
                   : (isTokenHovered
                     ? 'rgba(79, 195, 247, 0.22)'
-                    : (hasExpression ? 'rgba(255, 209, 102, 0.12)' : 'transparent'))),
+                    : 'transparent')),
               color: isActive && !isPunctuation ? 'white' : tokenColor,
               borderRadius: '2px',
               cursor: isPunctuation ? 'default' : 'pointer',
-              fontSize: '1.1em',
+              fontSize: '1em',
               border: 'none',
-              fontWeight: hasExpression ? 600 : 'normal',
+              fontWeight: 'normal',
               transition: 'background-color 0.2s ease, color 0.2s ease',
-              minHeight: '28px',
-              minWidth: '16px',
-              alignItems: 'center',
-              justifyContent: 'center',
+              minHeight: '0',
+              minWidth: '0',
               userSelect: 'none',
               WebkitUserSelect: 'none',
               WebkitTouchCallout: 'none',
-              lineHeight: '1.5',
+              lineHeight: 'inherit',
               textDecoration: 'none',
               borderTop: '1px solid transparent',
-              borderBottom: '3px solid transparent',
+              borderBottom: hasGrammarHighlight
+                ? `3px solid ${isExpressionHovered ? '#ffd166' : 'rgba(255, 209, 102, 0.7)'}`
+                : '3px solid transparent',
               borderLeft: '1px solid transparent',
               borderRight: '1px solid transparent',
               borderTopLeftRadius: '0',
@@ -271,14 +294,23 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
           const token = tokens[tokenIdx];
           if (!token) return null;
 
-          const hasExpression = !!token.expressionSurface;
+          const tokenJlptGrammar = token.jlptGrammar || null;
+          const showJlptGrammar = jlptSettings.showGrammar !== false && !!tokenJlptGrammar;
+          const shouldFilterKnownJlptGrammar =
+            showJlptGrammar &&
+            jlptSettings.hideKnownGrammar !== false &&
+            isKnownJlptGrammar(token, jlptSettings);
+          const hasVisibleJlptGrammar = showJlptGrammar && !shouldFilterKnownJlptGrammar;
+          const hasExpression = !!token.expressionSurface && !shouldFilterKnownJlptGrammar;
           const contextualMeaning =
             token.contextualMeaning && token.contextualMeaning !== 'N/A' ? token.contextualMeaning : null;
           const dictionaryMeaning =
             token.translation && token.translation !== 'N/A' ? token.translation : null;
           const primaryMeaning = hasExpression
             ? (token.expressionMeaning || contextualMeaning || dictionaryMeaning || 'N/A')
-            : (contextualMeaning || dictionaryMeaning || 'N/A');
+            : (hasVisibleJlptGrammar
+              ? (tokenJlptGrammar.meaning || contextualMeaning || dictionaryMeaning || 'N/A')
+              : (contextualMeaning || dictionaryMeaning || 'N/A'));
           const shouldShowReading = token.reading && token.reading !== token.surface;
           const expressionLabel = hasExpression
             ? (token.expressionSource === 'ai' ? 'Set phrase (AI)' : 'Set phrase')
@@ -312,7 +344,9 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
               } : {
                 position: 'fixed',
                 left: `${popupPosition.x}px`,
-                bottom: `${window.innerHeight - popupPosition.y}px`,
+                ...(popupPosition.top !== null
+                  ? { top: `${popupPosition.top}px` }
+                  : { bottom: `${popupPosition.bottom}px` }),
                 transform: 'translateX(-50%)',
                 backgroundColor: '#1a1a1a',
                 border: '3px solid #4fc3f7',
@@ -320,9 +354,9 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
                 padding: '16px',
                 boxShadow: '0 8px 24px rgba(0, 0, 0, 0.8)',
                 zIndex: 99999,
-                maxWidth: '320px',
-                minWidth: '220px',
-                fontSize: '0.95em',
+                maxWidth: '440px',
+                minWidth: '320px',
+                fontSize: '1em',
                 color: '#f2f2f2',
                 lineHeight: '1.5',
                 pointerEvents: 'auto',
@@ -330,36 +364,42 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
                 visibility: 'visible'
               }}
             >
-              <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#4fc3f7' }}>
+              <div className="token-popup-header">
                 {token.surface}
               </div>
 
               {shouldShowReading && (
-                <div style={{ marginBottom: '6px', color: '#ccc', fontSize: '0.85em' }}>
+                <div className="token-popup-reading">
                   {token.reading}
                 </div>
               )}
 
               {hasExpression && (
-                <div style={{ marginBottom: '8px', color: '#ffd166', fontSize: '0.85em' }}>
+                <div className="token-popup-pattern">
                   <strong>{expressionLabel}:</strong> {token.expressionSurface}
                 </div>
               )}
 
+              {hasVisibleJlptGrammar && (
+                <div className="token-popup-pattern">
+                  <strong>JLPT {tokenJlptGrammar.level}:</strong> {tokenJlptGrammar.pattern}
+                </div>
+              )}
+
               {primaryMeaning && primaryMeaning !== 'N/A' && (
-                <div style={{ marginBottom: '6px' }}>
-                  <strong>{hasExpression ? 'Meaning' : 'In this sentence'}:</strong> {primaryMeaning}
+                <div className="token-popup-meaning">
+                  <strong>{hasExpression || hasVisibleJlptGrammar ? 'Meaning' : 'In this sentence'}:</strong> {primaryMeaning}
                 </div>
               )}
 
               {!hasExpression && dictionaryMeaning && contextualMeaning && dictionaryMeaning !== contextualMeaning && (
-                <div style={{ marginBottom: '6px', color: '#bdbdbd', fontSize: '0.82em' }}>
+                <div className="token-popup-secondary">
                   <strong>Base:</strong> {dictionaryMeaning}
                 </div>
               )}
 
               {hasExpression && token.expressionNote && (
-                <div style={{ marginBottom: '6px', color: '#bdbdbd', fontSize: '0.82em' }}>
+                <div className="token-popup-secondary">
                   {token.expressionNote}
                 </div>
               )}
@@ -406,6 +446,8 @@ export default function ImportPage() {
   const [processingSentences, setProcessingSentences] = useState({});
   const [pageAiProcessing, setPageAiProcessing] = useState(false);
   const [activeSentenceNotes, setActiveSentenceNotes] = useState(null);
+  const [activeSentenceControls, setActiveSentenceControls] = useState(null);
+  const [activeTranslationSentence, setActiveTranslationSentence] = useState(null);
   const [isCompletedBookView, setIsCompletedBookView] = useState(false);
   const [bookSummaryTitle, setBookSummaryTitle] = useState('');
   const [bookSummarySentences, setBookSummarySentences] = useState([]);
@@ -468,6 +510,20 @@ export default function ImportPage() {
     return saved !== null ? saved : false;
   });
 
+  const [jlptSettings, setJlptSettings] = useState(() => {
+    const saved = getCookie('jlptSettings');
+    return saved || {
+      knownLevel: '',
+      hideKnownGrammar: true,
+      showGrammar: true
+    };
+  });
+
+  const [showJlptOptions, setShowJlptOptions] = useState(() => {
+    const saved = getCookie('showJlptOptions');
+    return saved !== null ? saved : false;
+  });
+
   const fileInput = useRef();
 
   // Pagination state
@@ -483,11 +539,19 @@ export default function ImportPage() {
   useEffect(() => {
     setInitialLoadComplete(false);
     setIsCompletedBookView(isBookViewHint);
+    setLines([]);
+    setSentences([]);
+    setProcessedSentences({});
+    setProcessingSentences({});
+    setSentenceMessages({});
     setBookSummaryTitle('');
     setBookSummarySentences([]);
     setBookSummaryGeneratedAt(null);
     setCurrentPage(1);
+    setCurrentReadingPosition(null);
     setActiveSentenceNotes(null);
+    setActiveSentenceControls(null);
+    setActiveTranslationSentence(null);
     setOllamaStreamPopup({
       visible: false,
       sentenceIndex: null,
@@ -517,6 +581,27 @@ export default function ImportPage() {
       document.removeEventListener('touchstart', handleOutsideNotesClick, true);
     };
   }, [activeSentenceNotes]);
+
+  useEffect(() => {
+    const handleOutsideControlsClick = (event) => {
+      if (activeSentenceControls === null) return;
+
+      const clickedInsideControls = event.target.closest('.sentence-edit-controls');
+      if (!clickedInsideControls) {
+        setActiveSentenceControls(null);
+      }
+    };
+
+    if (activeSentenceControls !== null) {
+      document.addEventListener('click', handleOutsideControlsClick, true);
+      document.addEventListener('touchstart', handleOutsideControlsClick, true);
+    }
+
+    return () => {
+      document.removeEventListener('click', handleOutsideControlsClick, true);
+      document.removeEventListener('touchstart', handleOutsideControlsClick, true);
+    };
+  }, [activeSentenceControls]);
 
   // Load bookmark on initial load
   useEffect(() => {
@@ -578,6 +663,14 @@ export default function ImportPage() {
     setCookie('showFrequencyOptions', showFrequencyOptions);
   }, [showFrequencyOptions]);
 
+  useEffect(() => {
+    setCookie('jlptSettings', jlptSettings);
+  }, [jlptSettings]);
+
+  useEffect(() => {
+    setCookie('showJlptOptions', showJlptOptions);
+  }, [showJlptOptions]);
+
   // Function to split text into sentences using Japanese dot (。)
   const splitIntoSentences = (text) => {
     // Split by Japanese period (。) and preserve the period with each sentence
@@ -596,10 +689,66 @@ export default function ImportPage() {
     return sentences;
   };
 
+  const buildSentencesFromLines = (sourceLines) => {
+    const allSentences = [];
+
+    sourceLines.forEach((line, lineIndex) => {
+      if (line.trim()) {
+        const lineSentences = splitIntoSentences(line);
+        lineSentences.forEach((sentence, sentenceIndexInLine) => {
+          allSentences.push({
+            text: sentence,
+            originalLineIndex: lineIndex,
+            originalLine: line,
+            sentenceIndexInLine
+          });
+        });
+        allSentences.push({
+          text: '',
+          originalLineIndex: lineIndex,
+          originalLine: line,
+          isLineBreak: true
+        });
+      } else {
+        allSentences.push({
+          text: '',
+          originalLineIndex: lineIndex,
+          originalLine: line,
+          isLineBreak: true
+        });
+      }
+    });
+
+    return allSentences;
+  };
+
+  const reindexAfterSentenceDelete = (indexedValues, deletedIndex) => {
+    const reindexed = {};
+
+    Object.entries(indexedValues || {}).forEach(([key, value]) => {
+      const index = Number(key);
+      if (!Number.isInteger(index) || index === deletedIndex) return;
+      reindexed[index > deletedIndex ? index - 1 : index] = value;
+    });
+
+    return reindexed;
+  };
+
   useEffect(() => {
-    if (filename && !initialLoadComplete) {
+    let cancelled = false;
+    let autoProcessTimer = null;
+
+    if (!filename) {
+      setInitialLoadComplete(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!initialLoadComplete) {
       console.log('Initial load for:', filename);
       axios.get(`/api/import/${filename}`).then(res => {
+        if (cancelled) return;
         console.log('File data loaded:', res.data);
         const isImportSource = res.data?.sourceLocation === 'imports';
         const shouldUseCompletedView = isBookViewHint || (!isImportSource && !!res.data.isCompletedBookView);
@@ -613,35 +762,7 @@ export default function ImportPage() {
         setBookSummaryGeneratedAt(res.data.existingSummaryGeneratedAt || null);
         setLines(res.data.lines);
 
-        // Split all lines into sentences
-        const allSentences = [];
-        res.data.lines.forEach((line, lineIndex) => {
-          if (line.trim()) {
-            const lineSentences = splitIntoSentences(line);
-            lineSentences.forEach((sentence, sentenceIndexInLine) => {
-              allSentences.push({
-                text: sentence,
-                originalLineIndex: lineIndex,
-                originalLine: line
-              });
-            });
-            // Add a line break after each line that contains sentences
-            allSentences.push({
-              text: '',
-              originalLineIndex: lineIndex,
-              originalLine: line,
-              isLineBreak: true
-            });
-          } else {
-            // Preserve empty lines as line breaks
-            allSentences.push({
-              text: '',
-              originalLineIndex: lineIndex,
-              originalLine: line,
-              isLineBreak: true
-            });
-          }
-        });
+        const allSentences = buildSentencesFromLines(res.data.lines);
 
         setSentences(allSentences);
         console.log(`Split ${res.data.lines.length} lines into ${allSentences.length} sentences`);
@@ -651,6 +772,8 @@ export default function ImportPage() {
           console.log('Loading existing processed sentences:', res.data.existingProcessedSentences);
           setProcessedSentences(res.data.existingProcessedSentences);
           console.log(`Loaded ${Object.keys(res.data.existingProcessedSentences).length} previously processed sentences`);
+        } else {
+          setProcessedSentences({});
         }
 
         // Load existing verb merge options if available
@@ -668,8 +791,10 @@ export default function ImportPage() {
         const unprocessedCount = allSentences.filter((s, i) => !s.isLineBreak && !res.data.existingProcessedSentences[i]).length;
         if (unprocessedCount > 0) {
           console.log(`Found ${unprocessedCount} unprocessed sentences, starting auto-processing...`);
-          setTimeout(() => {
-            autoProcessAllSentences(allSentences);
+          autoProcessTimer = setTimeout(() => {
+            if (!cancelled) {
+              autoProcessAllSentences(allSentences);
+            }
           }, 100);
         } else {
           console.log('All sentences already processed, skipping auto-processing');
@@ -677,6 +802,7 @@ export default function ImportPage() {
           setTimeout(() => setMessage(''), 3000);
         }
       }).catch(error => {
+        if (cancelled) return;
         console.error('Error loading file data:', error);
         setIsCompletedBookView(isBookViewHint);
         setBookSummaryTitle('');
@@ -685,6 +811,13 @@ export default function ImportPage() {
         setInitialLoadComplete(true);
       });
     }
+
+    return () => {
+      cancelled = true;
+      if (autoProcessTimer) {
+        clearTimeout(autoProcessTimer);
+      }
+    };
   }, [filename, initialLoadComplete, isBookViewHint]);
 
   const handleFileChange = e => setFile(e.target.files[0]);
@@ -698,16 +831,16 @@ export default function ImportPage() {
       const res = await axios.post('/api/import', formData);
 
       if (res.data.autoProcessed) {
-        setMessage(`✅ Uploaded and auto-processed: ${res.data.originalname} (${res.data.processedLines}/${res.data.totalLines} lines processed)`);
+        setMessage(`Draft created: ${res.data.originalname} (${res.data.processedLines}/${res.data.totalLines} lines processed)`);
       } else if (res.data.error) {
-        setMessage(`⚠️ Uploaded: ${res.data.originalname} - ${res.data.error}`);
+        setMessage(`Draft created: ${res.data.originalname} - ${res.data.error}`);
       } else {
-        setMessage(`Uploaded: ${res.data.originalname}`);
+        setMessage(`Draft created: ${res.data.originalname}`);
       }
 
-      navigate(`/import/${res.data.filename}`);
+      navigate('/import/' + encodeURIComponent(res.data.filename));
     } catch (err) {
-      setMessage('Upload failed');
+      setMessage('Draft creation failed');
     } finally {
       setUploading(false);
     }
@@ -721,13 +854,13 @@ export default function ImportPage() {
     }
 
     setUrlImporting(true);
-    setMessage('Importing article...');
+    setMessage('Creating draft from article...');
 
     try {
       const res = await axios.post('/api/import/url', { url: trimmedUrl });
-      setMessage(`Imported article: ${res.data.originalname || trimmedUrl} (${res.data.totalLines} lines)`);
+      setMessage(`Draft created: ${res.data.originalname || trimmedUrl} (${res.data.totalLines} lines)`);
       setArticleUrl('');
-      navigate(`/import/${res.data.filename}`);
+      navigate('/import/' + encodeURIComponent(res.data.filename));
     } catch (err) {
       const errorMessage = err.response?.data?.error || 'URL import failed';
       const details = err.response?.data?.details;
@@ -1412,6 +1545,13 @@ export default function ImportPage() {
     }));
   };
 
+  const handleJlptOptionChange = (option, value) => {
+    setJlptSettings(prev => ({
+      ...prev,
+      [option]: value
+    }));
+  };
+
   const autoSave = async (sentenceIndex, sentenceData) => {
     try {
       // Save only the specific sentence that was processed
@@ -1428,6 +1568,73 @@ export default function ImportPage() {
     } catch (error) {
       console.error('Auto-save error:', error);
       return false;
+    }
+  };
+
+  const handleDeleteSentence = async (sentenceIndex) => {
+    if (!filename || isCompletedBookView) return;
+
+    const sentence = sentences[sentenceIndex];
+    if (!sentence || sentence.isLineBreak) return;
+
+    const confirmed = window.confirm(`Delete this sentence?\n\n${sentence.text}`);
+    if (!confirmed) return;
+
+    try {
+      const lineIndex = sentence.originalLineIndex;
+      const updatedLines = [...lines];
+      const lineSentences = splitIntoSentences(updatedLines[lineIndex] || '');
+      const sentenceIndexInLine = Number.isInteger(sentence.sentenceIndexInLine)
+        ? sentence.sentenceIndexInLine
+        : sentences
+          .slice(0, sentenceIndex)
+          .filter((candidate) => !candidate.isLineBreak && candidate.originalLineIndex === lineIndex)
+          .length;
+
+      if (sentenceIndexInLine < 0 || sentenceIndexInLine >= lineSentences.length) {
+        throw new Error('Could not locate sentence in source line');
+      }
+
+      lineSentences.splice(sentenceIndexInLine, 1);
+      updatedLines[lineIndex] = lineSentences.join('');
+
+      const updatedProcessedSentences = reindexAfterSentenceDelete(processedSentences, sentenceIndex);
+      const updatedSentences = buildSentencesFromLines(updatedLines);
+
+      await axios.delete(`/api/import/${filename}/sentence/${sentenceIndex}`, {
+        data: {
+          originalLines: updatedLines,
+          processedSentences: updatedProcessedSentences,
+          verbMergeOptions,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+      setLines(updatedLines);
+      setSentences(updatedSentences);
+      setProcessedSentences(updatedProcessedSentences);
+      setProcessingSentences(prev => reindexAfterSentenceDelete(prev, sentenceIndex));
+      setSentenceMessages(prev => reindexAfterSentenceDelete(prev, sentenceIndex));
+      setActiveSentenceNotes(prev => {
+        if (prev === null || prev === sentenceIndex) return null;
+        return prev > sentenceIndex ? prev - 1 : prev;
+      });
+      setCurrentReadingPosition(prev => {
+        if (prev === null || prev === sentenceIndex) return null;
+        return prev > sentenceIndex ? prev - 1 : prev;
+      });
+
+      const nextTotalSentences = updatedSentences.filter(s => !s.isLineBreak).length;
+      const nextTotalPages = Math.max(1, Math.ceil(nextTotalSentences / sentencesPerPage));
+      setCurrentPage(prev => Math.min(prev, nextTotalPages));
+      setMessage('Sentence deleted.');
+      setTimeout(() => setMessage(''), 2500);
+    } catch (error) {
+      console.error('Delete sentence error:', error);
+      setSentenceMessages(prev => ({
+        ...prev,
+        [sentenceIndex]: `Error: ${error.response?.data?.error || error.message || 'Failed to delete sentence'}`
+      }));
     }
   };
 
@@ -1879,6 +2086,15 @@ export default function ImportPage() {
         text = note;
       } else if (note && typeof note === 'object') {
         text = note.text || note.note || note.explanation || note.description || '';
+        if (
+          note.type === 'jlptGrammar' &&
+          jlptSettings.hideKnownGrammar !== false &&
+          note.jlptLevel &&
+          jlptSettings.knownLevel &&
+          JLPT_LEVEL_RANK[note.jlptLevel] <= JLPT_LEVEL_RANK[jlptSettings.knownLevel]
+        ) {
+          continue;
+        }
       }
 
       const normalized = String(text).replace(/\s+/g, ' ').trim();
@@ -1886,7 +2102,10 @@ export default function ImportPage() {
       const key = normalized.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      lines.push(normalized);
+      lines.push({
+        text: normalized,
+        type: typeof note === 'object' && note ? note.type || 'note' : 'note'
+      });
     }
 
     return lines.slice(0, 4);
@@ -1965,6 +2184,7 @@ export default function ImportPage() {
   };
 
   const paginatedSentences = sentences.length > 0 ? getPaginatedSentences() : [];
+  const displayTitle = String(bookSummaryTitle || '').trim() || filename;
 
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= totalPages) {
@@ -1976,13 +2196,13 @@ export default function ImportPage() {
 
   return (
     <div className="container">
-      <h2>Import Books</h2>
+      <h2>Drafts</h2>
       {!filename && (
         <div className="import-source-panel">
           <div className="import-source-row">
             <input type="file" ref={fileInput} onChange={handleFileChange} accept=".txt" />
             <button onClick={handleUpload} disabled={uploading} className="btn">
-              {uploading ? 'Uploading...' : 'Upload'}
+              {uploading ? 'Creating...' : 'Create Draft'}
             </button>
           </div>
 
@@ -2007,7 +2227,7 @@ export default function ImportPage() {
               disabled={urlImporting}
               className="btn"
             >
-              {urlImporting ? 'Importing...' : 'Import URL'}
+              {urlImporting ? 'Creating...' : 'Create from URL'}
             </button>
           </div>
         </div>
@@ -2015,12 +2235,12 @@ export default function ImportPage() {
       {filename && (
         <div>
           <h3 className="import-file-heading">
-            <span>File</span>
+            <span className="import-display-title">{displayTitle}</span>
             <span className="import-file-name">{filename}</span>
           </h3>
           <div className="controls-section">
             {!isCompletedBookView && (
-              <button onClick={handleSave} className="btn">Save to Books</button>
+              <button onClick={handleSave} className="btn">Move to Reading</button>
             )}
             {!isCompletedBookView && (
               <button
@@ -2047,7 +2267,7 @@ export default function ImportPage() {
               className="btn"
               style={{ backgroundColor: '#7c3aed' }}
               disabled={isGeneratingSummary}
-              title="Generate a title and 3-sentence summary for this book"
+              title="Generate a title and 3-sentence summary"
             >
               {isGeneratingSummary ? 'Summarizing...' : 'Generate Summary'}
             </button>
@@ -2069,16 +2289,17 @@ export default function ImportPage() {
             >
               {showFrequencyOptions ? 'Hide' : 'Show'} Frequency Options
             </button>
+            <button
+              onClick={() => setShowJlptOptions(!showJlptOptions)}
+              className="btn"
+            >
+              {showJlptOptions ? 'Hide' : 'Show'} JLPT Grammar
+            </button>
           </div>
 
           {bookSummarySentences.length > 0 && (
             <div className="import-summary-note">
-              <div className="import-summary-title">Book Summary (3 sentences)</div>
-              {bookSummaryTitle && (
-                <div className="import-summary-potential-title">
-                  Potential title: {bookSummaryTitle}
-                </div>
-              )}
+              <div className="import-summary-title">Reading Summary (3 sentences)</div>
               <ol className="import-summary-list">
                 {bookSummarySentences.map((sentence, idx) => (
                   <li key={`summary-${idx}`}>{sentence}</li>
@@ -2327,6 +2548,48 @@ export default function ImportPage() {
             </div>
           )}
 
+          {showJlptOptions && (
+            <div className="options-panel">
+              <h4>JLPT Grammar</h4>
+
+              <div className="jlpt-options-grid">
+                <label className="jlpt-option-group">
+                  <span>Your level</span>
+                  <select
+                    value={jlptSettings.knownLevel}
+                    onChange={(e) => handleJlptOptionChange('knownLevel', e.target.value)}
+                  >
+                    <option value="">None</option>
+                    <option value="N5">N5</option>
+                    <option value="N4">N4</option>
+                    <option value="N3">N3</option>
+                    <option value="N2">N2</option>
+                    <option value="N1">N1</option>
+                  </select>
+                </label>
+
+                <label className="jlpt-option-label">
+                  <input
+                    type="checkbox"
+                    checked={jlptSettings.showGrammar !== false}
+                    onChange={(e) => handleJlptOptionChange('showGrammar', e.target.checked)}
+                  />
+                  Show JLPT grammar markers
+                </label>
+
+                <label className="jlpt-option-label">
+                  <input
+                    type="checkbox"
+                    checked={jlptSettings.hideKnownGrammar !== false}
+                    onChange={(e) => handleJlptOptionChange('hideKnownGrammar', e.target.checked)}
+                    disabled={!jlptSettings.knownLevel || jlptSettings.showGrammar === false}
+                  />
+                  Hide known grammar
+                </label>
+              </div>
+            </div>
+          )}
+
           {/* Pagination info and controls - TOP */}
           {totalPages > 1 && (
             <>
@@ -2409,9 +2672,25 @@ export default function ImportPage() {
           const isCurrentReading = currentReadingPosition === sentenceIndex;
           const sentenceNoteLines = getSentenceNoteLines(isProcessed);
           const hasSentenceNotes = sentenceNoteLines.length > 0;
+          const showSentenceControls = sentence.text.trim() !== '」';
+          const hasEditControls = !isCompletedBookView || hasSentenceNotes;
+          const editControlsOpen = activeSentenceControls === sentenceIndex;
 
               return (
                 <span key={sentenceIndex} className="sentence-container">
+                  {showSentenceControls && (
+                    <span className="sentence-leading-controls">
+                      <button
+                        onClick={() => handleTextToSpeech(sentenceIndex, true)}
+                        className="sentence-btn play"
+                        title="Play sentence"
+                        aria-label="Play sentence"
+                      >
+                        ▶
+                      </button>
+                    </span>
+                  )}
+
                   {isProcessed ? (
                     <span data-sentence={sentenceIndex}>
                       <TokenizedText
@@ -2419,6 +2698,7 @@ export default function ImportPage() {
                         sentenceIndex={sentenceIndex}
                         isCurrentReading={isCurrentReading}
                         onBookmark={saveReadingBookmark}
+                        jlptSettings={jlptSettings}
                       />
                     </span>
                   ) : (
@@ -2430,61 +2710,68 @@ export default function ImportPage() {
                     </span>
                   )}
 
-                  {/* Processing buttons - inline after sentence - hide for sentences that are just closing quotes */}
-                  {sentence.text.trim() !== '」' && (
+                  {showSentenceControls && (
                     <span className="sentence-controls">
-                      {!isCompletedBookView && (
-                        <button
-                          onClick={() => handleSentenceProcess(sentenceIndex, true)}
-                          className={`sentence-btn remote ${processingSentences[sentenceIndex] ? 'processing' : ''}`}
-                          title="Process using Ollama with live streamed response"
-                        >
-                          R
-                        </button>
-                      )}
-
-                      {hasSentenceNotes && (
-                        <button
-                          onClick={() => {
-                            saveReadingBookmark(sentenceIndex);
-                            setActiveSentenceNotes((prev) => (prev === sentenceIndex ? null : sentenceIndex));
-                          }}
-                          className="sentence-btn notes"
-                          title="Show sentence notes"
-                        >
-                          📝
-                        </button>
-                      )}
-
-                      {/* Text-to-speech with timing button */}
-                      <button
-                        onClick={() => handleTextToSpeech(sentenceIndex, true)}
-                        className="sentence-btn tts"
-                        title="Generate speech with real-time highlighting using VOICEVOX"
-                      >
-                        🔊
-                      </button>
-
-                      {/* Translation popup button - only visible after remote processing */}
                       {hasRemoteTranslation && (
                         <button
                           onClick={() => {
-                            // Auto-save bookmark when user interacts with sentence
                             saveReadingBookmark(sentenceIndex);
-
-                            const popup = document.getElementById(`translation-popup-${sentenceIndex}`);
-                            if (popup) {
-                              popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
-                            }
+                            setActiveTranslationSentence((prev) => (prev === sentenceIndex ? null : sentenceIndex));
                           }}
-                          className="sentence-btn translation"
+                          className={`sentence-btn translation ${activeTranslationSentence === sentenceIndex ? 'active' : ''}`}
                           title="Show sentence translation"
+                          aria-label="Show sentence translation"
+                          aria-expanded={activeTranslationSentence === sentenceIndex}
                         >
-                          💬
+                          訳
                         </button>
                       )}
 
-                      {/* Bookmark button - hidden but functionality preserved through auto-save */}
+                      {hasEditControls && (
+                        <span className="sentence-edit-controls">
+                          <button
+                            onClick={() => setActiveSentenceControls((prev) => (prev === sentenceIndex ? null : sentenceIndex))}
+                            className={`sentence-btn edit ${editControlsOpen ? 'active' : ''}`}
+                            title="Toggle sentence edit controls"
+                            aria-label="Toggle sentence edit controls"
+                            aria-expanded={editControlsOpen}
+                          >
+                            ⋯
+                          </button>
+
+                          {editControlsOpen && (
+                            <span className="sentence-edit-menu">
+                              {hasSentenceNotes && (
+                                <button
+                                  onClick={() => {
+                                    saveReadingBookmark(sentenceIndex);
+                                    setActiveSentenceNotes((prev) => (prev === sentenceIndex ? null : sentenceIndex));
+                                  }}
+                                  className="sentence-btn notes"
+                                  title="Show sentence notes"
+                                  aria-label="Show sentence notes"
+                                >
+                                  注
+                                </button>
+                              )}
+
+                              {!isCompletedBookView && (
+                                <button
+                                  onClick={() => {
+                                    setActiveSentenceControls(null);
+                                    handleDeleteSentence(sentenceIndex);
+                                  }}
+                                  className="sentence-btn delete"
+                                  title="Delete sentence"
+                                  aria-label="Delete sentence"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </span>
                   )}
 
@@ -2496,7 +2783,7 @@ export default function ImportPage() {
                   )}
 
                   {/* Translation popup */}
-                  {hasRemoteTranslation && (
+                  {hasRemoteTranslation && activeTranslationSentence === sentenceIndex && (
                     <div
                       id={`translation-popup-${sentenceIndex}`}
                       className="translation-popup"
@@ -2508,10 +2795,9 @@ export default function ImportPage() {
                         {isProcessed.fullSentenceTranslation}
                       </div>
                       <button
-                        onClick={() => {
-                          document.getElementById(`translation-popup-${sentenceIndex}`).style.display = 'none';
-                        }}
+                        onClick={() => setActiveTranslationSentence(null)}
                         className="translation-popup-close"
+                        aria-label="Close translation"
                       >
                         ×
                       </button>
@@ -2522,8 +2808,11 @@ export default function ImportPage() {
                     <div className="sentence-notes-popup">
                       <div className="sentence-notes-title">Notes</div>
                       {sentenceNoteLines.map((line, noteIndex) => (
-                        <div key={`${sentenceIndex}-note-${noteIndex}`} className="sentence-note-line">
-                          {line}
+                        <div
+                          key={`${sentenceIndex}-note-${noteIndex}`}
+                          className={`sentence-note-line ${line.type === 'jlptGrammar' ? 'grammar' : ''}`}
+                        >
+                          {line.text}
                         </div>
                       ))}
                       <button

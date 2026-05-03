@@ -443,6 +443,48 @@ test('POST /api/import/:filename/save-sentence persists processed sentence for r
   assert.deepEqual(loadResponse.body.existingProcessedSentences['0'], sentenceData);
 });
 
+test('DELETE /api/import/:filename/sentence/:sentenceIndex updates source text and reindexed processed sentences', async () => {
+  const filename = 'delete-sentence.txt';
+  fs.writeFileSync(path.join(uploadsDir, filename), '一つ目。二つ目。三つ目。', 'utf-8');
+  fs.writeFileSync(path.join(booksDir, `${filename}.book`), JSON.stringify({
+    metadata: {
+      status: 'draft',
+      completed: false
+    },
+    content: {
+      originalLines: ['一つ目。二つ目。三つ目。'],
+      processedSentences: {
+        0: { fullSentenceTranslation: 'First.' },
+        1: { fullSentenceTranslation: 'Second.' },
+        2: { fullSentenceTranslation: 'Third.' }
+      }
+    }
+  }), 'utf-8');
+
+  const response = await request(app)
+    .delete(`/api/import/${filename}/sentence/1`)
+    .send({
+      originalLines: ['一つ目。三つ目。'],
+      processedSentences: {
+        0: { fullSentenceTranslation: 'First.' },
+        1: { fullSentenceTranslation: 'Third.' }
+      },
+      verbMergeOptions: { mergePunctuation: true },
+      timestamp: '2026-05-03T10:00:00.000Z'
+    });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.success, true);
+  assert.equal(fs.readFileSync(path.join(uploadsDir, filename), 'utf-8'), '一つ目。三つ目。');
+
+  const stored = JSON.parse(fs.readFileSync(path.join(booksDir, `${filename}.book`), 'utf-8'));
+  assert.deepEqual(stored.content.originalLines, ['一つ目。三つ目。']);
+  assert.deepEqual(Object.keys(stored.content.processedSentences), ['0', '1']);
+  assert.equal(stored.content.processedSentences['1'].fullSentenceTranslation, 'Third.');
+  assert.equal(stored.metadata.status, 'draft');
+  assert.equal(stored.metadata.processedSentences, 2);
+});
+
 test('POST /api/import/:filename/save stores processedSentences in .book file', async () => {
   const filename = 'save-all.txt';
   fs.writeFileSync(path.join(uploadsDir, filename), '保存テスト。', 'utf-8');

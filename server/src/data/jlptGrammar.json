@@ -1,0 +1,5751 @@
+{
+  "source": {
+    "title": "JLPT Grammar List",
+    "url": "https://jlptgrammarlist.neocities.org/",
+    "scrapedAt": "2026-05-03T11:34:18.440Z"
+  },
+  "levels": {
+    "N5": 53,
+    "N4": 106,
+    "N3": 131,
+    "N2": 201,
+    "N1": 218
+  },
+  "entries": [
+    {
+      "level": "N5",
+      "pattern": "いちばん",
+      "variants": [
+        "いちばん"
+      ],
+      "meaning": "the most"
+    },
+    {
+      "level": "N5",
+      "pattern": "が",
+      "variants": [
+        "が"
+      ],
+      "meaning": "as for (identifies something)"
+    },
+    {
+      "level": "N5",
+      "pattern": "が",
+      "variants": [
+        "が"
+      ],
+      "meaning": "but; however"
+    },
+    {
+      "level": "N5",
+      "pattern": "か",
+      "variants": [
+        "か"
+      ],
+      "meaning": "or (A or B; choice between 2 objects)"
+    },
+    {
+      "level": "N5",
+      "pattern": "か",
+      "variants": [
+        "か"
+      ],
+      "meaning": "question particle"
+    },
+    {
+      "level": "N5",
+      "pattern": "がある",
+      "variants": [
+        "がある"
+      ],
+      "meaning": "there is (used for non-living things)"
+    },
+    {
+      "level": "N5",
+      "pattern": "がいる",
+      "variants": [
+        "がいる"
+      ],
+      "meaning": "there is (used for living things)"
+    },
+    {
+      "level": "N5",
+      "pattern": "から",
+      "variants": [
+        "から"
+      ],
+      "meaning": "because; since"
+    },
+    {
+      "level": "N5",
+      "pattern": "から",
+      "variants": [
+        "から"
+      ],
+      "meaning": "from"
+    },
+    {
+      "level": "N5",
+      "pattern": "くらい / ぐらい",
+      "variants": [
+        "くらい",
+        "ぐらい"
+      ],
+      "meaning": "about; approximately"
+    },
+    {
+      "level": "N5",
+      "pattern": "けど / けれども",
+      "variants": [
+        "けど",
+        "けれども"
+      ],
+      "meaning": "but; although"
+    },
+    {
+      "level": "N5",
+      "pattern": "する",
+      "variants": [
+        "する"
+      ],
+      "meaning": "to do"
+    },
+    {
+      "level": "N5",
+      "pattern": "だ / です",
+      "variants": [
+        "だ",
+        "です"
+      ],
+      "meaning": "there is; this is"
+    },
+    {
+      "level": "N5",
+      "pattern": "たい",
+      "variants": [
+        "たい"
+      ],
+      "meaning": "want to"
+    },
+    {
+      "level": "N5",
+      "pattern": "だけ",
+      "variants": [
+        "だけ"
+      ],
+      "meaning": "only; just"
+    },
+    {
+      "level": "N5",
+      "pattern": "たことがある",
+      "variants": [
+        "たことがある"
+      ],
+      "meaning": "have done before"
+    },
+    {
+      "level": "N5",
+      "pattern": "だろう",
+      "variants": [
+        "だろう"
+      ],
+      "meaning": "probably"
+    },
+    {
+      "level": "N5",
+      "pattern": "だろう",
+      "variants": [
+        "だろう"
+      ],
+      "meaning": "isn't it?; right?"
+    },
+    {
+      "level": "N5",
+      "pattern": "つもり",
+      "variants": [
+        "つもり"
+      ],
+      "meaning": "plan to; intend to"
+    },
+    {
+      "level": "N5",
+      "pattern": "で",
+      "variants": [
+        "で"
+      ],
+      "meaning": "at; in"
+    },
+    {
+      "level": "N5",
+      "pattern": "で",
+      "variants": [
+        "で"
+      ],
+      "meaning": "with; by"
+    },
+    {
+      "level": "N5",
+      "pattern": "ている",
+      "variants": [
+        "ている"
+      ],
+      "meaning": "is / are / am doing"
+    },
+    {
+      "level": "N5",
+      "pattern": "てから",
+      "variants": [
+        "てから"
+      ],
+      "meaning": "after doing"
+    },
+    {
+      "level": "N5",
+      "pattern": "てください",
+      "variants": [
+        "てください"
+      ],
+      "meaning": "please do…"
+    },
+    {
+      "level": "N5",
+      "pattern": "でしょう",
+      "variants": [
+        "でしょう"
+      ],
+      "meaning": "probably"
+    },
+    {
+      "level": "N5",
+      "pattern": "でしょう",
+      "variants": [
+        "でしょう"
+      ],
+      "meaning": "isn't it?; right?"
+    },
+    {
+      "level": "N5",
+      "pattern": "てはいけない",
+      "variants": [
+        "てはいけない"
+      ],
+      "meaning": "must not; may not"
+    },
+    {
+      "level": "N5",
+      "pattern": "てもいい",
+      "variants": [
+        "てもいい"
+      ],
+      "meaning": "is okay; is alright to"
+    },
+    {
+      "level": "N5",
+      "pattern": "と",
+      "variants": [
+        "と"
+      ],
+      "meaning": "and"
+    },
+    {
+      "level": "N5",
+      "pattern": "と",
+      "variants": [
+        "と"
+      ],
+      "meaning": "with"
+    },
+    {
+      "level": "N5",
+      "pattern": "な",
+      "variants": [
+        "な"
+      ],
+      "meaning": "don't do"
+    },
+    {
+      "level": "N5",
+      "pattern": "ないでください",
+      "variants": [
+        "ないでください"
+      ],
+      "meaning": "please don't"
+    },
+    {
+      "level": "N5",
+      "pattern": "なる",
+      "variants": [
+        "なる"
+      ],
+      "meaning": "to become"
+    },
+    {
+      "level": "N5",
+      "pattern": "に / へ",
+      "variants": [
+        "に",
+        "へ"
+      ],
+      "meaning": "to"
+    },
+    {
+      "level": "N5",
+      "pattern": "に",
+      "variants": [
+        "に"
+      ],
+      "meaning": "in; at; to; for"
+    },
+    {
+      "level": "N5",
+      "pattern": "にいく",
+      "variants": [
+        "にいく"
+      ],
+      "meaning": "to go, in order to do..."
+    },
+    {
+      "level": "N5",
+      "pattern": "にする",
+      "variants": [
+        "にする"
+      ],
+      "meaning": "to decide on"
+    },
+    {
+      "level": "N5",
+      "pattern": "の",
+      "variants": [
+        "の"
+      ],
+      "meaning": "of (indicates possession)"
+    },
+    {
+      "level": "N5",
+      "pattern": "の",
+      "variants": [
+        "の"
+      ],
+      "meaning": "(turns verbs into nouns)"
+    },
+    {
+      "level": "N5",
+      "pattern": "のが下手",
+      "variants": [
+        "のが下手"
+      ],
+      "meaning": "to be bad at"
+    },
+    {
+      "level": "N5",
+      "pattern": "のが上手",
+      "variants": [
+        "のが上手"
+      ],
+      "meaning": "to be good at"
+    },
+    {
+      "level": "N5",
+      "pattern": "のが好き",
+      "variants": [
+        "のが好き"
+      ],
+      "meaning": "like / love doing"
+    },
+    {
+      "level": "N5",
+      "pattern": "ので",
+      "variants": [
+        "ので"
+      ],
+      "meaning": "because of; the reason is that"
+    },
+    {
+      "level": "N5",
+      "pattern": "は",
+      "variants": [
+        "は"
+      ],
+      "meaning": "as for (introduces something)"
+    },
+    {
+      "level": "N5",
+      "pattern": "ほうがいい",
+      "variants": [
+        "ほうがいい"
+      ],
+      "meaning": "it'd be better to"
+    },
+    {
+      "level": "N5",
+      "pattern": "ほうがいい",
+      "variants": [
+        "ほうがいい"
+      ],
+      "meaning": "it'd be better to not"
+    },
+    {
+      "level": "N5",
+      "pattern": "前に",
+      "variants": [
+        "前に"
+      ],
+      "meaning": "before"
+    },
+    {
+      "level": "N5",
+      "pattern": "まだ",
+      "variants": [
+        "まだ"
+      ],
+      "meaning": "still; not yet"
+    },
+    {
+      "level": "N5",
+      "pattern": "まで",
+      "variants": [
+        "まで"
+      ],
+      "meaning": "until; till; to; even"
+    },
+    {
+      "level": "N5",
+      "pattern": "も",
+      "variants": [
+        "も"
+      ],
+      "meaning": "also; too; as well"
+    },
+    {
+      "level": "N5",
+      "pattern": "もう",
+      "variants": [
+        "もう"
+      ],
+      "meaning": "already; anymore"
+    },
+    {
+      "level": "N5",
+      "pattern": "や",
+      "variants": [
+        "や"
+      ],
+      "meaning": "and (etc.)"
+    },
+    {
+      "level": "N5",
+      "pattern": "より○○のほうが○○",
+      "variants": [
+        "より○○のほうが○○"
+      ],
+      "meaning": "is more ~ than"
+    },
+    {
+      "level": "N4",
+      "pattern": "Volitional Form",
+      "variants": [
+        "Volitional Form"
+      ],
+      "meaning": ""
+    },
+    {
+      "level": "N4",
+      "pattern": "後で",
+      "variants": [
+        "後で"
+      ],
+      "meaning": "after; later"
+    },
+    {
+      "level": "N4",
+      "pattern": "あまり○○ない",
+      "variants": [
+        "あまり○○ない"
+      ],
+      "meaning": "not very; not much"
+    },
+    {
+      "level": "N4",
+      "pattern": "いたす",
+      "variants": [
+        "いたす"
+      ],
+      "meaning": "to do (humble する)"
+    },
+    {
+      "level": "N4",
+      "pattern": "いらっしゃる",
+      "variants": [
+        "いらっしゃる"
+      ],
+      "meaning": "to be; to come; to go"
+    },
+    {
+      "level": "N4",
+      "pattern": "お○○ください",
+      "variants": [
+        "お○○ください"
+      ],
+      "meaning": "please do (honorific)"
+    },
+    {
+      "level": "N4",
+      "pattern": "お○○になる",
+      "variants": [
+        "お○○になる"
+      ],
+      "meaning": "to do (honorific)"
+    },
+    {
+      "level": "N4",
+      "pattern": "おきに",
+      "variants": [
+        "おきに"
+      ],
+      "meaning": "repeated at intervals; every"
+    },
+    {
+      "level": "N4",
+      "pattern": "終わる",
+      "variants": [
+        "終わる"
+      ],
+      "meaning": "to finish; to end"
+    },
+    {
+      "level": "N4",
+      "pattern": "かい",
+      "variants": [
+        "かい"
+      ],
+      "meaning": "(turns a sentence into a yes/no question)"
+    },
+    {
+      "level": "N4",
+      "pattern": "かしら",
+      "variants": [
+        "かしら"
+      ],
+      "meaning": "I wonder"
+    },
+    {
+      "level": "N4",
+      "pattern": "がする",
+      "variants": [
+        "がする"
+      ],
+      "meaning": "smell; hear; taste"
+    },
+    {
+      "level": "N4",
+      "pattern": "方",
+      "variants": [
+        "方"
+      ],
+      "meaning": "way of; method"
+    },
+    {
+      "level": "N4",
+      "pattern": "かどうか",
+      "variants": [
+        "かどうか"
+      ],
+      "meaning": "whether or not"
+    },
+    {
+      "level": "N4",
+      "pattern": "かな",
+      "variants": [
+        "かな"
+      ],
+      "meaning": "I wonder"
+    },
+    {
+      "level": "N4",
+      "pattern": "かもしれない",
+      "variants": [
+        "かもしれない"
+      ],
+      "meaning": "might; maybe"
+    },
+    {
+      "level": "N4",
+      "pattern": "がる",
+      "variants": [
+        "がる"
+      ],
+      "meaning": "to show signs of; to feel; to think"
+    },
+    {
+      "level": "N4",
+      "pattern": "急に",
+      "variants": [
+        "急に"
+      ],
+      "meaning": "suddenly"
+    },
+    {
+      "level": "N4",
+      "pattern": "ございます",
+      "variants": [
+        "ございます"
+      ],
+      "meaning": "there is (honorific ある)"
+    },
+    {
+      "level": "N4",
+      "pattern": "こと",
+      "variants": [
+        "こと"
+      ],
+      "meaning": "(turns verbs into nouns)"
+    },
+    {
+      "level": "N4",
+      "pattern": "ことができる",
+      "variants": [
+        "ことができる"
+      ],
+      "meaning": "can; be able to"
+    },
+    {
+      "level": "N4",
+      "pattern": "ことにする",
+      "variants": [
+        "ことにする"
+      ],
+      "meaning": "to decide on"
+    },
+    {
+      "level": "N4",
+      "pattern": "ことになる",
+      "variants": [
+        "ことになる"
+      ],
+      "meaning": "will become"
+    },
+    {
+      "level": "N4",
+      "pattern": "ごろ",
+      "variants": [
+        "ごろ"
+      ],
+      "meaning": "around; about"
+    },
+    {
+      "level": "N4",
+      "pattern": "さ",
+      "variants": [
+        "さ"
+      ],
+      "meaning": "(turns adjectives) into nouns"
+    },
+    {
+      "level": "N4",
+      "pattern": "させられる",
+      "variants": [
+        "させられる"
+      ],
+      "meaning": "to be made to do something"
+    },
+    {
+      "level": "N4",
+      "pattern": "させる",
+      "variants": [
+        "させる"
+      ],
+      "meaning": "to make/let somebody do something"
+    },
+    {
+      "level": "N4",
+      "pattern": "し",
+      "variants": [
+        "し"
+      ],
+      "meaning": "and"
+    },
+    {
+      "level": "N4",
+      "pattern": "しか○○ない",
+      "variants": [
+        "しか○○ない"
+      ],
+      "meaning": "only; nothing but"
+    },
+    {
+      "level": "N4",
+      "pattern": "じゃないか",
+      "variants": [
+        "じゃないか"
+      ],
+      "meaning": "isn't it"
+    },
+    {
+      "level": "N4",
+      "pattern": "すぎる",
+      "variants": [
+        "すぎる"
+      ],
+      "meaning": "too much"
+    },
+    {
+      "level": "N4",
+      "pattern": "ぜんぜん",
+      "variants": [
+        "ぜんぜん"
+      ],
+      "meaning": "(not) at all"
+    },
+    {
+      "level": "N4",
+      "pattern": "そうだ",
+      "variants": [
+        "そうだ"
+      ],
+      "meaning": "I heard that; it is said that"
+    },
+    {
+      "level": "N4",
+      "pattern": "そうだ",
+      "variants": [
+        "そうだ"
+      ],
+      "meaning": "look like; appear; seem"
+    },
+    {
+      "level": "N4",
+      "pattern": "そうに / そうな",
+      "variants": [
+        "そうに",
+        "そうな"
+      ],
+      "meaning": "seem; look like"
+    },
+    {
+      "level": "N4",
+      "pattern": "それでも",
+      "variants": [
+        "それでも"
+      ],
+      "meaning": "but still; and yet"
+    },
+    {
+      "level": "N4",
+      "pattern": "そんなに",
+      "variants": [
+        "そんなに"
+      ],
+      "meaning": "so; so much; like that"
+    },
+    {
+      "level": "N4",
+      "pattern": "たがる",
+      "variants": [
+        "たがる"
+      ],
+      "meaning": "to want to"
+    },
+    {
+      "level": "N4",
+      "pattern": "だけで",
+      "variants": [
+        "だけで"
+      ],
+      "meaning": "just by"
+    },
+    {
+      "level": "N4",
+      "pattern": "出す",
+      "variants": [
+        "出す"
+      ],
+      "meaning": "to suddenly begin; to suddenly appear"
+    },
+    {
+      "level": "N4",
+      "pattern": "たところ",
+      "variants": [
+        "たところ"
+      ],
+      "meaning": "just finished doing; was just doing"
+    },
+    {
+      "level": "N4",
+      "pattern": "たばかり",
+      "variants": [
+        "たばかり"
+      ],
+      "meaning": "just did; something just happened"
+    },
+    {
+      "level": "N4",
+      "pattern": "たら",
+      "variants": [
+        "たら"
+      ],
+      "meaning": "if; after; when"
+    },
+    {
+      "level": "N4",
+      "pattern": "たらどう",
+      "variants": [
+        "たらどう"
+      ],
+      "meaning": "why don't you"
+    },
+    {
+      "level": "N4",
+      "pattern": "たり○○たり",
+      "variants": [
+        "たり○○たり"
+      ],
+      "meaning": "do such things like"
+    },
+    {
+      "level": "N4",
+      "pattern": "続ける",
+      "variants": [
+        "続ける"
+      ],
+      "meaning": "to continue"
+    },
+    {
+      "level": "N4",
+      "pattern": "てあげる",
+      "variants": [
+        "てあげる"
+      ],
+      "meaning": "to do something for someone"
+    },
+    {
+      "level": "N4",
+      "pattern": "てある",
+      "variants": [
+        "てある"
+      ],
+      "meaning": "something is/has been done"
+    },
+    {
+      "level": "N4",
+      "pattern": "ていく",
+      "variants": [
+        "ていく"
+      ],
+      "meaning": "to go and do"
+    },
+    {
+      "level": "N4",
+      "pattern": "ていただけませんか",
+      "variants": [
+        "ていただけませんか"
+      ],
+      "meaning": "could you please"
+    },
+    {
+      "level": "N4",
+      "pattern": "ているところ",
+      "variants": [
+        "ているところ"
+      ],
+      "meaning": "in the process of doing"
+    },
+    {
+      "level": "N4",
+      "pattern": "ておく / とく",
+      "variants": [
+        "ておく",
+        "とく"
+      ],
+      "meaning": "to do something for later"
+    },
+    {
+      "level": "N4",
+      "pattern": "てくる",
+      "variants": [
+        "てくる"
+      ],
+      "meaning": "to come to; to become; to continue"
+    },
+    {
+      "level": "N4",
+      "pattern": "てくれる",
+      "variants": [
+        "てくれる"
+      ],
+      "meaning": "to do something for someone"
+    },
+    {
+      "level": "N4",
+      "pattern": "でございます",
+      "variants": [
+        "でございます"
+      ],
+      "meaning": "there is; this is (honorific である)"
+    },
+    {
+      "level": "N4",
+      "pattern": "てしまう / ちゃう",
+      "variants": [
+        "てしまう",
+        "ちゃう"
+      ],
+      "meaning": "to do something (regretfully); to do something (completely)"
+    },
+    {
+      "level": "N4",
+      "pattern": "てすみません",
+      "variants": [
+        "てすみません"
+      ],
+      "meaning": "I'm sorry for"
+    },
+    {
+      "level": "N4",
+      "pattern": "てほしい",
+      "variants": [
+        "てほしい"
+      ],
+      "meaning": "I want you to; I need you to"
+    },
+    {
+      "level": "N4",
+      "pattern": "てみる",
+      "variants": [
+        "てみる"
+      ],
+      "meaning": "to try to"
+    },
+    {
+      "level": "N4",
+      "pattern": "ても",
+      "variants": [
+        "ても"
+      ],
+      "meaning": "even if; even though"
+    },
+    {
+      "level": "N4",
+      "pattern": "でも",
+      "variants": [
+        "でも"
+      ],
+      "meaning": "or something"
+    },
+    {
+      "level": "N4",
+      "pattern": "てもらう",
+      "variants": [
+        "てもらう"
+      ],
+      "meaning": "to get somebody to do something"
+    },
+    {
+      "level": "N4",
+      "pattern": "てよかった",
+      "variants": [
+        "てよかった"
+      ],
+      "meaning": "I'm glad that"
+    },
+    {
+      "level": "N4",
+      "pattern": "と",
+      "variants": [
+        "と"
+      ],
+      "meaning": "if; when; and"
+    },
+    {
+      "level": "N4",
+      "pattern": "ということ",
+      "variants": [
+        "ということ"
+      ],
+      "meaning": "(changes a sentence or phrase into a noun)"
+    },
+    {
+      "level": "N4",
+      "pattern": "と思う",
+      "variants": [
+        "と思う"
+      ],
+      "meaning": "I think; you think"
+    },
+    {
+      "level": "N4",
+      "pattern": "とか○○とか",
+      "variants": [
+        "とか○○とか"
+      ],
+      "meaning": "among other things; such as"
+    },
+    {
+      "level": "N4",
+      "pattern": "とき",
+      "variants": [
+        "とき"
+      ],
+      "meaning": "when; at the time"
+    },
+    {
+      "level": "N4",
+      "pattern": "ところ",
+      "variants": [
+        "ところ"
+      ],
+      "meaning": "about to; on the verge of"
+    },
+    {
+      "level": "N4",
+      "pattern": "ないで",
+      "variants": [
+        "ないで"
+      ],
+      "meaning": "without doing; don't"
+    },
+    {
+      "level": "N4",
+      "pattern": "ながら",
+      "variants": [
+        "ながら"
+      ],
+      "meaning": "while; during; as"
+    },
+    {
+      "level": "N4",
+      "pattern": "なくてはいけない / なくてはならない",
+      "variants": [
+        "なくてはいけない",
+        "なくてはならない"
+      ],
+      "meaning": "must do; have to do"
+    },
+    {
+      "level": "N4",
+      "pattern": "なくてもいい",
+      "variants": [
+        "なくてもいい"
+      ],
+      "meaning": "don't have to"
+    },
+    {
+      "level": "N4",
+      "pattern": "なければいけない / なければならない",
+      "variants": [
+        "なければいけない",
+        "なければならない"
+      ],
+      "meaning": "must do; have to do"
+    },
+    {
+      "level": "N4",
+      "pattern": "なさい",
+      "variants": [
+        "なさい"
+      ],
+      "meaning": "(order somebody to do something)"
+    },
+    {
+      "level": "N4",
+      "pattern": "なさる",
+      "variants": [
+        "なさる"
+      ],
+      "meaning": "to do (honorific する)"
+    },
+    {
+      "level": "N4",
+      "pattern": "など",
+      "variants": [
+        "など"
+      ],
+      "meaning": "such as; things like"
+    },
+    {
+      "level": "N4",
+      "pattern": "なら",
+      "variants": [
+        "なら"
+      ],
+      "meaning": "if; in case; as for"
+    },
+    {
+      "level": "N4",
+      "pattern": "にくい",
+      "variants": [
+        "にくい"
+      ],
+      "meaning": "difficult to"
+    },
+    {
+      "level": "N4",
+      "pattern": "の中で",
+      "variants": [
+        "の中で"
+      ],
+      "meaning": "in; among"
+    },
+    {
+      "level": "N4",
+      "pattern": "のに",
+      "variants": [
+        "のに"
+      ],
+      "meaning": "although in spite of; even though"
+    },
+    {
+      "level": "N4",
+      "pattern": "のに",
+      "variants": [
+        "のに"
+      ],
+      "meaning": "in order to"
+    },
+    {
+      "level": "N4",
+      "pattern": "のように / のような",
+      "variants": [
+        "のように",
+        "のような"
+      ],
+      "meaning": "like; similar to"
+    },
+    {
+      "level": "N4",
+      "pattern": "ば",
+      "variants": [
+        "ば"
+      ],
+      "meaning": "if… then"
+    },
+    {
+      "level": "N4",
+      "pattern": "場合は",
+      "variants": [
+        "場合は"
+      ],
+      "meaning": "in the event of"
+    },
+    {
+      "level": "N4",
+      "pattern": "ばかり",
+      "variants": [
+        "ばかり"
+      ],
+      "meaning": "only; nothing but"
+    },
+    {
+      "level": "N4",
+      "pattern": "始める",
+      "variants": [
+        "始める"
+      ],
+      "meaning": "to start; to begin to"
+    },
+    {
+      "level": "N4",
+      "pattern": "はずがない",
+      "variants": [
+        "はずがない"
+      ],
+      "meaning": "cannot be"
+    },
+    {
+      "level": "N4",
+      "pattern": "はずだ",
+      "variants": [
+        "はずだ"
+      ],
+      "meaning": "it must be; it should be"
+    },
+    {
+      "level": "N4",
+      "pattern": "必要",
+      "variants": [
+        "必要"
+      ],
+      "meaning": "need; necessary"
+    },
+    {
+      "level": "N4",
+      "pattern": "必要がある",
+      "variants": [
+        "必要がある"
+      ],
+      "meaning": "need to"
+    },
+    {
+      "level": "N4",
+      "pattern": "ほしい",
+      "variants": [
+        "ほしい"
+      ],
+      "meaning": "to want something; to be in need of"
+    },
+    {
+      "level": "N4",
+      "pattern": "までに",
+      "variants": [
+        "までに"
+      ],
+      "meaning": "by; by the time"
+    },
+    {
+      "level": "N4",
+      "pattern": "みたい",
+      "variants": [
+        "みたい"
+      ],
+      "meaning": "like; similar to; resembling"
+    },
+    {
+      "level": "N4",
+      "pattern": "みたいに/みたいな",
+      "variants": [
+        "みたいに",
+        "みたいな"
+      ],
+      "meaning": "like; similar to"
+    },
+    {
+      "level": "N4",
+      "pattern": "やすい",
+      "variants": [
+        "やすい"
+      ],
+      "meaning": "easy to; likely to"
+    },
+    {
+      "level": "N4",
+      "pattern": "ようだ",
+      "variants": [
+        "ようだ"
+      ],
+      "meaning": "it seems that; it appears that; it looks like"
+    },
+    {
+      "level": "N4",
+      "pattern": "ようと思う",
+      "variants": [
+        "ようと思う"
+      ],
+      "meaning": "I think I will"
+    },
+    {
+      "level": "N4",
+      "pattern": "ように/ような",
+      "variants": [
+        "ように",
+        "ような"
+      ],
+      "meaning": "as; like; just like"
+    },
+    {
+      "level": "N4",
+      "pattern": "ようにする",
+      "variants": [
+        "ようにする"
+      ],
+      "meaning": "to try to; to make sure that"
+    },
+    {
+      "level": "N4",
+      "pattern": "ようになる",
+      "variants": [
+        "ようになる"
+      ],
+      "meaning": "to reach the point that"
+    },
+    {
+      "level": "N4",
+      "pattern": "よていだ",
+      "variants": [
+        "よていだ"
+      ],
+      "meaning": "plan to; intend to"
+    },
+    {
+      "level": "N4",
+      "pattern": "より",
+      "variants": [
+        "より"
+      ],
+      "meaning": "than"
+    },
+    {
+      "level": "N4",
+      "pattern": "らしい",
+      "variants": [
+        "らしい"
+      ],
+      "meaning": "-like"
+    },
+    {
+      "level": "N4",
+      "pattern": "られる",
+      "variants": [
+        "られる"
+      ],
+      "meaning": "to be able to do something"
+    },
+    {
+      "level": "N4",
+      "pattern": "られる",
+      "variants": [
+        "られる"
+      ],
+      "meaning": "to do (by someone)"
+    },
+    {
+      "level": "N3",
+      "pattern": "あまり",
+      "variants": [
+        "あまり"
+      ],
+      "meaning": "so much… that"
+    },
+    {
+      "level": "N3",
+      "pattern": "あまりに",
+      "variants": [
+        "あまりに"
+      ],
+      "meaning": "so much… that; too…"
+    },
+    {
+      "level": "N3",
+      "pattern": "いくら○○ても / いくら○○でも",
+      "variants": [
+        "いくら○○ても",
+        "いくら○○でも"
+      ],
+      "meaning": "no matter how"
+    },
+    {
+      "level": "N3",
+      "pattern": "一方だ",
+      "variants": [
+        "一方だ"
+      ],
+      "meaning": "more and more; continue to"
+    },
+    {
+      "level": "N3",
+      "pattern": "一方で",
+      "variants": [
+        "一方で"
+      ],
+      "meaning": "on one hand; on the other hand"
+    },
+    {
+      "level": "N3",
+      "pattern": "うちに",
+      "variants": [
+        "うちに"
+      ],
+      "meaning": "while; before; doing"
+    },
+    {
+      "level": "N3",
+      "pattern": "おかげで",
+      "variants": [
+        "おかげで"
+      ],
+      "meaning": "thanks to; because of"
+    },
+    {
+      "level": "N3",
+      "pattern": "おそらく",
+      "variants": [
+        "おそらく"
+      ],
+      "meaning": "perhaps; likely; probably"
+    },
+    {
+      "level": "N3",
+      "pattern": "かけ",
+      "variants": [
+        "かけ"
+      ],
+      "meaning": "half-; not yet finished"
+    },
+    {
+      "level": "N3",
+      "pattern": "がたい",
+      "variants": [
+        "がたい"
+      ],
+      "meaning": "hard to; difficult to"
+    },
+    {
+      "level": "N3",
+      "pattern": "がち",
+      "variants": [
+        "がち"
+      ],
+      "meaning": "apt to do; tend to do"
+    },
+    {
+      "level": "N3",
+      "pattern": "代わりに",
+      "variants": [
+        "代わりに"
+      ],
+      "meaning": "instead of; in exchange for"
+    },
+    {
+      "level": "N3",
+      "pattern": "ぎみ",
+      "variants": [
+        "ぎみ"
+      ],
+      "meaning": "-like; -looking"
+    },
+    {
+      "level": "N3",
+      "pattern": "きり",
+      "variants": [
+        "きり"
+      ],
+      "meaning": "only; just"
+    },
+    {
+      "level": "N3",
+      "pattern": "きる",
+      "variants": [
+        "きる"
+      ],
+      "meaning": "to do something completely"
+    },
+    {
+      "level": "N3",
+      "pattern": "切れない",
+      "variants": [
+        "切れない"
+      ],
+      "meaning": "being too much to finish"
+    },
+    {
+      "level": "N3",
+      "pattern": "くせに",
+      "variants": [
+        "くせに"
+      ],
+      "meaning": "even though; and yet; despite"
+    },
+    {
+      "level": "N3",
+      "pattern": "くらい / ぐらい",
+      "variants": [
+        "くらい",
+        "ぐらい"
+      ],
+      "meaning": "probably; around"
+    },
+    {
+      "level": "N3",
+      "pattern": "決して○○ない",
+      "variants": [
+        "決して○○ない"
+      ],
+      "meaning": "never; by no means"
+    },
+    {
+      "level": "N3",
+      "pattern": "こそ",
+      "variants": [
+        "こそ"
+      ],
+      "meaning": "certainly (emphasises the previous word)"
+    },
+    {
+      "level": "N3",
+      "pattern": "こと",
+      "variants": [
+        "こと"
+      ],
+      "meaning": "(must) do"
+    },
+    {
+      "level": "N3",
+      "pattern": "ことか",
+      "variants": [
+        "ことか"
+      ],
+      "meaning": "how…? what…!"
+    },
+    {
+      "level": "N3",
+      "pattern": "ことがある",
+      "variants": [
+        "ことがある"
+      ],
+      "meaning": "can; sometimes happens"
+    },
+    {
+      "level": "N3",
+      "pattern": "ことだ",
+      "variants": [
+        "ことだ"
+      ],
+      "meaning": "should (when giving advice)"
+    },
+    {
+      "level": "N3",
+      "pattern": "ことに",
+      "variants": [
+        "ことに"
+      ],
+      "meaning": "-ly"
+    },
+    {
+      "level": "N3",
+      "pattern": "ことはない",
+      "variants": [
+        "ことはない"
+      ],
+      "meaning": "there is no need to; never happens"
+    },
+    {
+      "level": "N3",
+      "pattern": "さえ",
+      "variants": [
+        "さえ"
+      ],
+      "meaning": "even"
+    },
+    {
+      "level": "N3",
+      "pattern": "さえ○○ば / さえすれば / さえいれば",
+      "variants": [
+        "さえ○○ば",
+        "さえすれば",
+        "さえいれば"
+      ],
+      "meaning": "if only… then"
+    },
+    {
+      "level": "N3",
+      "pattern": "しかない",
+      "variants": [
+        "しかない"
+      ],
+      "meaning": "have no choice but"
+    },
+    {
+      "level": "N3",
+      "pattern": "ずに",
+      "variants": [
+        "ずに"
+      ],
+      "meaning": "without (doing)"
+    },
+    {
+      "level": "N3",
+      "pattern": "ずにはいられない",
+      "variants": [
+        "ずにはいられない"
+      ],
+      "meaning": "can't help but feel; can't help but do"
+    },
+    {
+      "level": "N3",
+      "pattern": "せいで",
+      "variants": [
+        "せいで"
+      ],
+      "meaning": "because of"
+    },
+    {
+      "level": "N3",
+      "pattern": "そうもない",
+      "variants": [
+        "そうもない"
+      ],
+      "meaning": "very unlikely to"
+    },
+    {
+      "level": "N3",
+      "pattern": "その結果",
+      "variants": [
+        "その結果"
+      ],
+      "meaning": "as a result"
+    },
+    {
+      "level": "N3",
+      "pattern": "だけ",
+      "variants": [
+        "だけ"
+      ],
+      "meaning": "as much as"
+    },
+    {
+      "level": "N3",
+      "pattern": "た結果 / の結果",
+      "variants": [
+        "た結果",
+        "の結果"
+      ],
+      "meaning": "as a result of"
+    },
+    {
+      "level": "N3",
+      "pattern": "だけど",
+      "variants": [
+        "だけど"
+      ],
+      "meaning": "but; however"
+    },
+    {
+      "level": "N3",
+      "pattern": "確かに",
+      "variants": [
+        "確かに"
+      ],
+      "meaning": "surely; certainly"
+    },
+    {
+      "level": "N3",
+      "pattern": "たとえ○○ても",
+      "variants": [
+        "たとえ○○ても"
+      ],
+      "meaning": "even if… is the case"
+    },
+    {
+      "level": "N3",
+      "pattern": "たとえば",
+      "variants": [
+        "たとえば"
+      ],
+      "meaning": "for example"
+    },
+    {
+      "level": "N3",
+      "pattern": "たとたん",
+      "variants": [
+        "たとたん"
+      ],
+      "meaning": "as soon as; just (now)"
+    },
+    {
+      "level": "N3",
+      "pattern": "たびに",
+      "variants": [
+        "たびに"
+      ],
+      "meaning": "everytime; whenever"
+    },
+    {
+      "level": "N3",
+      "pattern": "ために",
+      "variants": [
+        "ために"
+      ],
+      "meaning": "for the sake of; in order to"
+    },
+    {
+      "level": "N3",
+      "pattern": "ために",
+      "variants": [
+        "ために"
+      ],
+      "meaning": "because of; as a result of"
+    },
+    {
+      "level": "N3",
+      "pattern": "たらいい / といい",
+      "variants": [
+        "たらいい",
+        "といい"
+      ],
+      "meaning": "should"
+    },
+    {
+      "level": "N3",
+      "pattern": "たらいい / といい",
+      "variants": [
+        "たらいい",
+        "といい"
+      ],
+      "meaning": "I hope"
+    },
+    {
+      "level": "N3",
+      "pattern": "たらいい / といい",
+      "variants": [
+        "たらいい",
+        "といい"
+      ],
+      "meaning": "it would be nice if"
+    },
+    {
+      "level": "N3",
+      "pattern": "だらけ",
+      "variants": [
+        "だらけ"
+      ],
+      "meaning": "covered (all over)"
+    },
+    {
+      "level": "N3",
+      "pattern": "だらけ",
+      "variants": [
+        "だらけ"
+      ],
+      "meaning": "full of"
+    },
+    {
+      "level": "N3",
+      "pattern": "ついでに",
+      "variants": [
+        "ついでに"
+      ],
+      "meaning": "taking the opportunity; while (you) are at it"
+    },
+    {
+      "level": "N3",
+      "pattern": "っけ",
+      "variants": [
+        "っけ"
+      ],
+      "meaning": "what is… again?"
+    },
+    {
+      "level": "N3",
+      "pattern": "っぱなし",
+      "variants": [
+        "っぱなし"
+      ],
+      "meaning": "leaving something still in use"
+    },
+    {
+      "level": "N3",
+      "pattern": "っぽい",
+      "variants": [
+        "っぽい"
+      ],
+      "meaning": "-ish; -like"
+    },
+    {
+      "level": "N3",
+      "pattern": "つまり",
+      "variants": [
+        "つまり"
+      ],
+      "meaning": "in other words; that is to say"
+    },
+    {
+      "level": "N3",
+      "pattern": "てごらん",
+      "variants": [
+        "てごらん"
+      ],
+      "meaning": "(please) try to; (please) look"
+    },
+    {
+      "level": "N3",
+      "pattern": "て初めて",
+      "variants": [
+        "て初めて"
+      ],
+      "meaning": "not until; only after… did I"
+    },
+    {
+      "level": "N3",
+      "pattern": "てもかまわない / てもかまいません",
+      "variants": [
+        "てもかまわない",
+        "てもかまいません"
+      ],
+      "meaning": "no problem"
+    },
+    {
+      "level": "N3",
+      "pattern": "という",
+      "variants": [
+        "という"
+      ],
+      "meaning": "called; named"
+    },
+    {
+      "level": "N3",
+      "pattern": "ということ",
+      "variants": [
+        "ということ"
+      ],
+      "meaning": "I've heard that; it seems that"
+    },
+    {
+      "level": "N3",
+      "pattern": "というと",
+      "variants": [
+        "というと"
+      ],
+      "meaning": "speaking of; when you say…"
+    },
+    {
+      "level": "N3",
+      "pattern": "というのは",
+      "variants": [
+        "というのは"
+      ],
+      "meaning": "means; is"
+    },
+    {
+      "level": "N3",
+      "pattern": "というのは",
+      "variants": [
+        "というのは"
+      ],
+      "meaning": "because"
+    },
+    {
+      "level": "N3",
+      "pattern": "というのは",
+      "variants": [
+        "というのは"
+      ],
+      "meaning": "in particular"
+    },
+    {
+      "level": "N3",
+      "pattern": "というより",
+      "variants": [
+        "というより"
+      ],
+      "meaning": "rather than"
+    },
+    {
+      "level": "N3",
+      "pattern": "といっても",
+      "variants": [
+        "といっても"
+      ],
+      "meaning": "although one says"
+    },
+    {
+      "level": "N3",
+      "pattern": "とおり",
+      "variants": [
+        "とおり"
+      ],
+      "meaning": "in the way; the same as"
+    },
+    {
+      "level": "N3",
+      "pattern": "ところが",
+      "variants": [
+        "ところが"
+      ],
+      "meaning": "however; although"
+    },
+    {
+      "level": "N3",
+      "pattern": "どころか",
+      "variants": [
+        "どころか"
+      ],
+      "meaning": "far from; nevermind"
+    },
+    {
+      "level": "N3",
+      "pattern": "ところで",
+      "variants": [
+        "ところで"
+      ],
+      "meaning": "by the way"
+    },
+    {
+      "level": "N3",
+      "pattern": "としたら / とすれば",
+      "variants": [
+        "としたら",
+        "とすれば"
+      ],
+      "meaning": "if it were the case that; if we assume"
+    },
+    {
+      "level": "N3",
+      "pattern": "として",
+      "variants": [
+        "として"
+      ],
+      "meaning": "as (i.e. in the role of)"
+    },
+    {
+      "level": "N3",
+      "pattern": "としない / とはしない",
+      "variants": [
+        "としない",
+        "とはしない"
+      ],
+      "meaning": "not try to; not make an effort to"
+    },
+    {
+      "level": "N3",
+      "pattern": "とする",
+      "variants": [
+        "とする"
+      ],
+      "meaning": "try to"
+    },
+    {
+      "level": "N3",
+      "pattern": "とする",
+      "variants": [
+        "とする"
+      ],
+      "meaning": "be about to"
+    },
+    {
+      "level": "N3",
+      "pattern": "途中に / 途中で",
+      "variants": [
+        "途中に",
+        "途中で"
+      ],
+      "meaning": "on the way; in the middle of"
+    },
+    {
+      "level": "N3",
+      "pattern": "と共に",
+      "variants": [
+        "と共に"
+      ],
+      "meaning": "together with"
+    },
+    {
+      "level": "N3",
+      "pattern": "とは限らない",
+      "variants": [
+        "とは限らない"
+      ],
+      "meaning": "not necessarily so; is not always true"
+    },
+    {
+      "level": "N3",
+      "pattern": "どんなに○○ても",
+      "variants": [
+        "どんなに○○ても"
+      ],
+      "meaning": "no matter how"
+    },
+    {
+      "level": "N3",
+      "pattern": "ないことはない",
+      "variants": [
+        "ないことはない"
+      ],
+      "meaning": "can; is not impossible"
+    },
+    {
+      "level": "N3",
+      "pattern": "中",
+      "variants": [
+        "中"
+      ],
+      "meaning": "during; throughout"
+    },
+    {
+      "level": "N3",
+      "pattern": "ながら / いながら / ながらも",
+      "variants": [
+        "ながら",
+        "いながら",
+        "ながらも"
+      ],
+      "meaning": "although; despite"
+    },
+    {
+      "level": "N3",
+      "pattern": "なぜなら / なぜかというと",
+      "variants": [
+        "なぜなら",
+        "なぜかというと"
+      ],
+      "meaning": "because; the reason is"
+    },
+    {
+      "level": "N3",
+      "pattern": "なるべく",
+      "variants": [
+        "なるべく"
+      ],
+      "meaning": "as much as possible"
+    },
+    {
+      "level": "N3",
+      "pattern": "なんか / なんて",
+      "variants": [
+        "なんか",
+        "なんて"
+      ],
+      "meaning": "things like; something"
+    },
+    {
+      "level": "N3",
+      "pattern": "において / における",
+      "variants": [
+        "において",
+        "における"
+      ],
+      "meaning": "in; on; at; as for; regarding"
+    },
+    {
+      "level": "N3",
+      "pattern": "にかけて",
+      "variants": [
+        "にかけて"
+      ],
+      "meaning": "over (a period); through; concerning"
+    },
+    {
+      "level": "N3",
+      "pattern": "にかわって / にかわり",
+      "variants": [
+        "にかわって",
+        "にかわり"
+      ],
+      "meaning": "instead of; on behalf of"
+    },
+    {
+      "level": "N3",
+      "pattern": "に関する / に関して",
+      "variants": [
+        "に関する",
+        "に関して"
+      ],
+      "meaning": "related to; about"
+    },
+    {
+      "level": "N3",
+      "pattern": "に比べて",
+      "variants": [
+        "に比べて"
+      ],
+      "meaning": "compared to"
+    },
+    {
+      "level": "N3",
+      "pattern": "にしては",
+      "variants": [
+        "にしては"
+      ],
+      "meaning": "for; considering it's"
+    },
+    {
+      "level": "N3",
+      "pattern": "にしても",
+      "variants": [
+        "にしても"
+      ],
+      "meaning": "even if"
+    },
+    {
+      "level": "N3",
+      "pattern": "に対して",
+      "variants": [
+        "に対して"
+      ],
+      "meaning": "regarding; with regards to"
+    },
+    {
+      "level": "N3",
+      "pattern": "に違いない",
+      "variants": [
+        "に違いない"
+      ],
+      "meaning": "I'm sure; no doubt that"
+    },
+    {
+      "level": "N3",
+      "pattern": "について",
+      "variants": [
+        "について"
+      ],
+      "meaning": "concerning; about"
+    },
+    {
+      "level": "N3",
+      "pattern": "につれて",
+      "variants": [
+        "につれて"
+      ],
+      "meaning": "as… then"
+    },
+    {
+      "level": "N3",
+      "pattern": "にとって",
+      "variants": [
+        "にとって"
+      ],
+      "meaning": "to; for; concerning"
+    },
+    {
+      "level": "N3",
+      "pattern": "によって / による",
+      "variants": [
+        "によって",
+        "による"
+      ],
+      "meaning": "due to; by means of"
+    },
+    {
+      "level": "N3",
+      "pattern": "によると / によれば",
+      "variants": [
+        "によると",
+        "によれば"
+      ],
+      "meaning": "according to"
+    },
+    {
+      "level": "N3",
+      "pattern": "間 / 間に",
+      "variants": [
+        "間",
+        "間に"
+      ],
+      "meaning": "while; during"
+    },
+    {
+      "level": "N3",
+      "pattern": "間 / 間に",
+      "variants": [
+        "間",
+        "間に"
+      ],
+      "meaning": "between"
+    },
+    {
+      "level": "N3",
+      "pattern": "ば○○ほど",
+      "variants": [
+        "ば○○ほど"
+      ],
+      "meaning": "the more… the more/less"
+    },
+    {
+      "level": "N3",
+      "pattern": "ばいい",
+      "variants": [
+        "ばいい"
+      ],
+      "meaning": "should; can; it'd be good if"
+    },
+    {
+      "level": "N3",
+      "pattern": "ばかりでなく",
+      "variants": [
+        "ばかりでなく"
+      ],
+      "meaning": "not only… but also; as well as"
+    },
+    {
+      "level": "N3",
+      "pattern": "ばよかった",
+      "variants": [
+        "ばよかった"
+      ],
+      "meaning": "should have; it would have been better if"
+    },
+    {
+      "level": "N3",
+      "pattern": "ふと",
+      "variants": [
+        "ふと"
+      ],
+      "meaning": "suddenly"
+    },
+    {
+      "level": "N3",
+      "pattern": "ふと",
+      "variants": [
+        "ふと"
+      ],
+      "meaning": "accidentally; unexpectedly"
+    },
+    {
+      "level": "N3",
+      "pattern": "ふりをする",
+      "variants": [
+        "ふりをする"
+      ],
+      "meaning": "to pretend; to act as if"
+    },
+    {
+      "level": "N3",
+      "pattern": "べき",
+      "variants": [
+        "べき"
+      ],
+      "meaning": "must do; should do"
+    },
+    {
+      "level": "N3",
+      "pattern": "べきではない",
+      "variants": [
+        "べきではない"
+      ],
+      "meaning": "must not do; should not do"
+    },
+    {
+      "level": "N3",
+      "pattern": "べつに○○ない / べつに○○じゃない",
+      "variants": [
+        "べつに○○ない",
+        "べつに○○じゃない"
+      ],
+      "meaning": "not really; not particularly"
+    },
+    {
+      "level": "N3",
+      "pattern": "ほど",
+      "variants": [
+        "ほど"
+      ],
+      "meaning": "the more; to the extent that; so much… that"
+    },
+    {
+      "level": "N3",
+      "pattern": "ほど○○ない",
+      "variants": [
+        "ほど○○ない"
+      ],
+      "meaning": "is not as… as"
+    },
+    {
+      "level": "N3",
+      "pattern": "最中に",
+      "variants": [
+        "最中に"
+      ],
+      "meaning": "in the middle of"
+    },
+    {
+      "level": "N3",
+      "pattern": "まま",
+      "variants": [
+        "まま"
+      ],
+      "meaning": "as it is"
+    },
+    {
+      "level": "N3",
+      "pattern": "まるで",
+      "variants": [
+        "まるで"
+      ],
+      "meaning": "as if; as though"
+    },
+    {
+      "level": "N3",
+      "pattern": "向き",
+      "variants": [
+        "向き"
+      ],
+      "meaning": "towards (direction)"
+    },
+    {
+      "level": "N3",
+      "pattern": "向き",
+      "variants": [
+        "向き"
+      ],
+      "meaning": "suitable for"
+    },
+    {
+      "level": "N3",
+      "pattern": "向け",
+      "variants": [
+        "向け"
+      ],
+      "meaning": "intended for; aimed at"
+    },
+    {
+      "level": "N3",
+      "pattern": "めったに",
+      "variants": [
+        "めったに"
+      ],
+      "meaning": "hardly; rarely; seldom"
+    },
+    {
+      "level": "N3",
+      "pattern": "もしかしたら",
+      "variants": [
+        "もしかしたら"
+      ],
+      "meaning": "perhaps; maybe"
+    },
+    {
+      "level": "N3",
+      "pattern": "もの",
+      "variants": [
+        "もの"
+      ],
+      "meaning": "because (indicate reason or excuse)"
+    },
+    {
+      "level": "N3",
+      "pattern": "ものだ",
+      "variants": [
+        "ものだ"
+      ],
+      "meaning": "used to do something; should do something"
+    },
+    {
+      "level": "N3",
+      "pattern": "ような気がする",
+      "variants": [
+        "ような気がする"
+      ],
+      "meaning": "have a feeling that; think that"
+    },
+    {
+      "level": "N3",
+      "pattern": "ように",
+      "variants": [
+        "ように"
+      ],
+      "meaning": "in order to; so that"
+    },
+    {
+      "level": "N3",
+      "pattern": "わけがない",
+      "variants": [
+        "わけがない"
+      ],
+      "meaning": "there is no way that"
+    },
+    {
+      "level": "N3",
+      "pattern": "わけだ",
+      "variants": [
+        "わけだ"
+      ],
+      "meaning": "for that reason; no wonder; as you'd expect"
+    },
+    {
+      "level": "N3",
+      "pattern": "わけではない",
+      "variants": [
+        "わけではない"
+      ],
+      "meaning": "it doesn't mean that; it is not the case"
+    },
+    {
+      "level": "N3",
+      "pattern": "わけにはいかない",
+      "variants": [
+        "わけにはいかない"
+      ],
+      "meaning": "must not; can't afford to"
+    },
+    {
+      "level": "N3",
+      "pattern": "わりに",
+      "variants": [
+        "わりに"
+      ],
+      "meaning": "for; despite; unexpectedly"
+    },
+    {
+      "level": "N3",
+      "pattern": "を中心に",
+      "variants": [
+        "を中心に"
+      ],
+      "meaning": "focused on; centered on"
+    },
+    {
+      "level": "N3",
+      "pattern": "をはじめ / をはじめとする",
+      "variants": [
+        "をはじめ",
+        "をはじめとする"
+      ],
+      "meaning": "for example; starting with"
+    },
+    {
+      "level": "N2",
+      "pattern": "あるいは",
+      "variants": [
+        "あるいは"
+      ],
+      "meaning": "or; possibly"
+    },
+    {
+      "level": "N2",
+      "pattern": "いきなり",
+      "variants": [
+        "いきなり"
+      ],
+      "meaning": "suddenly; all of a sudden"
+    },
+    {
+      "level": "N2",
+      "pattern": "以上",
+      "variants": [
+        "以上"
+      ],
+      "meaning": "over"
+    },
+    {
+      "level": "N2",
+      "pattern": "以上",
+      "variants": [
+        "以上"
+      ],
+      "meaning": "because; now that"
+    },
+    {
+      "level": "N2",
+      "pattern": "以上に",
+      "variants": [
+        "以上に"
+      ],
+      "meaning": "more than; no less than"
+    },
+    {
+      "level": "N2",
+      "pattern": "いよいよ",
+      "variants": [
+        "いよいよ"
+      ],
+      "meaning": "at last; finally"
+    },
+    {
+      "level": "N2",
+      "pattern": "いわゆる",
+      "variants": [
+        "いわゆる"
+      ],
+      "meaning": "so-called; so to speak"
+    },
+    {
+      "level": "N2",
+      "pattern": "上で",
+      "variants": [
+        "上で"
+      ],
+      "meaning": "after"
+    },
+    {
+      "level": "N2",
+      "pattern": "上に",
+      "variants": [
+        "上に"
+      ],
+      "meaning": "as well; besides; in addition to"
+    },
+    {
+      "level": "N2",
+      "pattern": "上は",
+      "variants": [
+        "上は"
+      ],
+      "meaning": "now that; since"
+    },
+    {
+      "level": "N2",
+      "pattern": "えない",
+      "variants": [
+        "えない"
+      ],
+      "meaning": "unable to; cannot"
+    },
+    {
+      "level": "N2",
+      "pattern": "える / うる",
+      "variants": [
+        "える",
+        "うる"
+      ],
+      "meaning": "can; is possible"
+    },
+    {
+      "level": "N2",
+      "pattern": "お○○願う",
+      "variants": [
+        "お○○願う"
+      ],
+      "meaning": "could you please"
+    },
+    {
+      "level": "N2",
+      "pattern": "恐れがある",
+      "variants": [
+        "恐れがある"
+      ],
+      "meaning": "there are fears that"
+    },
+    {
+      "level": "N2",
+      "pattern": "おまけに",
+      "variants": [
+        "おまけに"
+      ],
+      "meaning": "to make matters worse"
+    },
+    {
+      "level": "N2",
+      "pattern": "か○○ないかのうちに",
+      "variants": [
+        "か○○ないかのうちに"
+      ],
+      "meaning": "right after; as soon as"
+    },
+    {
+      "level": "N2",
+      "pattern": "かいがある",
+      "variants": [
+        "かいがある"
+      ],
+      "meaning": "it's worth one's effort to do something"
+    },
+    {
+      "level": "N2",
+      "pattern": "かえって",
+      "variants": [
+        "かえって"
+      ],
+      "meaning": "on the contrary; rather; surprisingly"
+    },
+    {
+      "level": "N2",
+      "pattern": "限り",
+      "variants": [
+        "限り"
+      ],
+      "meaning": "as long as; while… is the case"
+    },
+    {
+      "level": "N2",
+      "pattern": "かと思ったら / かと思うと",
+      "variants": [
+        "かと思ったら",
+        "かと思うと"
+      ],
+      "meaning": "then again; just when; no sooner than"
+    },
+    {
+      "level": "N2",
+      "pattern": "か何か",
+      "variants": [
+        "か何か"
+      ],
+      "meaning": "or something"
+    },
+    {
+      "level": "N2",
+      "pattern": "かねない",
+      "variants": [
+        "かねない"
+      ],
+      "meaning": "might happen; might do something"
+    },
+    {
+      "level": "N2",
+      "pattern": "かねる",
+      "variants": [
+        "かねる"
+      ],
+      "meaning": "unable to do something"
+    },
+    {
+      "level": "N2",
+      "pattern": "かのよう",
+      "variants": [
+        "かのよう"
+      ],
+      "meaning": "as if; just like"
+    },
+    {
+      "level": "N2",
+      "pattern": "から言うと",
+      "variants": [
+        "から言うと"
+      ],
+      "meaning": "in terms of; from the point of view of"
+    },
+    {
+      "level": "N2",
+      "pattern": "からこそ",
+      "variants": [
+        "からこそ"
+      ],
+      "meaning": "precisely because"
+    },
+    {
+      "level": "N2",
+      "pattern": "からして",
+      "variants": [
+        "からして"
+      ],
+      "meaning": "judging from; based on"
+    },
+    {
+      "level": "N2",
+      "pattern": "からすると / からすれば",
+      "variants": [
+        "からすると",
+        "からすれば"
+      ],
+      "meaning": "judging from; considering"
+    },
+    {
+      "level": "N2",
+      "pattern": "からといって",
+      "variants": [
+        "からといって"
+      ],
+      "meaning": "just because"
+    },
+    {
+      "level": "N2",
+      "pattern": "からには",
+      "variants": [
+        "からには"
+      ],
+      "meaning": "now that; since; so long as"
+    },
+    {
+      "level": "N2",
+      "pattern": "ら見ると",
+      "variants": [
+        "ら見ると"
+      ],
+      "meaning": "from the point of view of; by the look of"
+    },
+    {
+      "level": "N2",
+      "pattern": "気",
+      "variants": [
+        "気"
+      ],
+      "meaning": "feel like"
+    },
+    {
+      "level": "N2",
+      "pattern": "逆に",
+      "variants": [
+        "逆に"
+      ],
+      "meaning": "on the contrary"
+    },
+    {
+      "level": "N2",
+      "pattern": "げ",
+      "variants": [
+        "げ"
+      ],
+      "meaning": "(giving the appearance of)"
+    },
+    {
+      "level": "N2",
+      "pattern": "ことから",
+      "variants": [
+        "ことから"
+      ],
+      "meaning": "from the fact that"
+    },
+    {
+      "level": "N2",
+      "pattern": "ことだから",
+      "variants": [
+        "ことだから"
+      ],
+      "meaning": "it is exactly because"
+    },
+    {
+      "level": "N2",
+      "pattern": "ことなく",
+      "variants": [
+        "ことなく"
+      ],
+      "meaning": "without doing something even once"
+    },
+    {
+      "level": "N2",
+      "pattern": "ごとに",
+      "variants": [
+        "ごとに"
+      ],
+      "meaning": "each; every; at intervals of"
+    },
+    {
+      "level": "N2",
+      "pattern": "ことになっている",
+      "variants": [
+        "ことになっている"
+      ],
+      "meaning": "to be expected to; to be scheduled to"
+    },
+    {
+      "level": "N2",
+      "pattern": "ことにはならない",
+      "variants": [
+        "ことにはならない"
+      ],
+      "meaning": "just because… doesn't mean…"
+    },
+    {
+      "level": "N2",
+      "pattern": "ことは○○が",
+      "variants": [
+        "ことは○○が"
+      ],
+      "meaning": "although; but"
+    },
+    {
+      "level": "N2",
+      "pattern": "際に",
+      "variants": [
+        "際に"
+      ],
+      "meaning": "at the time; in case of"
+    },
+    {
+      "level": "N2",
+      "pattern": "幸い",
+      "variants": [
+        "幸い"
+      ],
+      "meaning": "luckily; fortunately"
+    },
+    {
+      "level": "N2",
+      "pattern": "さらに",
+      "variants": [
+        "さらに"
+      ],
+      "meaning": "furthermore; again; more and more"
+    },
+    {
+      "level": "N2",
+      "pattern": "ざるを得ない",
+      "variants": [
+        "ざるを得ない"
+      ],
+      "meaning": "can't help doing; have no choice but"
+    },
+    {
+      "level": "N2",
+      "pattern": "しかも",
+      "variants": [
+        "しかも"
+      ],
+      "meaning": "moreover; furthermore"
+    },
+    {
+      "level": "N2",
+      "pattern": "次第",
+      "variants": [
+        "次第"
+      ],
+      "meaning": "as soon as"
+    },
+    {
+      "level": "N2",
+      "pattern": "次第だ / 次第で",
+      "variants": [
+        "次第だ",
+        "次第で"
+      ],
+      "meaning": "depending on; so"
+    },
+    {
+      "level": "N2",
+      "pattern": "したがって",
+      "variants": [
+        "したがって"
+      ],
+      "meaning": "therefore; accordingly"
+    },
+    {
+      "level": "N2",
+      "pattern": "上",
+      "variants": [
+        "上"
+      ],
+      "meaning": "from the standpoint of"
+    },
+    {
+      "level": "N2",
+      "pattern": "少しも○○ない",
+      "variants": [
+        "少しも○○ない"
+      ],
+      "meaning": "not one bit; not even a little"
+    },
+    {
+      "level": "N2",
+      "pattern": "すなわち",
+      "variants": [
+        "すなわち"
+      ],
+      "meaning": "in other words"
+    },
+    {
+      "level": "N2",
+      "pattern": "ずに済む",
+      "variants": [
+        "ずに済む"
+      ],
+      "meaning": "get by without doing something"
+    },
+    {
+      "level": "N2",
+      "pattern": "せいぜい",
+      "variants": [
+        "せいぜい"
+      ],
+      "meaning": "at the most; at best"
+    },
+    {
+      "level": "N2",
+      "pattern": "せめて",
+      "variants": [
+        "せめて"
+      ],
+      "meaning": "at least; at most"
+    },
+    {
+      "level": "N2",
+      "pattern": "そういえば",
+      "variants": [
+        "そういえば"
+      ],
+      "meaning": "come to think of it"
+    },
+    {
+      "level": "N2",
+      "pattern": "そうすると",
+      "variants": [
+        "そうすると"
+      ],
+      "meaning": "having done that"
+    },
+    {
+      "level": "N2",
+      "pattern": "そうにない",
+      "variants": [
+        "そうにない"
+      ],
+      "meaning": "extremely unlikely to; showing no signs of"
+    },
+    {
+      "level": "N2",
+      "pattern": "その上",
+      "variants": [
+        "その上"
+      ],
+      "meaning": "besides; in addition; furthermore"
+    },
+    {
+      "level": "N2",
+      "pattern": "それとも",
+      "variants": [
+        "それとも"
+      ],
+      "meaning": "or; or else"
+    },
+    {
+      "level": "N2",
+      "pattern": "それなのに",
+      "variants": [
+        "それなのに"
+      ],
+      "meaning": "and yet; despite this"
+    },
+    {
+      "level": "N2",
+      "pattern": "それなら",
+      "variants": [
+        "それなら"
+      ],
+      "meaning": "then; if that's the case"
+    },
+    {
+      "level": "N2",
+      "pattern": "それにしても",
+      "variants": [
+        "それにしても"
+      ],
+      "meaning": "nevertheless; even so"
+    },
+    {
+      "level": "N2",
+      "pattern": "たあげく",
+      "variants": [
+        "たあげく"
+      ],
+      "meaning": "to end up; finally"
+    },
+    {
+      "level": "N2",
+      "pattern": "だけあって",
+      "variants": [
+        "だけあって"
+      ],
+      "meaning": "…being the case; precisely because"
+    },
+    {
+      "level": "N2",
+      "pattern": "だけでなく",
+      "variants": [
+        "だけでなく"
+      ],
+      "meaning": "not only… but also"
+    },
+    {
+      "level": "N2",
+      "pattern": "だけに",
+      "variants": [
+        "だけに"
+      ],
+      "meaning": "…being the case; precisely because"
+    },
+    {
+      "level": "N2",
+      "pattern": "だけのことはある",
+      "variants": [
+        "だけのことはある"
+      ],
+      "meaning": "no wonder; it's not surprising that"
+    },
+    {
+      "level": "N2",
+      "pattern": "だけは",
+      "variants": [
+        "だけは"
+      ],
+      "meaning": "to do all that one can"
+    },
+    {
+      "level": "N2",
+      "pattern": "だけましだ",
+      "variants": [
+        "だけましだ"
+      ],
+      "meaning": "one should feel grateful for"
+    },
+    {
+      "level": "N2",
+      "pattern": "た末 / の末",
+      "variants": [
+        "た末",
+        "の末"
+      ],
+      "meaning": "as a conclusion of"
+    },
+    {
+      "level": "N2",
+      "pattern": "直ちに",
+      "variants": [
+        "直ちに"
+      ],
+      "meaning": "at once; immediately"
+    },
+    {
+      "level": "N2",
+      "pattern": "だって",
+      "variants": [
+        "だって"
+      ],
+      "meaning": "because; but"
+    },
+    {
+      "level": "N2",
+      "pattern": "たって",
+      "variants": [
+        "たって"
+      ],
+      "meaning": "even if; even though; no matter how"
+    },
+    {
+      "level": "N2",
+      "pattern": "たまえ",
+      "variants": [
+        "たまえ"
+      ],
+      "meaning": "(order somebody to do something)"
+    },
+    {
+      "level": "N2",
+      "pattern": "ちっとも○○ない",
+      "variants": [
+        "ちっとも○○ない"
+      ],
+      "meaning": "not at all; not in the least"
+    },
+    {
+      "level": "N2",
+      "pattern": "っこない",
+      "variants": [
+        "っこない"
+      ],
+      "meaning": "no chance of; … is definitely not possible"
+    },
+    {
+      "level": "N2",
+      "pattern": "つつ",
+      "variants": [
+        "つつ"
+      ],
+      "meaning": "while; although"
+    },
+    {
+      "level": "N2",
+      "pattern": "つつある",
+      "variants": [
+        "つつある"
+      ],
+      "meaning": "to be doing"
+    },
+    {
+      "level": "N2",
+      "pattern": "つもりで",
+      "variants": [
+        "つもりで"
+      ],
+      "meaning": "with the intention of doing"
+    },
+    {
+      "level": "N2",
+      "pattern": "ていては",
+      "variants": [
+        "ていては"
+      ],
+      "meaning": "if one keeps doing something"
+    },
+    {
+      "level": "N2",
+      "pattern": "て以来",
+      "variants": [
+        "て以来"
+      ],
+      "meaning": "since"
+    },
+    {
+      "level": "N2",
+      "pattern": "てからでないと",
+      "variants": [
+        "てからでないと"
+      ],
+      "meaning": "unless; until"
+    },
+    {
+      "level": "N2",
+      "pattern": "てこそ",
+      "variants": [
+        "てこそ"
+      ],
+      "meaning": "now that; since"
+    },
+    {
+      "level": "N2",
+      "pattern": "でしかない",
+      "variants": [
+        "でしかない"
+      ],
+      "meaning": "merely; nothing but; no more than"
+    },
+    {
+      "level": "N2",
+      "pattern": "てしょうがない",
+      "variants": [
+        "てしょうがない"
+      ],
+      "meaning": "very; extremely"
+    },
+    {
+      "level": "N2",
+      "pattern": "てたまらない",
+      "variants": [
+        "てたまらない"
+      ],
+      "meaning": "very; extremely; can't help but do"
+    },
+    {
+      "level": "N2",
+      "pattern": "てでも",
+      "variants": [
+        "てでも"
+      ],
+      "meaning": "even if one has to; by all means"
+    },
+    {
+      "level": "N2",
+      "pattern": "て当然だ",
+      "variants": [
+        "て当然だ"
+      ],
+      "meaning": "natural; as a matter of course"
+    },
+    {
+      "level": "N2",
+      "pattern": "てならない",
+      "variants": [
+        "てならない"
+      ],
+      "meaning": "very; extremely"
+    },
+    {
+      "level": "N2",
+      "pattern": "ては",
+      "variants": [
+        "ては"
+      ],
+      "meaning": "if; since; one after another"
+    },
+    {
+      "level": "N2",
+      "pattern": "てはいられない",
+      "variants": [
+        "てはいられない"
+      ],
+      "meaning": "can't afford to; unable to"
+    },
+    {
+      "level": "N2",
+      "pattern": "てばかりはいられない",
+      "variants": [
+        "てばかりはいられない"
+      ],
+      "meaning": "can't keep doing something"
+    },
+    {
+      "level": "N2",
+      "pattern": "ではないか",
+      "variants": [
+        "ではないか"
+      ],
+      "meaning": "let's do something; why don't we"
+    },
+    {
+      "level": "N2",
+      "pattern": "てはならない",
+      "variants": [
+        "てはならない"
+      ],
+      "meaning": "must not; cannot; should not"
+    },
+    {
+      "level": "N2",
+      "pattern": "手前",
+      "variants": [
+        "手前"
+      ],
+      "meaning": "before; in front of; from one's standpoint"
+    },
+    {
+      "level": "N2",
+      "pattern": "ということは",
+      "variants": [
+        "ということは"
+      ],
+      "meaning": "that is to say"
+    },
+    {
+      "level": "N2",
+      "pattern": "というふうに",
+      "variants": [
+        "というふうに"
+      ],
+      "meaning": "in such a way that"
+    },
+    {
+      "level": "N2",
+      "pattern": "というものだ",
+      "variants": [
+        "というものだ"
+      ],
+      "meaning": "something like…; something called…"
+    },
+    {
+      "level": "N2",
+      "pattern": "というものでもない",
+      "variants": [
+        "というものでもない"
+      ],
+      "meaning": "there is no guarantee that…; not necessarily"
+    },
+    {
+      "level": "N2",
+      "pattern": "といった",
+      "variants": [
+        "といった"
+      ],
+      "meaning": "such… as"
+    },
+    {
+      "level": "N2",
+      "pattern": "どうせ",
+      "variants": [
+        "どうせ"
+      ],
+      "meaning": "anyway; anyhow"
+    },
+    {
+      "level": "N2",
+      "pattern": "どうやら",
+      "variants": [
+        "どうやら"
+      ],
+      "meaning": "it seems like; it appears that"
+    },
+    {
+      "level": "N2",
+      "pattern": "とか",
+      "variants": [
+        "とか"
+      ],
+      "meaning": "I heard that…"
+    },
+    {
+      "level": "N2",
+      "pattern": "と考えられる",
+      "variants": [
+        "と考えられる"
+      ],
+      "meaning": "one can think that…"
+    },
+    {
+      "level": "N2",
+      "pattern": "ところだった",
+      "variants": [
+        "ところだった"
+      ],
+      "meaning": "was just about to do something"
+    },
+    {
+      "level": "N2",
+      "pattern": "どころではない",
+      "variants": [
+        "どころではない"
+      ],
+      "meaning": "this is not the time for…"
+    },
+    {
+      "level": "N2",
+      "pattern": "ところに / ところへ",
+      "variants": [
+        "ところに",
+        "ところへ"
+      ],
+      "meaning": "at the time"
+    },
+    {
+      "level": "N2",
+      "pattern": "ところを見ると",
+      "variants": [
+        "ところを見ると"
+      ],
+      "meaning": "judging from; seeing that"
+    },
+    {
+      "level": "N2",
+      "pattern": "としては",
+      "variants": [
+        "としては"
+      ],
+      "meaning": "as for"
+    },
+    {
+      "level": "N2",
+      "pattern": "としても",
+      "variants": [
+        "としても"
+      ],
+      "meaning": "assuming; even if"
+    },
+    {
+      "level": "N2",
+      "pattern": "とっくに",
+      "variants": [
+        "とっくに"
+      ],
+      "meaning": "already; long ago"
+    },
+    {
+      "level": "N2",
+      "pattern": "と同時に",
+      "variants": [
+        "と同時に"
+      ],
+      "meaning": "at the same time as"
+    },
+    {
+      "level": "N2",
+      "pattern": "とも",
+      "variants": [
+        "とも"
+      ],
+      "meaning": "even if; no matter"
+    },
+    {
+      "level": "N2",
+      "pattern": "ないことには○○ない",
+      "variants": [
+        "ないことには○○ない"
+      ],
+      "meaning": "unless you do something"
+    },
+    {
+      "level": "N2",
+      "pattern": "ないではいられない",
+      "variants": [
+        "ないではいられない"
+      ],
+      "meaning": "can't help but feel; can't help but do"
+    },
+    {
+      "level": "N2",
+      "pattern": "なお",
+      "variants": [
+        "なお"
+      ],
+      "meaning": "furthermore; still; yet (used to add more information to the )"
+    },
+    {
+      "level": "N2",
+      "pattern": "中を",
+      "variants": [
+        "中を"
+      ],
+      "meaning": "in; on"
+    },
+    {
+      "level": "N2",
+      "pattern": "なくはない",
+      "variants": [
+        "なくはない"
+      ],
+      "meaning": "it's not that…; can; may be"
+    },
+    {
+      "level": "N2",
+      "pattern": "なにも○○ない",
+      "variants": [
+        "なにも○○ない"
+      ],
+      "meaning": "no need to"
+    },
+    {
+      "level": "N2",
+      "pattern": "にあたり",
+      "variants": [
+        "にあたり"
+      ],
+      "meaning": "at the time; on the occasion of"
+    },
+    {
+      "level": "N2",
+      "pattern": "に応じて",
+      "variants": [
+        "に応じて"
+      ],
+      "meaning": "depending on; in accordance with"
+    },
+    {
+      "level": "N2",
+      "pattern": "にかかわらず",
+      "variants": [
+        "にかかわらず"
+      ],
+      "meaning": "regardless of"
+    },
+    {
+      "level": "N2",
+      "pattern": "にかかわる",
+      "variants": [
+        "にかかわる"
+      ],
+      "meaning": "to relate to; to have to do with"
+    },
+    {
+      "level": "N2",
+      "pattern": "に限って",
+      "variants": [
+        "に限って"
+      ],
+      "meaning": "only; particularly when"
+    },
+    {
+      "level": "N2",
+      "pattern": "に限らず",
+      "variants": [
+        "に限らず"
+      ],
+      "meaning": "not just; not only… but also"
+    },
+    {
+      "level": "N2",
+      "pattern": "に限る",
+      "variants": [
+        "に限る"
+      ],
+      "meaning": "nothing better than; there's nothing like"
+    },
+    {
+      "level": "N2",
+      "pattern": "に決まっている",
+      "variants": [
+        "に決まっている"
+      ],
+      "meaning": "I'm sure that…"
+    },
+    {
+      "level": "N2",
+      "pattern": "に加えて",
+      "variants": [
+        "に加えて"
+      ],
+      "meaning": "in addition to"
+    },
+    {
+      "level": "N2",
+      "pattern": "に越したことはない",
+      "variants": [
+        "に越したことはない"
+      ],
+      "meaning": "it's best that; there's nothing better than"
+    },
+    {
+      "level": "N2",
+      "pattern": "に応えて",
+      "variants": [
+        "に応えて"
+      ],
+      "meaning": "in response to"
+    },
+    {
+      "level": "N2",
+      "pattern": "に基づいて",
+      "variants": [
+        "に基づいて"
+      ],
+      "meaning": "based on"
+    },
+    {
+      "level": "N2",
+      "pattern": "に際して",
+      "variants": [
+        "に際して"
+      ],
+      "meaning": "on the occasion of; at the time of"
+    },
+    {
+      "level": "N2",
+      "pattern": "に先立ち",
+      "variants": [
+        "に先立ち"
+      ],
+      "meaning": "before; prior to"
+    },
+    {
+      "level": "N2",
+      "pattern": "に従って",
+      "variants": [
+        "に従って"
+      ],
+      "meaning": "as; therefore"
+    },
+    {
+      "level": "N2",
+      "pattern": "にしたら",
+      "variants": [
+        "にしたら"
+      ],
+      "meaning": "from the point of view of"
+    },
+    {
+      "level": "N2",
+      "pattern": "にしても○○にしても",
+      "variants": [
+        "にしても○○にしても"
+      ],
+      "meaning": "regardless of whether"
+    },
+    {
+      "level": "N2",
+      "pattern": "にしろ / にせよ",
+      "variants": [
+        "にしろ",
+        "にせよ"
+      ],
+      "meaning": "though; even if; whether… or"
+    },
+    {
+      "level": "N2",
+      "pattern": "にしろ○○にしろ",
+      "variants": [
+        "にしろ○○にしろ"
+      ],
+      "meaning": "whether… or"
+    },
+    {
+      "level": "N2",
+      "pattern": "に過ぎない",
+      "variants": [
+        "に過ぎない"
+      ],
+      "meaning": "no more than; just; merely"
+    },
+    {
+      "level": "N2",
+      "pattern": "に相違ない",
+      "variants": [
+        "に相違ない"
+      ],
+      "meaning": "without a doubt; certain; sure"
+    },
+    {
+      "level": "N2",
+      "pattern": "に沿って",
+      "variants": [
+        "に沿って"
+      ],
+      "meaning": "along with; in accordance with"
+    },
+    {
+      "level": "N2",
+      "pattern": "につき",
+      "variants": [
+        "につき"
+      ],
+      "meaning": "due to; because; per; each"
+    },
+    {
+      "level": "N2",
+      "pattern": "につけ",
+      "variants": [
+        "につけ"
+      ],
+      "meaning": "both… and…; every time something happens"
+    },
+    {
+      "level": "N2",
+      "pattern": "にて",
+      "variants": [
+        "にて"
+      ],
+      "meaning": "in; at"
+    },
+    {
+      "level": "N2",
+      "pattern": "に伴って",
+      "variants": [
+        "に伴って"
+      ],
+      "meaning": "as; due to"
+    },
+    {
+      "level": "N2",
+      "pattern": "には",
+      "variants": [
+        "には"
+      ],
+      "meaning": "in order to; for"
+    },
+    {
+      "level": "N2",
+      "pattern": "に反して",
+      "variants": [
+        "に反して"
+      ],
+      "meaning": "against; contrary to"
+    },
+    {
+      "level": "N2",
+      "pattern": "にほかならない",
+      "variants": [
+        "にほかならない"
+      ],
+      "meaning": "nothing but; none other than"
+    },
+    {
+      "level": "N2",
+      "pattern": "に向かって",
+      "variants": [
+        "に向かって"
+      ],
+      "meaning": "towards; to face; to head to"
+    },
+    {
+      "level": "N2",
+      "pattern": "にもかかわらず",
+      "variants": [
+        "にもかかわらず"
+      ],
+      "meaning": "despite; in spite of; although"
+    },
+    {
+      "level": "N2",
+      "pattern": "にわたって",
+      "variants": [
+        "にわたって"
+      ],
+      "meaning": "throughout; over (a period of time)"
+    },
+    {
+      "level": "N2",
+      "pattern": "抜きで / 抜きにして",
+      "variants": [
+        "抜きで",
+        "抜きにして"
+      ],
+      "meaning": "leaving out; cutting out"
+    },
+    {
+      "level": "N2",
+      "pattern": "抜く",
+      "variants": [
+        "抜く"
+      ],
+      "meaning": "to do something to the end"
+    },
+    {
+      "level": "N2",
+      "pattern": "ねばならない",
+      "variants": [
+        "ねばならない"
+      ],
+      "meaning": "have to; must"
+    },
+    {
+      "level": "N2",
+      "pattern": "のみならず",
+      "variants": [
+        "のみならず"
+      ],
+      "meaning": "not only; besides; as well"
+    },
+    {
+      "level": "N2",
+      "pattern": "のも当然だ",
+      "variants": [
+        "のも当然だ"
+      ],
+      "meaning": "it's only natural that; no wonder"
+    },
+    {
+      "level": "N2",
+      "pattern": "のもとで",
+      "variants": [
+        "のもとで"
+      ],
+      "meaning": "under"
+    },
+    {
+      "level": "N2",
+      "pattern": "のももっともだ",
+      "variants": [
+        "のももっともだ"
+      ],
+      "meaning": "no wonder; … is only natural"
+    },
+    {
+      "level": "N2",
+      "pattern": "ばかり",
+      "variants": [
+        "ばかり"
+      ],
+      "meaning": "about; approximately"
+    },
+    {
+      "level": "N2",
+      "pattern": "ばかりだ",
+      "variants": [
+        "ばかりだ"
+      ],
+      "meaning": "continue to"
+    },
+    {
+      "level": "N2",
+      "pattern": "ばかりに",
+      "variants": [
+        "ばかりに"
+      ],
+      "meaning": "because; on account of"
+    },
+    {
+      "level": "N2",
+      "pattern": "果たして",
+      "variants": [
+        "果たして"
+      ],
+      "meaning": "sure enough; really"
+    },
+    {
+      "level": "N2",
+      "pattern": "はともかく",
+      "variants": [
+        "はともかく"
+      ],
+      "meaning": "whether or not"
+    },
+    {
+      "level": "N2",
+      "pattern": "は別として",
+      "variants": [
+        "は別として"
+      ],
+      "meaning": "aside from"
+    },
+    {
+      "level": "N2",
+      "pattern": "はもとより",
+      "variants": [
+        "はもとより"
+      ],
+      "meaning": "also; let alone"
+    },
+    {
+      "level": "N2",
+      "pattern": "反面",
+      "variants": [
+        "反面"
+      ],
+      "meaning": "on the other hand"
+    },
+    {
+      "level": "N2",
+      "pattern": "ふうに",
+      "variants": [
+        "ふうに"
+      ],
+      "meaning": "in a way (this way/that way/what way)"
+    },
+    {
+      "level": "N2",
+      "pattern": "ふたたび",
+      "variants": [
+        "ふたたび"
+      ],
+      "meaning": "again; once more"
+    },
+    {
+      "level": "N2",
+      "pattern": "ぶりに",
+      "variants": [
+        "ぶりに"
+      ],
+      "meaning": "for the first time in"
+    },
+    {
+      "level": "N2",
+      "pattern": "まい",
+      "variants": [
+        "まい"
+      ],
+      "meaning": "won't; intend not to"
+    },
+    {
+      "level": "N2",
+      "pattern": "まったく○○ない",
+      "variants": [
+        "まったく○○ない"
+      ],
+      "meaning": "not~at all"
+    },
+    {
+      "level": "N2",
+      "pattern": "むしろ",
+      "variants": [
+        "むしろ"
+      ],
+      "meaning": "rather; instead"
+    },
+    {
+      "level": "N2",
+      "pattern": "も○○ば○○も",
+      "variants": [
+        "も○○ば○○も"
+      ],
+      "meaning": "…and…"
+    },
+    {
+      "level": "N2",
+      "pattern": "もう少しで",
+      "variants": [
+        "もう少しで"
+      ],
+      "meaning": "almost; nearly"
+    },
+    {
+      "level": "N2",
+      "pattern": "もかまわず",
+      "variants": [
+        "もかまわず"
+      ],
+      "meaning": "without worrying about"
+    },
+    {
+      "level": "N2",
+      "pattern": "もっとも",
+      "variants": [
+        "もっとも"
+      ],
+      "meaning": "but then; although"
+    },
+    {
+      "level": "N2",
+      "pattern": "ものか",
+      "variants": [
+        "ものか"
+      ],
+      "meaning": "as if"
+    },
+    {
+      "level": "N2",
+      "pattern": "ものがある",
+      "variants": [
+        "ものがある"
+      ],
+      "meaning": "(sentence-ending expression of strong judgement)"
+    },
+    {
+      "level": "N2",
+      "pattern": "ものだから",
+      "variants": [
+        "ものだから"
+      ],
+      "meaning": "because; the reason is"
+    },
+    {
+      "level": "N2",
+      "pattern": "ものではない",
+      "variants": [
+        "ものではない"
+      ],
+      "meaning": "shouldn't do something; it's impossible to do something"
+    },
+    {
+      "level": "N2",
+      "pattern": "ものなら",
+      "variants": [
+        "ものなら"
+      ],
+      "meaning": "if one can do something"
+    },
+    {
+      "level": "N2",
+      "pattern": "ものの",
+      "variants": [
+        "ものの"
+      ],
+      "meaning": "but; although"
+    },
+    {
+      "level": "N2",
+      "pattern": "やがて",
+      "variants": [
+        "やがて"
+      ],
+      "meaning": "soon; before long; eventually"
+    },
+    {
+      "level": "N2",
+      "pattern": "やら○○やら",
+      "variants": [
+        "やら○○やら"
+      ],
+      "meaning": "such things as"
+    },
+    {
+      "level": "N2",
+      "pattern": "ようがない / ようもない",
+      "variants": [
+        "ようがない",
+        "ようもない"
+      ],
+      "meaning": "there's no way to; it's impossible to"
+    },
+    {
+      "level": "N2",
+      "pattern": "要するに",
+      "variants": [
+        "要するに"
+      ],
+      "meaning": "the point is"
+    },
+    {
+      "level": "N2",
+      "pattern": "ようでは",
+      "variants": [
+        "ようでは"
+      ],
+      "meaning": "if"
+    },
+    {
+      "level": "N2",
+      "pattern": "よりほかない",
+      "variants": [
+        "よりほかない"
+      ],
+      "meaning": "to have no choice but"
+    },
+    {
+      "level": "N2",
+      "pattern": "ろくに○○ない",
+      "variants": [
+        "ろくに○○ない"
+      ],
+      "meaning": "not doing something properly"
+    },
+    {
+      "level": "N2",
+      "pattern": "わずかに",
+      "variants": [
+        "わずかに"
+      ],
+      "meaning": "slightly"
+    },
+    {
+      "level": "N2",
+      "pattern": "を○○として",
+      "variants": [
+        "を○○として"
+      ],
+      "meaning": "as"
+    },
+    {
+      "level": "N2",
+      "pattern": "をきっかけに",
+      "variants": [
+        "をきっかけに"
+      ],
+      "meaning": "with… as a start; as a result of"
+    },
+    {
+      "level": "N2",
+      "pattern": "を契機に",
+      "variants": [
+        "を契機に"
+      ],
+      "meaning": "as a good opportunity to; as a result of"
+    },
+    {
+      "level": "N2",
+      "pattern": "をこめて",
+      "variants": [
+        "をこめて"
+      ],
+      "meaning": "filled with"
+    },
+    {
+      "level": "N2",
+      "pattern": "を通じて / を通して",
+      "variants": [
+        "を通じて",
+        "を通して"
+      ],
+      "meaning": "via; through"
+    },
+    {
+      "level": "N2",
+      "pattern": "を問わず",
+      "variants": [
+        "を問わず"
+      ],
+      "meaning": "regardless of"
+    },
+    {
+      "level": "N2",
+      "pattern": "を除いて",
+      "variants": [
+        "を除いて"
+      ],
+      "meaning": "except; with the exception of"
+    },
+    {
+      "level": "N2",
+      "pattern": "をめぐって",
+      "variants": [
+        "をめぐって"
+      ],
+      "meaning": "concerning; in regard to"
+    },
+    {
+      "level": "N2",
+      "pattern": "をもとに",
+      "variants": [
+        "をもとに"
+      ],
+      "meaning": "based on; from"
+    },
+    {
+      "level": "N2",
+      "pattern": "んだって",
+      "variants": [
+        "んだって"
+      ],
+      "meaning": "I heard that"
+    },
+    {
+      "level": "N1",
+      "pattern": "あえて",
+      "variants": [
+        "あえて"
+      ],
+      "meaning": "dare to"
+    },
+    {
+      "level": "N1",
+      "pattern": "あくまでも",
+      "variants": [
+        "あくまでも"
+      ],
+      "meaning": "to the end; to the utmost degree"
+    },
+    {
+      "level": "N1",
+      "pattern": "案の定",
+      "variants": [
+        "案の定"
+      ],
+      "meaning": "just as one thought"
+    },
+    {
+      "level": "N1",
+      "pattern": "あらかじめ",
+      "variants": [
+        "あらかじめ"
+      ],
+      "meaning": "beforehand; in advance"
+    },
+    {
+      "level": "N1",
+      "pattern": "あっての",
+      "variants": [
+        "あっての"
+      ],
+      "meaning": "to owe everything to"
+    },
+    {
+      "level": "N1",
+      "pattern": "場合によっては",
+      "variants": [
+        "場合によっては"
+      ],
+      "meaning": "depending on the situation"
+    },
+    {
+      "level": "N1",
+      "pattern": "ばこそ",
+      "variants": [
+        "ばこそ"
+      ],
+      "meaning": "only because"
+    },
+    {
+      "level": "N1",
+      "pattern": "ばそれまでだ",
+      "variants": [
+        "ばそれまでだ"
+      ],
+      "meaning": "if… then it's over"
+    },
+    {
+      "level": "N1",
+      "pattern": "べからず",
+      "variants": [
+        "べからず"
+      ],
+      "meaning": "must not; should not"
+    },
+    {
+      "level": "N1",
+      "pattern": "べく",
+      "variants": [
+        "べく"
+      ],
+      "meaning": "in order to; should"
+    },
+    {
+      "level": "N1",
+      "pattern": "べくもない",
+      "variants": [
+        "べくもない"
+      ],
+      "meaning": "can't"
+    },
+    {
+      "level": "N1",
+      "pattern": "びる",
+      "variants": [
+        "びる"
+      ],
+      "meaning": "seeming to be"
+    },
+    {
+      "level": "N1",
+      "pattern": "ぶり",
+      "variants": [
+        "ぶり"
+      ],
+      "meaning": "style; manner"
+    },
+    {
+      "level": "N1",
+      "pattern": "ぶる",
+      "variants": [
+        "ぶる"
+      ],
+      "meaning": "behaving like"
+    },
+    {
+      "level": "N1",
+      "pattern": "だに",
+      "variants": [
+        "だに"
+      ],
+      "meaning": "even"
+    },
+    {
+      "level": "N1",
+      "pattern": "だの○○だの",
+      "variants": [
+        "だの○○だの"
+      ],
+      "meaning": "and; and so forth"
+    },
+    {
+      "level": "N1",
+      "pattern": "であれ○○であれ",
+      "variants": [
+        "であれ○○であれ"
+      ],
+      "meaning": "whether A or B"
+    },
+    {
+      "level": "N1",
+      "pattern": "であれ / であろうと",
+      "variants": [
+        "であれ",
+        "であろうと"
+      ],
+      "meaning": "whoever / whatever / however"
+    },
+    {
+      "level": "N1",
+      "pattern": "でも何でもない",
+      "variants": [
+        "でも何でもない"
+      ],
+      "meaning": "not in the least"
+    },
+    {
+      "level": "N1",
+      "pattern": "でなくてなんだろう",
+      "variants": [
+        "でなくてなんだろう"
+      ],
+      "meaning": "must be; is definitely"
+    },
+    {
+      "level": "N1",
+      "pattern": "(で)すら",
+      "variants": [
+        "(で)すら"
+      ],
+      "meaning": "even"
+    },
+    {
+      "level": "N1",
+      "pattern": "ではあるまいか",
+      "variants": [
+        "ではあるまいか"
+      ],
+      "meaning": "I wonder if it's not"
+    },
+    {
+      "level": "N1",
+      "pattern": "ではあるまいし",
+      "variants": [
+        "ではあるまいし"
+      ],
+      "meaning": "it's not like; it isn't as if"
+    },
+    {
+      "level": "N1",
+      "pattern": "ではすまない",
+      "variants": [
+        "ではすまない"
+      ],
+      "meaning": "it doesn't end with just"
+    },
+    {
+      "level": "N1",
+      "pattern": "どうにも○○ない",
+      "variants": [
+        "どうにも○○ない"
+      ],
+      "meaning": "not … by any means"
+    },
+    {
+      "level": "N1",
+      "pattern": "がてら",
+      "variants": [
+        "がてら"
+      ],
+      "meaning": "on the same occasion"
+    },
+    {
+      "level": "N1",
+      "pattern": "が早いか",
+      "variants": [
+        "が早いか"
+      ],
+      "meaning": "as soon as"
+    },
+    {
+      "level": "N1",
+      "pattern": "が最後",
+      "variants": [
+        "が最後"
+      ],
+      "meaning": "once something occurs; something else happens"
+    },
+    {
+      "level": "N1",
+      "pattern": "ごとき / ごとく",
+      "variants": [
+        "ごとき",
+        "ごとく"
+      ],
+      "meaning": "like; as if"
+    },
+    {
+      "level": "N1",
+      "pattern": "ぐるみ",
+      "variants": [
+        "ぐるみ"
+      ],
+      "meaning": "together with"
+    },
+    {
+      "level": "N1",
+      "pattern": "羽目になる",
+      "variants": [
+        "羽目になる"
+      ],
+      "meaning": "to end up with (something unpleasant)"
+    },
+    {
+      "level": "N1",
+      "pattern": "ひとつ",
+      "variants": [
+        "ひとつ"
+      ],
+      "meaning": "to give something a try"
+    },
+    {
+      "level": "N1",
+      "pattern": "ほどのことはない",
+      "variants": [
+        "ほどのことはない"
+      ],
+      "meaning": "not worth; no need to"
+    },
+    {
+      "level": "N1",
+      "pattern": "ほかに○○ない",
+      "variants": [
+        "ほかに○○ない"
+      ],
+      "meaning": "no other"
+    },
+    {
+      "level": "N1",
+      "pattern": "ほうがましだ",
+      "variants": [
+        "ほうがましだ"
+      ],
+      "meaning": "I would rather"
+    },
+    {
+      "level": "N1",
+      "pattern": "いかなる",
+      "variants": [
+        "いかなる"
+      ],
+      "meaning": "any kind of"
+    },
+    {
+      "level": "N1",
+      "pattern": "いかんでは / いかんによっては",
+      "variants": [
+        "いかんでは",
+        "いかんによっては"
+      ],
+      "meaning": "depending on"
+    },
+    {
+      "level": "N1",
+      "pattern": "いかんによらず",
+      "variants": [
+        "いかんによらず"
+      ],
+      "meaning": "regardless of"
+    },
+    {
+      "level": "N1",
+      "pattern": "いかに",
+      "variants": [
+        "いかに"
+      ],
+      "meaning": "how"
+    },
+    {
+      "level": "N1",
+      "pattern": "いかにも",
+      "variants": [
+        "いかにも"
+      ],
+      "meaning": "indeed; really"
+    },
+    {
+      "level": "N1",
+      "pattern": "いまだに",
+      "variants": [
+        "いまだに"
+      ],
+      "meaning": "still; even now"
+    },
+    {
+      "level": "N1",
+      "pattern": "いずれにせよ",
+      "variants": [
+        "いずれにせよ"
+      ],
+      "meaning": "at any rate; in any case"
+    },
+    {
+      "level": "N1",
+      "pattern": "じみた",
+      "variants": [
+        "じみた"
+      ],
+      "meaning": "to look like"
+    },
+    {
+      "level": "N1",
+      "pattern": "限りだ",
+      "variants": [
+        "限りだ"
+      ],
+      "meaning": "I feel so"
+    },
+    {
+      "level": "N1",
+      "pattern": "かいもなく",
+      "variants": [
+        "かいもなく"
+      ],
+      "meaning": "even though"
+    },
+    {
+      "level": "N1",
+      "pattern": "か否か",
+      "variants": [
+        "か否か"
+      ],
+      "meaning": "whether or not"
+    },
+    {
+      "level": "N1",
+      "pattern": "可能性がある",
+      "variants": [
+        "可能性がある"
+      ],
+      "meaning": "there's a possibility"
+    },
+    {
+      "level": "N1",
+      "pattern": "からある",
+      "variants": [
+        "からある"
+      ],
+      "meaning": "as much as; as many as"
+    },
+    {
+      "level": "N1",
+      "pattern": "かれ○○かれ",
+      "variants": [
+        "かれ○○かれ"
+      ],
+      "meaning": "or"
+    },
+    {
+      "level": "N1",
+      "pattern": "かたがた",
+      "variants": [
+        "かたがた"
+      ],
+      "meaning": "while; for the purpose of"
+    },
+    {
+      "level": "N1",
+      "pattern": "かたわら",
+      "variants": [
+        "かたわら"
+      ],
+      "meaning": "while; at the same time"
+    },
+    {
+      "level": "N1",
+      "pattern": "かつて",
+      "variants": [
+        "かつて"
+      ],
+      "meaning": "once; before"
+    },
+    {
+      "level": "N1",
+      "pattern": "嫌いがある",
+      "variants": [
+        "嫌いがある"
+      ],
+      "meaning": "to have a tendency to"
+    },
+    {
+      "level": "N1",
+      "pattern": "きっての",
+      "variants": [
+        "きっての"
+      ],
+      "meaning": "the most … of all"
+    },
+    {
+      "level": "N1",
+      "pattern": "きりがない",
+      "variants": [
+        "きりがない"
+      ],
+      "meaning": "there's no end to"
+    },
+    {
+      "level": "N1",
+      "pattern": "極まる / 極まりない",
+      "variants": [
+        "極まる",
+        "極まりない"
+      ],
+      "meaning": "extremely"
+    },
+    {
+      "level": "N1",
+      "pattern": "極めて",
+      "variants": [
+        "極めて"
+      ],
+      "meaning": "extremely; exceedingly"
+    },
+    {
+      "level": "N1",
+      "pattern": "ことだし",
+      "variants": [
+        "ことだし"
+      ],
+      "meaning": "because; since"
+    },
+    {
+      "level": "N1",
+      "pattern": "ことごとく",
+      "variants": [
+        "ことごとく"
+      ],
+      "meaning": "altogether; entirely"
+    },
+    {
+      "level": "N1",
+      "pattern": "ことなしに",
+      "variants": [
+        "ことなしに"
+      ],
+      "meaning": "without doing something"
+    },
+    {
+      "level": "N1",
+      "pattern": "ことのないよう",
+      "variants": [
+        "ことのないよう"
+      ],
+      "meaning": "so as not to"
+    },
+    {
+      "level": "N1",
+      "pattern": "こととて",
+      "variants": [
+        "こととて"
+      ],
+      "meaning": "because; since"
+    },
+    {
+      "level": "N1",
+      "pattern": "くらいなら",
+      "variants": [
+        "くらいなら"
+      ],
+      "meaning": "rather than"
+    },
+    {
+      "level": "N1",
+      "pattern": "くらいのものだ",
+      "variants": [
+        "くらいのものだ"
+      ],
+      "meaning": "only"
+    },
+    {
+      "level": "N1",
+      "pattern": "までだ",
+      "variants": [
+        "までだ"
+      ],
+      "meaning": "only"
+    },
+    {
+      "level": "N1",
+      "pattern": "までもない",
+      "variants": [
+        "までもない"
+      ],
+      "meaning": "it's not necessary to"
+    },
+    {
+      "level": "N1",
+      "pattern": "まじき",
+      "variants": [
+        "まじき"
+      ],
+      "meaning": "should not; must not"
+    },
+    {
+      "level": "N1",
+      "pattern": "ままに",
+      "variants": [
+        "ままに"
+      ],
+      "meaning": "to do as"
+    },
+    {
+      "level": "N1",
+      "pattern": "まみれ",
+      "variants": [
+        "まみれ"
+      ],
+      "meaning": "to be covered in"
+    },
+    {
+      "level": "N1",
+      "pattern": "まるっきり",
+      "variants": [
+        "まるっきり"
+      ],
+      "meaning": "totally; completely"
+    },
+    {
+      "level": "N1",
+      "pattern": "めく",
+      "variants": [
+        "めく"
+      ],
+      "meaning": "to show signs of"
+    },
+    {
+      "level": "N1",
+      "pattern": "もはや",
+      "variants": [
+        "もはや"
+      ],
+      "meaning": "already; no longer"
+    },
+    {
+      "level": "N1",
+      "pattern": "も顧みず / を顧みず",
+      "variants": [
+        "も顧みず",
+        "を顧みず"
+      ],
+      "meaning": "regardless of; despite"
+    },
+    {
+      "level": "N1",
+      "pattern": "もしないで",
+      "variants": [
+        "もしないで"
+      ],
+      "meaning": "without even doing"
+    },
+    {
+      "level": "N1",
+      "pattern": "もので",
+      "variants": [
+        "もので"
+      ],
+      "meaning": "because; for that reason"
+    },
+    {
+      "level": "N1",
+      "pattern": "ものを",
+      "variants": [
+        "ものを"
+      ],
+      "meaning": "I wish; if only"
+    },
+    {
+      "level": "N1",
+      "pattern": "ものと思われる",
+      "variants": [
+        "ものと思われる"
+      ],
+      "meaning": "to think; to suppose"
+    },
+    {
+      "level": "N1",
+      "pattern": "ものとして",
+      "variants": [
+        "ものとして"
+      ],
+      "meaning": "to assume; to suppose"
+    },
+    {
+      "level": "N1",
+      "pattern": "もさることながら",
+      "variants": [
+        "もさることながら"
+      ],
+      "meaning": "not only… but also"
+    },
+    {
+      "level": "N1",
+      "pattern": "もしくは",
+      "variants": [
+        "もしくは"
+      ],
+      "meaning": "or; otherwise"
+    },
+    {
+      "level": "N1",
+      "pattern": "ながらに / ながらの",
+      "variants": [
+        "ながらに",
+        "ながらの"
+      ],
+      "meaning": "while; during"
+    },
+    {
+      "level": "N1",
+      "pattern": "ないではおかない / ずにはおかない",
+      "variants": [
+        "ないではおかない",
+        "ずにはおかない"
+      ],
+      "meaning": "will definitely; cannot not"
+    },
+    {
+      "level": "N1",
+      "pattern": "ないではすまない / ずにはすまない",
+      "variants": [
+        "ないではすまない",
+        "ずにはすまない"
+      ],
+      "meaning": "must"
+    },
+    {
+      "level": "N1",
+      "pattern": "ないまでも",
+      "variants": [
+        "ないまでも"
+      ],
+      "meaning": "even if something isn't done"
+    },
+    {
+      "level": "N1",
+      "pattern": "ないものか",
+      "variants": [
+        "ないものか"
+      ],
+      "meaning": "can't we…?; can't I…?"
+    },
+    {
+      "level": "N1",
+      "pattern": "ないものでもない",
+      "variants": [
+        "ないものでもない"
+      ],
+      "meaning": "(something) is not entirely impossible"
+    },
+    {
+      "level": "N1",
+      "pattern": "ないとも限らない",
+      "variants": [
+        "ないとも限らない"
+      ],
+      "meaning": "might"
+    },
+    {
+      "level": "N1",
+      "pattern": "なくして",
+      "variants": [
+        "なくして"
+      ],
+      "meaning": "without"
+    },
+    {
+      "level": "N1",
+      "pattern": "何しろ",
+      "variants": [
+        "何しろ"
+      ],
+      "meaning": "in any case; as you know"
+    },
+    {
+      "level": "N1",
+      "pattern": "なしに",
+      "variants": [
+        "なしに"
+      ],
+      "meaning": "without"
+    },
+    {
+      "level": "N1",
+      "pattern": "ならでは",
+      "variants": [
+        "ならでは"
+      ],
+      "meaning": "uniquely applying to"
+    },
+    {
+      "level": "N1",
+      "pattern": "ならいざしらず",
+      "variants": [
+        "ならいざしらず"
+      ],
+      "meaning": "I don't know about A; but B"
+    },
+    {
+      "level": "N1",
+      "pattern": "なり",
+      "variants": [
+        "なり"
+      ],
+      "meaning": "as soon as"
+    },
+    {
+      "level": "N1",
+      "pattern": "なり○○なり",
+      "variants": [
+        "なり○○なり"
+      ],
+      "meaning": "or"
+    },
+    {
+      "level": "N1",
+      "pattern": "なりに / なりの",
+      "variants": [
+        "なりに",
+        "なりの"
+      ],
+      "meaning": "in one's own way or style"
+    },
+    {
+      "level": "N1",
+      "pattern": "なりとも",
+      "variants": [
+        "なりとも"
+      ],
+      "meaning": "even a little; at least"
+    },
+    {
+      "level": "N1",
+      "pattern": "に値する",
+      "variants": [
+        "に値する"
+      ],
+      "meaning": "to be worth; to deserve"
+    },
+    {
+      "level": "N1",
+      "pattern": "にあたらない",
+      "variants": [
+        "にあたらない"
+      ],
+      "meaning": "it's not worth; there's no need to"
+    },
+    {
+      "level": "N1",
+      "pattern": "にあって",
+      "variants": [
+        "にあって"
+      ],
+      "meaning": "at; during; in the condition of"
+    },
+    {
+      "level": "N1",
+      "pattern": "にひきかえ",
+      "variants": [
+        "にひきかえ"
+      ],
+      "meaning": "in contrast to"
+    },
+    {
+      "level": "N1",
+      "pattern": "に至るまで",
+      "variants": [
+        "に至るまで"
+      ],
+      "meaning": "until; as far as"
+    },
+    {
+      "level": "N1",
+      "pattern": "に至っては",
+      "variants": [
+        "に至っては"
+      ],
+      "meaning": "as for; when it comes to"
+    },
+    {
+      "level": "N1",
+      "pattern": "に言わせれば",
+      "variants": [
+        "に言わせれば"
+      ],
+      "meaning": "if you ask; if one may say"
+    },
+    {
+      "level": "N1",
+      "pattern": "にかかっている",
+      "variants": [
+        "にかかっている"
+      ],
+      "meaning": "to depend on"
+    },
+    {
+      "level": "N1",
+      "pattern": "にかたくない",
+      "variants": [
+        "にかたくない"
+      ],
+      "meaning": "it's not hard to"
+    },
+    {
+      "level": "N1",
+      "pattern": "にまつわる",
+      "variants": [
+        "にまつわる"
+      ],
+      "meaning": "to be related to"
+    },
+    {
+      "level": "N1",
+      "pattern": "にもほどがある",
+      "variants": [
+        "にもほどがある"
+      ],
+      "meaning": "to have a limit; to go too far"
+    },
+    {
+      "level": "N1",
+      "pattern": "にもまして",
+      "variants": [
+        "にもまして"
+      ],
+      "meaning": "more than; above"
+    },
+    {
+      "level": "N1",
+      "pattern": "に則って",
+      "variants": [
+        "に則って"
+      ],
+      "meaning": "in accordance with"
+    },
+    {
+      "level": "N1",
+      "pattern": "に先駆けて",
+      "variants": [
+        "に先駆けて"
+      ],
+      "meaning": "to be the first"
+    },
+    {
+      "level": "N1",
+      "pattern": "にしたって",
+      "variants": [
+        "にしたって"
+      ],
+      "meaning": "even; even if"
+    },
+    {
+      "level": "N1",
+      "pattern": "にして",
+      "variants": [
+        "にして"
+      ],
+      "meaning": "only; in (time span)"
+    },
+    {
+      "level": "N1",
+      "pattern": "に即して",
+      "variants": [
+        "に即して"
+      ],
+      "meaning": "in keeping with"
+    },
+    {
+      "level": "N1",
+      "pattern": "にたえる / にたえない",
+      "variants": [
+        "にたえる",
+        "にたえない"
+      ],
+      "meaning": "can/can't do something"
+    },
+    {
+      "level": "N1",
+      "pattern": "に足る / に足りる",
+      "variants": [
+        "に足る",
+        "に足りる"
+      ],
+      "meaning": "to be enough; to be worthy of"
+    },
+    {
+      "level": "N1",
+      "pattern": "に足りない",
+      "variants": [
+        "に足りない"
+      ],
+      "meaning": "to be not worth"
+    },
+    {
+      "level": "N1",
+      "pattern": "に照らして",
+      "variants": [
+        "に照らして"
+      ],
+      "meaning": "in comparison with; according to"
+    },
+    {
+      "level": "N1",
+      "pattern": "にとどまらず",
+      "variants": [
+        "にとどまらず"
+      ],
+      "meaning": "not limited to"
+    },
+    {
+      "level": "N1",
+      "pattern": "には及ばない",
+      "variants": [
+        "には及ばない"
+      ],
+      "meaning": "there's no need to"
+    },
+    {
+      "level": "N1",
+      "pattern": "によらず",
+      "variants": [
+        "によらず"
+      ],
+      "meaning": "regardless of"
+    },
+    {
+      "level": "N1",
+      "pattern": "んばかりに",
+      "variants": [
+        "んばかりに"
+      ],
+      "meaning": "as if; as though"
+    },
+    {
+      "level": "N1",
+      "pattern": "んがため",
+      "variants": [
+        "んがため"
+      ],
+      "meaning": "in order to"
+    },
+    {
+      "level": "N1",
+      "pattern": "の至り",
+      "variants": [
+        "の至り"
+      ],
+      "meaning": "utmost"
+    },
+    {
+      "level": "N1",
+      "pattern": "の極み",
+      "variants": [
+        "の極み"
+      ],
+      "meaning": "utmost"
+    },
+    {
+      "level": "N1",
+      "pattern": "のみか",
+      "variants": [
+        "のみか"
+      ],
+      "meaning": "not only… but also"
+    },
+    {
+      "level": "N1",
+      "pattern": "のなんのって",
+      "variants": [
+        "のなんのって"
+      ],
+      "meaning": "extremely"
+    },
+    {
+      "level": "N1",
+      "pattern": "を踏まえて",
+      "variants": [
+        "を踏まえて"
+      ],
+      "meaning": "based on"
+    },
+    {
+      "level": "N1",
+      "pattern": "を経て",
+      "variants": [
+        "を経て"
+      ],
+      "meaning": "through; after; via"
+    },
+    {
+      "level": "N1",
+      "pattern": "をいいことに",
+      "variants": [
+        "をいいことに"
+      ],
+      "meaning": "to take advantage of"
+    },
+    {
+      "level": "N1",
+      "pattern": "を限りに",
+      "variants": [
+        "を限りに"
+      ],
+      "meaning": "starting from"
+    },
+    {
+      "level": "N1",
+      "pattern": "を兼ねて",
+      "variants": [
+        "を兼ねて"
+      ],
+      "meaning": "also for the purpose of"
+    },
+    {
+      "level": "N1",
+      "pattern": "を皮切りに",
+      "variants": [
+        "を皮切りに"
+      ],
+      "meaning": "starting with"
+    },
+    {
+      "level": "N1",
+      "pattern": "を機に",
+      "variants": [
+        "を機に"
+      ],
+      "meaning": "as an opportunity to"
+    },
+    {
+      "level": "N1",
+      "pattern": "を禁じえない",
+      "variants": [
+        "を禁じえない"
+      ],
+      "meaning": "can't help but"
+    },
+    {
+      "level": "N1",
+      "pattern": "をものともせず",
+      "variants": [
+        "をものともせず"
+      ],
+      "meaning": "in defiance of"
+    },
+    {
+      "level": "N1",
+      "pattern": "をもって",
+      "variants": [
+        "をもって"
+      ],
+      "meaning": "by means of"
+    },
+    {
+      "level": "N1",
+      "pattern": "をもって",
+      "variants": [
+        "をもって"
+      ],
+      "meaning": "at the time"
+    },
+    {
+      "level": "N1",
+      "pattern": "をおいて",
+      "variants": [
+        "をおいて"
+      ],
+      "meaning": "other than; without"
+    },
+    {
+      "level": "N1",
+      "pattern": "を余儀なくされる",
+      "variants": [
+        "を余儀なくされる"
+      ],
+      "meaning": "to be forced to do something"
+    },
+    {
+      "level": "N1",
+      "pattern": "をよそに",
+      "variants": [
+        "をよそに"
+      ],
+      "meaning": "despite"
+    },
+    {
+      "level": "N1",
+      "pattern": "思いをする",
+      "variants": [
+        "思いをする"
+      ],
+      "meaning": "to feel"
+    },
+    {
+      "level": "N1",
+      "pattern": "折に",
+      "variants": [
+        "折に"
+      ],
+      "meaning": "when; on the occasion"
+    },
+    {
+      "level": "N1",
+      "pattern": "およそ",
+      "variants": [
+        "およそ"
+      ],
+      "meaning": "totally; (not) at all"
+    },
+    {
+      "level": "N1",
+      "pattern": "さもないと",
+      "variants": [
+        "さもないと"
+      ],
+      "meaning": "otherwise; else; if not so"
+    },
+    {
+      "level": "N1",
+      "pattern": "さぞ",
+      "variants": [
+        "さぞ"
+      ],
+      "meaning": "I'm sure; I'm certain"
+    },
+    {
+      "level": "N1",
+      "pattern": "始末だ",
+      "variants": [
+        "始末だ"
+      ],
+      "meaning": "end up; in the end"
+    },
+    {
+      "level": "N1",
+      "pattern": "そばから",
+      "variants": [
+        "そばから"
+      ],
+      "meaning": "as soon as"
+    },
+    {
+      "level": "N1",
+      "pattern": "さも",
+      "variants": [
+        "さも"
+      ],
+      "meaning": "truly; really"
+    },
+    {
+      "level": "N1",
+      "pattern": "それなりに",
+      "variants": [
+        "それなりに"
+      ],
+      "meaning": "as it is; in its own way"
+    },
+    {
+      "level": "N1",
+      "pattern": "そうにもない",
+      "variants": [
+        "そうにもない"
+      ],
+      "meaning": "impossible; unlikely"
+    },
+    {
+      "level": "N1",
+      "pattern": "ただ○○のみだ",
+      "variants": [
+        "ただ○○のみだ"
+      ],
+      "meaning": "can do nothing but"
+    },
+    {
+      "level": "N1",
+      "pattern": "た拍子に",
+      "variants": [
+        "た拍子に"
+      ],
+      "meaning": "the instant"
+    },
+    {
+      "level": "N1",
+      "pattern": "ためしがない",
+      "variants": [
+        "ためしがない"
+      ],
+      "meaning": "(something) is never the case"
+    },
+    {
+      "level": "N1",
+      "pattern": "たりとも",
+      "variants": [
+        "たりとも"
+      ],
+      "meaning": "(not) even; (not) any"
+    },
+    {
+      "level": "N1",
+      "pattern": "た瞬間に",
+      "variants": [
+        "た瞬間に"
+      ],
+      "meaning": "the moment"
+    },
+    {
+      "level": "N1",
+      "pattern": "てっきり",
+      "variants": [
+        "てっきり"
+      ],
+      "meaning": "surely; certainly"
+    },
+    {
+      "level": "N1",
+      "pattern": "たところで",
+      "variants": [
+        "たところで"
+      ],
+      "meaning": "even if one does something"
+    },
+    {
+      "level": "N1",
+      "pattern": "てからというもの",
+      "variants": [
+        "てからというもの"
+      ],
+      "meaning": "after; since"
+    },
+    {
+      "level": "N1",
+      "pattern": "てかなわない",
+      "variants": [
+        "てかなわない"
+      ],
+      "meaning": "can't stand; unable to"
+    },
+    {
+      "level": "N1",
+      "pattern": "てまで",
+      "variants": [
+        "てまで"
+      ],
+      "meaning": "even"
+    },
+    {
+      "level": "N1",
+      "pattern": "てみせる",
+      "variants": [
+        "てみせる"
+      ],
+      "meaning": "I'll definitely"
+    },
+    {
+      "level": "N1",
+      "pattern": "てもどうにもならない",
+      "variants": [
+        "てもどうにもならない"
+      ],
+      "meaning": "it's no use"
+    },
+    {
+      "level": "N1",
+      "pattern": "ても始まらない",
+      "variants": [
+        "ても始まらない"
+      ],
+      "meaning": "it's no use"
+    },
+    {
+      "level": "N1",
+      "pattern": "ても差し支えない",
+      "variants": [
+        "ても差し支えない"
+      ],
+      "meaning": "can; it's okay if"
+    },
+    {
+      "level": "N1",
+      "pattern": "てしかるべきだ",
+      "variants": [
+        "てしかるべきだ"
+      ],
+      "meaning": "should"
+    },
+    {
+      "level": "N1",
+      "pattern": "ってば",
+      "variants": [
+        "ってば"
+      ],
+      "meaning": "I said; I told you to"
+    },
+    {
+      "level": "N1",
+      "pattern": "てやまない",
+      "variants": [
+        "てやまない"
+      ],
+      "meaning": "always; never stop"
+    },
+    {
+      "level": "N1",
+      "pattern": "と相まって",
+      "variants": [
+        "と相まって"
+      ],
+      "meaning": "together with"
+    },
+    {
+      "level": "N1",
+      "pattern": "とあれば",
+      "variants": [
+        "とあれば"
+      ],
+      "meaning": "if; if it's the case that"
+    },
+    {
+      "level": "N1",
+      "pattern": "とあって",
+      "variants": [
+        "とあって"
+      ],
+      "meaning": "because of"
+    },
+    {
+      "level": "N1",
+      "pattern": "とばかりに",
+      "variants": [
+        "とばかりに"
+      ],
+      "meaning": "as if; as though"
+    },
+    {
+      "level": "N1",
+      "pattern": "といえども",
+      "variants": [
+        "といえども"
+      ],
+      "meaning": "even; even if"
+    },
+    {
+      "level": "N1",
+      "pattern": "といい○○といい",
+      "variants": [
+        "といい○○といい"
+      ],
+      "meaning": "and; or"
+    },
+    {
+      "level": "N1",
+      "pattern": "といったらない",
+      "variants": [
+        "といったらない"
+      ],
+      "meaning": "very; extremely"
+    },
+    {
+      "level": "N1",
+      "pattern": "という",
+      "variants": [
+        "という"
+      ],
+      "meaning": "all; every"
+    },
+    {
+      "level": "N1",
+      "pattern": "というか",
+      "variants": [
+        "というか"
+      ],
+      "meaning": "or; or more precisely"
+    },
+    {
+      "level": "N1",
+      "pattern": "というか○○というか",
+      "variants": [
+        "というか○○というか"
+      ],
+      "meaning": "(I'm not sure if it's) A or B"
+    },
+    {
+      "level": "N1",
+      "pattern": "というところだ / といったところだ",
+      "variants": [
+        "というところだ",
+        "といったところだ"
+      ],
+      "meaning": "approximately; about"
+    },
+    {
+      "level": "N1",
+      "pattern": "というもの",
+      "variants": [
+        "というもの"
+      ],
+      "meaning": "during a period of time"
+    },
+    {
+      "level": "N1",
+      "pattern": "というわけだ",
+      "variants": [
+        "というわけだ"
+      ],
+      "meaning": "this means"
+    },
+    {
+      "level": "N1",
+      "pattern": "というわけではない",
+      "variants": [
+        "というわけではない"
+      ],
+      "meaning": "it's not that; it doesn't mean that"
+    },
+    {
+      "level": "N1",
+      "pattern": "といわず",
+      "variants": [
+        "といわず"
+      ],
+      "meaning": "not just; both"
+    },
+    {
+      "level": "N1",
+      "pattern": "ときたら",
+      "variants": [
+        "ときたら"
+      ],
+      "meaning": "when it comes to; concerning"
+    },
+    {
+      "level": "N1",
+      "pattern": "ときている",
+      "variants": [
+        "ときている"
+      ],
+      "meaning": "because"
+    },
+    {
+      "level": "N1",
+      "pattern": "ところがある",
+      "variants": [
+        "ところがある"
+      ],
+      "meaning": "there is"
+    },
+    {
+      "level": "N1",
+      "pattern": "ところから",
+      "variants": [
+        "ところから"
+      ],
+      "meaning": "from the fact that"
+    },
+    {
+      "level": "N1",
+      "pattern": "とみられる",
+      "variants": [
+        "とみられる"
+      ],
+      "meaning": "to be regarded as; to be expected to"
+    },
+    {
+      "level": "N1",
+      "pattern": "とみるや",
+      "variants": [
+        "とみるや"
+      ],
+      "meaning": "at the sight of; upon seeing"
+    },
+    {
+      "level": "N1",
+      "pattern": "ともなく",
+      "variants": [
+        "ともなく"
+      ],
+      "meaning": "to do something without thinking about it"
+    },
+    {
+      "level": "N1",
+      "pattern": "ともなると / ともなれば",
+      "variants": [
+        "ともなると",
+        "ともなれば"
+      ],
+      "meaning": "when; once (something happens)"
+    },
+    {
+      "level": "N1",
+      "pattern": "ともすれば",
+      "variants": [
+        "ともすれば"
+      ],
+      "meaning": "apt to; prone to"
+    },
+    {
+      "level": "N1",
+      "pattern": "と思いきや",
+      "variants": [
+        "と思いきや"
+      ],
+      "meaning": "I thought"
+    },
+    {
+      "level": "N1",
+      "pattern": "とりわけ",
+      "variants": [
+        "とりわけ"
+      ],
+      "meaning": "especially"
+    },
+    {
+      "level": "N1",
+      "pattern": "とされる",
+      "variants": [
+        "とされる"
+      ],
+      "meaning": "is considered"
+    },
+    {
+      "level": "N1",
+      "pattern": "とっさに",
+      "variants": [
+        "とっさに"
+      ],
+      "meaning": "at once; right away"
+    },
+    {
+      "level": "N1",
+      "pattern": "としたって / としたところで",
+      "variants": [
+        "としたって",
+        "としたところで"
+      ],
+      "meaning": "even if"
+    },
+    {
+      "level": "N1",
+      "pattern": "として○○ない",
+      "variants": [
+        "として○○ない"
+      ],
+      "meaning": "not even one"
+    },
+    {
+      "level": "N1",
+      "pattern": "とて",
+      "variants": [
+        "とて"
+      ],
+      "meaning": "even if; even though"
+    },
+    {
+      "level": "N1",
+      "pattern": "とても○○ない",
+      "variants": [
+        "とても○○ない"
+      ],
+      "meaning": "cannot possibly"
+    },
+    {
+      "level": "N1",
+      "pattern": "とは",
+      "variants": [
+        "とは"
+      ],
+      "meaning": "(indicates word or phrase being defined)"
+    },
+    {
+      "level": "N1",
+      "pattern": "とはいえ",
+      "variants": [
+        "とはいえ"
+      ],
+      "meaning": "nonetheless; although"
+    },
+    {
+      "level": "N1",
+      "pattern": "とはいうものの",
+      "variants": [
+        "とはいうものの"
+      ],
+      "meaning": "having said that; be that as it may"
+    },
+    {
+      "level": "N1",
+      "pattern": "つ○○つ",
+      "variants": [
+        "つ○○つ"
+      ],
+      "meaning": "(indicates two contrasting actions)"
+    },
+    {
+      "level": "N1",
+      "pattern": "はおろか",
+      "variants": [
+        "はおろか"
+      ],
+      "meaning": "let alone; not to mention"
+    },
+    {
+      "level": "N1",
+      "pattern": "はさておき",
+      "variants": [
+        "はさておき"
+      ],
+      "meaning": "setting aside"
+    },
+    {
+      "level": "N1",
+      "pattern": "や否や",
+      "variants": [
+        "や否や"
+      ],
+      "meaning": "the moment that; as soon as"
+    },
+    {
+      "level": "N1",
+      "pattern": "やしない",
+      "variants": [
+        "やしない"
+      ],
+      "meaning": "not (emphatic negative)"
+    },
+    {
+      "level": "N1",
+      "pattern": "(よ)うが / (よ)うと",
+      "variants": [
+        "(よ)うが",
+        "(よ)うと"
+      ],
+      "meaning": "no matter how/what"
+    },
+    {
+      "level": "N1",
+      "pattern": "(よ)うが○○まいが / (よ)うと○○まいと",
+      "variants": [
+        "(よ)うが○○まいが",
+        "(よ)うと○○まいと"
+      ],
+      "meaning": "whether or not"
+    },
+    {
+      "level": "N1",
+      "pattern": "(よ)うか○○まいか",
+      "variants": [
+        "(よ)うか○○まいか"
+      ],
+      "meaning": "whether or not"
+    },
+    {
+      "level": "N1",
+      "pattern": "(よ)うものなら",
+      "variants": [
+        "(よ)うものなら"
+      ],
+      "meaning": "if one chooses to"
+    },
+    {
+      "level": "N1",
+      "pattern": "(よ)うにも○○ない",
+      "variants": [
+        "(よ)うにも○○ない"
+      ],
+      "meaning": "even if one tries to do something; it can't be done"
+    },
+    {
+      "level": "N1",
+      "pattern": "ようによっては",
+      "variants": [
+        "ようによっては"
+      ],
+      "meaning": "depending on"
+    },
+    {
+      "level": "N1",
+      "pattern": "ゆえに",
+      "variants": [
+        "ゆえに"
+      ],
+      "meaning": "therefore; consequently"
+    },
+    {
+      "level": "N1",
+      "pattern": "ざる",
+      "variants": [
+        "ざる"
+      ],
+      "meaning": "not; -un"
+    },
+    {
+      "level": "N1",
+      "pattern": "ずじまい",
+      "variants": [
+        "ずじまい"
+      ],
+      "meaning": "never"
+    },
+    {
+      "level": "N1",
+      "pattern": "ずくめ",
+      "variants": [
+        "ずくめ"
+      ],
+      "meaning": "entirely; completely"
+    },
+    {
+      "level": "N1",
+      "pattern": "ずとも",
+      "variants": [
+        "ずとも"
+      ],
+      "meaning": "even without doing"
+    }
+  ]
+}

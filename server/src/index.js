@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { config, logConfig } from './config/index.js';
 import ollamaService from './services/ollamaService.js';
 import japaneseService from './services/japaneseService.js';
+import jlptGrammarService from './services/jlptGrammarService.js';
 import booksRouter from './routes/books.js';
 import ttsRouter from './routes/tts.js';
 
@@ -559,16 +560,20 @@ app.post('/api/import', uploadSingleTxt, async (req, res) => {
           });
 
           // Apply basic token merging
-          const tokens = japaneseService.mergeVerbTokens(
-            japaneseService.mergeNounCompounds(
-              japaneseService.mergePunctuationTokens(grammarSplitTokens)
-            ),
-            {
-              mergeAuxiliaryVerbs: true,
-              mergeVerbParticles: true,
-              mergeAllInflections: true,
-              mergePunctuation: true
-            }
+          const tokens = japaneseService.mergeGrammarExpressions(
+            japaneseService.mergeAuxiliarySequences(japaneseService.mergeVerbTokens(
+              japaneseService.mergeNounCompounds(japaneseService.mergeCoordinatedNounPhrases(
+                japaneseService.mergeNominalizedNounPhrases(
+                  japaneseService.mergePunctuationTokens(grammarSplitTokens)
+                )
+              )),
+              {
+                mergeAuxiliaryVerbs: true,
+                mergeVerbParticles: true,
+                mergeAllInflections: true,
+                mergePunctuation: true
+              }
+            ))
           );
 
           // Prepare basic token data with hiragana readings
@@ -586,7 +591,7 @@ app.post('/api/import', uploadSingleTxt, async (req, res) => {
           }));
 
           // Get dictionary translations for each token
-          const enhancedTokens = await Promise.all(basicTokens.map(async (token) => {
+          const dictionaryTokens = await Promise.all(basicTokens.map(async (token) => {
             // Skip JMDict lookup for punctuation marks (記号)
             let dictLookup = null;
             if (token.pos !== '記号') {
@@ -612,6 +617,7 @@ app.post('/api/import', uploadSingleTxt, async (req, res) => {
               dictionarySource: dictLookup ? dictLookup.source : null
             };
           }));
+          const enhancedTokens = jlptGrammarService.annotateTokens(dictionaryTokens);
 
           // Count different types of tokens
           const words = tokens.filter(token =>
@@ -915,6 +921,88 @@ app.post('/api/import/:filename/save-sentence', (req, res) => {
   }
 });
 
+app.delete('/api/import/:filename/sentence/:sentenceIndex', (req, res) => {
+  const sourcePath = resolveSourceTextPath(req.params.filename);
+  const bookFilePath = path.join(config.booksDir, `${req.params.filename}.book`);
+  if (!sourcePath && !fs.existsSync(bookFilePath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  const sentenceIndex = Number.parseInt(req.params.sentenceIndex, 10);
+  if (!Number.isInteger(sentenceIndex) || sentenceIndex < 0) {
+    return res.status(400).json({ error: 'Invalid sentence index' });
+  }
+
+  const {
+    originalLines,
+    processedSentences,
+    verbMergeOptions,
+    timestamp
+  } = req.body || {};
+
+  if (!Array.isArray(originalLines)) {
+    return res.status(400).json({ error: 'originalLines must be an array' });
+  }
+
+  const normalizedLines = originalLines.map((line) => String(line ?? ''));
+  const normalizedProcessedSentences =
+    processedSentences && typeof processedSentences === 'object' && !Array.isArray(processedSentences)
+      ? processedSentences
+      : {};
+  const updatedAt = timestamp || new Date().toISOString();
+
+  try {
+    if (sourcePath) {
+      fs.writeFileSync(sourcePath, normalizedLines.join('\n'), 'utf-8');
+    }
+
+    let bookData = {};
+    if (fs.existsSync(bookFilePath)) {
+      try {
+        bookData = JSON.parse(fs.readFileSync(bookFilePath, 'utf-8'));
+      } catch (error) {
+        console.error('Error reading existing book file before sentence delete:', error);
+        bookData = {};
+      }
+    }
+
+    if (!bookData.content) bookData.content = {};
+    if (!bookData.settings) bookData.settings = {};
+    if (!bookData.metadata) bookData.metadata = {};
+
+    const wasReading =
+      bookData.metadata.status === 'reading' ||
+      bookData.metadata.completed === true ||
+      bookData.metadata.savedToBooks === true;
+
+    bookData.content.originalLines = normalizedLines;
+    bookData.content.processedSentences = normalizedProcessedSentences;
+    bookData.settings.verbMergeOptions = verbMergeOptions || bookData.settings.verbMergeOptions || {};
+    bookData.metadata.originalFilename = req.params.filename;
+    bookData.metadata.totalLines = normalizedLines.length;
+    bookData.metadata.processedSentences = Object.keys(normalizedProcessedSentences).length;
+    bookData.metadata.lastUpdated = updatedAt;
+    bookData.metadata.status = wasReading ? 'reading' : 'draft';
+    bookData.metadata.completed = wasReading;
+    if (wasReading) {
+      bookData.metadata.savedToBooks = true;
+    }
+
+    fs.writeFileSync(bookFilePath, JSON.stringify(bookData, null, 2), 'utf-8');
+
+    res.json({
+      success: true,
+      sentenceIndex,
+      totalLines: normalizedLines.length,
+      processedSentences: Object.keys(normalizedProcessedSentences).length,
+      savedAt: updatedAt
+    });
+  } catch (error) {
+    console.error('Error deleting sentence:', error);
+    res.status(500).json({ error: 'Failed to delete sentence' });
+  }
+});
+
 // Save processed file to books with all analysis data
 app.post('/api/import/:filename/save', (req, res) => {
   const sourcePath = resolveSourceTextPath(req.params.filename);
@@ -1123,14 +1211,25 @@ function applyAiExpressionAnnotations(tokens, expressions = []) {
 function collectSentenceNotes(ollamaAnalysis = null, aiExpressions = [], tokens = []) {
   const notes = [];
   const seen = new Set();
+  const notedGrammarSurfaces = new Set();
 
-  const pushNote = (text, type = 'note') => {
+  const pushNote = (text, type = 'note', metadata = {}) => {
     const normalized = String(text || '').replace(/\s+/g, ' ').trim();
     if (!normalized) return;
     const key = normalized.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
-    notes.push({ type, text: normalized });
+    notes.push({ type, text: normalized, ...metadata });
+  };
+
+  const isInterestingJlptGrammar = (token) => {
+    const grammar = token?.jlptGrammar;
+    if (!grammar?.pattern) return false;
+
+    const normalizedPattern = String(grammar.pattern).replace(/\s+/g, '');
+    if (token.expressionSurface) return true;
+    if (normalizedPattern.length >= 3) return true;
+    return ['N3', 'N2', 'N1'].includes(grammar.level);
   };
 
   if (ollamaAnalysis && typeof ollamaAnalysis === 'object') {
@@ -1161,12 +1260,27 @@ function collectSentenceNotes(ollamaAnalysis = null, aiExpressions = [], tokens 
     pushNote(`${expression.surface}: ${expression.note}`, 'expression');
   }
 
-  // Fallback notes from token-level expression notes (works even without AI notes).
-  if (notes.length === 0) {
-    for (const token of tokens) {
-      if (!token?.expressionSurface || !token?.expressionNote) continue;
-      pushNote(`${token.expressionSurface}: ${token.expressionNote}`, 'expression');
-    }
+  for (const token of tokens) {
+    if (!isInterestingJlptGrammar(token)) continue;
+
+    const grammar = token.jlptGrammar;
+    notedGrammarSurfaces.add(normalizeExpressionText(grammar.pattern));
+    pushNote(
+      `${grammar.pattern} (${grammar.level}): ${grammar.meaning}`,
+      'jlptGrammar',
+      {
+        jlptLevel: grammar.level,
+        grammarPattern: grammar.pattern,
+        grammarMeaning: grammar.meaning,
+        sourceUrl: grammar.sourceUrl
+      }
+    );
+  }
+
+  for (const token of tokens) {
+    if (!token?.expressionSurface || !token?.expressionNote) continue;
+    if (notedGrammarSurfaces.has(normalizeExpressionText(token.expressionSurface))) continue;
+    pushNote(`${token.expressionSurface}: ${token.expressionNote}`, 'expression');
   }
 
   return notes.slice(0, 4);
@@ -1196,13 +1310,31 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
     let tokens;
     if (verbMergeOptions.useCompoundDetection) {
       const compoundTokens = japaneseService.detectCompoundVerbs(tokensAfterPunctuation);
-      tokens = japaneseService.mergeVerbTokens(
-        japaneseService.mergeNounCompounds(compoundTokens, verbMergeOptions),
+      tokens = japaneseService.mergeGrammarExpressions(
+        japaneseService.mergeAuxiliarySequences(japaneseService.mergeVerbTokens(
+          japaneseService.mergeNounCompounds(
+            japaneseService.mergeCoordinatedNounPhrases(
+              japaneseService.mergeNominalizedNounPhrases(compoundTokens, verbMergeOptions),
+              verbMergeOptions
+            ),
+            verbMergeOptions
+          ),
+          verbMergeOptions
+        ), verbMergeOptions),
         verbMergeOptions
       );
     } else {
-      tokens = japaneseService.mergeVerbTokens(
-        japaneseService.mergeNounCompounds(tokensAfterPunctuation, verbMergeOptions),
+      tokens = japaneseService.mergeGrammarExpressions(
+        japaneseService.mergeAuxiliarySequences(japaneseService.mergeVerbTokens(
+          japaneseService.mergeNounCompounds(
+            japaneseService.mergeCoordinatedNounPhrases(
+              japaneseService.mergeNominalizedNounPhrases(tokensAfterPunctuation, verbMergeOptions),
+              verbMergeOptions
+            ),
+            verbMergeOptions
+          ),
+          verbMergeOptions
+        ), verbMergeOptions),
         verbMergeOptions
       );
     }
@@ -1299,8 +1431,9 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
 
     const aiExpressions = Array.isArray(ollamaAnalysis?.expressions) ? ollamaAnalysis.expressions : [];
     const expressionAnnotatedTokens = applyAiExpressionAnnotations(enhancedTokens, aiExpressions);
-    const sentenceNotes = collectSentenceNotes(ollamaAnalysis, aiExpressions, expressionAnnotatedTokens);
-    const tokensWithFrequency = japaneseService.enhanceTokensWithFrequency(expressionAnnotatedTokens, frequencySettings);
+    const jlptAnnotatedTokens = jlptGrammarService.annotateTokens(expressionAnnotatedTokens);
+    const sentenceNotes = collectSentenceNotes(ollamaAnalysis, aiExpressions, jlptAnnotatedTokens);
+    const tokensWithFrequency = japaneseService.enhanceTokensWithFrequency(jlptAnnotatedTokens, frequencySettings);
     const frequencyStats = japaneseService.getTokenFrequencyStats(tokensWithFrequency);
 
     const analysisStatus = useRemoteProcessing

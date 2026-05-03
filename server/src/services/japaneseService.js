@@ -395,6 +395,218 @@ class JapaneseService {
     return mergedTokens;
   }
 
+  mergeNominalizedNounPhrases(tokens, options = {}) {
+    const { mergeNominalizedNounPhrases = true } = options;
+    if (!mergeNominalizedNounPhrases) return tokens;
+
+    const mergedTokens = [];
+    let i = 0;
+
+    while (i < tokens.length) {
+      const currentToken = tokens[i];
+      const noToken = tokens[i + 1];
+      const stemToken = tokens[i + 2];
+      const suffixToken = tokens[i + 3];
+
+      const matchesNoVerbStemKata =
+        currentToken?.pos === '名詞' &&
+        noToken?.surface_form === 'の' &&
+        noToken?.pos === '助詞' &&
+        stemToken?.pos === '動詞' &&
+        suffixToken?.surface_form === '方' &&
+        suffixToken?.pos === '名詞';
+
+      if (matchesNoVerbStemKata) {
+        const phraseGroup = [currentToken, noToken, stemToken, suffixToken];
+        mergedTokens.push({
+          surface_form: phraseGroup.map(t => t.surface_form).join(''),
+          reading: phraseGroup.map(t => t.reading || t.surface_form).join(''),
+          pos: '名詞',
+          pos_detail_1: 'nominalized_phrase',
+          pos_detail_2: currentToken.pos_detail_2,
+          pos_detail_3: currentToken.pos_detail_3,
+          basic_form: `${currentToken.basic_form || currentToken.surface_form}の${stemToken.basic_form || stemToken.surface_form}方`,
+          pronunciation: phraseGroup.map(t => t.pronunciation || t.reading || t.surface_form).join(''),
+          isNominalizedPhrase: true,
+          originalTokens: phraseGroup,
+          mergeReason: 'noun_no_verbstem_kata'
+        });
+        i += phraseGroup.length;
+        continue;
+      }
+
+      mergedTokens.push(currentToken);
+      i += 1;
+    }
+
+    return mergedTokens;
+  }
+
+  mergeCoordinatedNounPhrases(tokens, options = {}) {
+    const { mergeCoordinatedNounPhrases = true } = options;
+    if (!mergeCoordinatedNounPhrases) return tokens;
+
+    const mergedTokens = [];
+    let i = 0;
+
+    while (i < tokens.length) {
+      const firstNoun = tokens[i];
+      const particle = tokens[i + 1];
+      const secondNoun = tokens[i + 2];
+
+      const matchesCoordinatedNouns =
+        firstNoun?.pos === '名詞' &&
+        particle?.surface_form === 'と' &&
+        particle?.pos === '助詞' &&
+        particle?.pos_detail_1 === '並立助詞' &&
+        secondNoun?.pos === '名詞';
+
+      if (matchesCoordinatedNouns) {
+        const phraseGroup = [firstNoun, particle, secondNoun];
+        mergedTokens.push({
+          surface_form: phraseGroup.map(t => t.surface_form).join(''),
+          reading: phraseGroup.map(t => t.reading || t.surface_form).join(''),
+          pos: '名詞',
+          pos_detail_1: 'coordinated_phrase',
+          pos_detail_2: firstNoun.pos_detail_2,
+          pos_detail_3: firstNoun.pos_detail_3,
+          basic_form: phraseGroup.map(t => t.basic_form || t.surface_form).join(''),
+          pronunciation: phraseGroup.map(t => t.pronunciation || t.reading || t.surface_form).join(''),
+          isCoordinatedPhrase: true,
+          originalTokens: phraseGroup,
+          mergeReason: 'noun_to_noun'
+        });
+        i += phraseGroup.length;
+        continue;
+      }
+
+      mergedTokens.push(firstNoun);
+      i += 1;
+    }
+
+    return mergedTokens;
+  }
+
+  mergeAuxiliarySequences(tokens, options = {}) {
+    const { mergeAuxiliarySequences = true } = options;
+    if (!mergeAuxiliarySequences) return tokens;
+
+    const mergedTokens = [];
+    let i = 0;
+
+    while (i < tokens.length) {
+      const currentToken = tokens[i];
+
+      if (currentToken.pos === '助動詞' && !currentToken.isSplitGrammarToken) {
+        const auxiliaryGroup = [currentToken];
+        let j = i + 1;
+
+        while (
+          j < tokens.length &&
+          tokens[j].pos === '助動詞' &&
+          !tokens[j].isSplitGrammarToken
+        ) {
+          auxiliaryGroup.push(tokens[j]);
+          j++;
+        }
+
+        if (auxiliaryGroup.length > 1) {
+          const surfaceForm = auxiliaryGroup.map(t => t.surface_form).join('');
+          const reading = auxiliaryGroup.map(t => t.reading || t.surface_form).join('');
+          const pronunciation = auxiliaryGroup.map(t => t.pronunciation || t.reading || t.surface_form).join('');
+
+          mergedTokens.push({
+            surface_form: surfaceForm,
+            reading,
+            pos: '助動詞',
+            pos_detail_1: 'compound',
+            pos_detail_2: currentToken.pos_detail_2,
+            pos_detail_3: currentToken.pos_detail_3,
+            conjugated_type: currentToken.conjugated_type,
+            conjugated_form: auxiliaryGroup[auxiliaryGroup.length - 1].conjugated_form,
+            basic_form: currentToken.basic_form || surfaceForm,
+            pronunciation,
+            originalTokens: auxiliaryGroup,
+            mergeReason: 'auxiliary_sequence'
+          });
+        } else {
+          mergedTokens.push(currentToken);
+        }
+
+        i = j;
+      } else {
+        mergedTokens.push(currentToken);
+        i++;
+      }
+    }
+
+    return mergedTokens;
+  }
+
+  mergeGrammarExpressions(tokens, options = {}) {
+    const { mergeGrammarExpressions = true } = options;
+    if (!mergeGrammarExpressions) return tokens;
+
+    const expressionPatterns = [
+      {
+        parts: ['かも', 'しれない'],
+        surface: 'かもしれない',
+        reading: 'カモシレナイ',
+        meaning: 'might; may; could be',
+        note: 'Grammar pattern: かもしれない = might / may / could be'
+      },
+      {
+        parts: ['かも', 'しれません'],
+        surface: 'かもしれません',
+        reading: 'カモシレマセン',
+        meaning: 'might; may; could be',
+        note: 'Polite grammar pattern: かもしれません = might / may / could be'
+      },
+      {
+        parts: ['と', 'いう'],
+        surface: 'という',
+        reading: 'トイウ',
+        meaning: 'called; that; saying that; the fact that',
+        note: 'Grammar pattern: という = called / that / saying that'
+      }
+    ];
+
+    const mergedTokens = [];
+    let i = 0;
+
+    while (i < tokens.length) {
+      const pattern = expressionPatterns.find((candidate) =>
+        candidate.parts.every((part, offset) => tokens[i + offset]?.surface_form === part)
+      );
+
+      if (!pattern) {
+        mergedTokens.push(tokens[i]);
+        i += 1;
+        continue;
+      }
+
+      const expressionGroup = tokens.slice(i, i + pattern.parts.length);
+      mergedTokens.push({
+        surface_form: pattern.surface,
+        reading: expressionGroup.map(t => t.reading || t.surface_form).join('') || pattern.reading,
+        pos: '助動詞',
+        pos_detail_1: 'grammar_expression',
+        pos_detail_2: expressionGroup[0].pos_detail_2,
+        pos_detail_3: expressionGroup[0].pos_detail_3,
+        basic_form: pattern.surface,
+        pronunciation: expressionGroup.map(t => t.pronunciation || t.reading || t.surface_form).join('') || pattern.reading,
+        originalTokens: expressionGroup,
+        mergeReason: 'grammar_expression',
+        expressionSurface: pattern.surface,
+        expressionMeaning: pattern.meaning,
+        expressionNote: pattern.note
+      });
+      i += pattern.parts.length;
+    }
+
+    return mergedTokens;
+  }
+
   // Function to merge verb tokens with all inflections into single units
   mergeVerbTokens(tokens, options = {}) {
     const {

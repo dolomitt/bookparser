@@ -8,8 +8,8 @@ export default function App() {
   return (
     <div className="app-shell">
       <nav className="app-nav">
-        <Link to="/">Books</Link>
-        <Link to="/import">Import</Link>
+        <Link to="/">Reading</Link>
+        <Link to="/import">Drafts</Link>
       </nav>
       <Routes>
         <Route path="/" element={<MainPage />} />

@@ -18,6 +18,7 @@ jmdict-db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.firecrawl/
 
 # Dependency directories
 server/node_modules/

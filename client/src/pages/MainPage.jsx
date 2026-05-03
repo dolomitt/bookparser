@@ -23,18 +23,18 @@ export default function MainPage() {
     <div className="home-container">
       {/* Hero Section */}
       <div className="hero-section">
-        <h1 className="hero-title">📚 Japanese Book Parser</h1>
+        <h1 className="hero-title">📚 Japanese Reading Parser</h1>
         <p className="hero-subtitle">
           Advanced Japanese text analysis with AI-powered translations, verb merging, and furigana support
         </p>
         <div className="hero-stats">
           <div className="stat-card">
             <div className="stat-number">{processedBooks.length + regularBooks.length}</div>
-            <div className="stat-label">Books</div>
+            <div className="stat-label">Reading</div>
           </div>
           <div className="stat-card">
             <div className="stat-number">{imports.length}</div>
-            <div className="stat-label">In Progress</div>
+            <div className="stat-label">Drafts</div>
           </div>
           <div className="stat-card">
             <div className="stat-number">{processedBooks.length}</div>
@@ -48,13 +48,13 @@ export default function MainPage() {
         <Link to="/import" className="action-card primary">
           <div className="action-icon">📖</div>
           <div className="action-content">
-            <h3>Import New Book</h3>
-            <p>Upload and process Japanese text files</p>
+            <h3>New Draft</h3>
+            <p>Upload a text file or add an article URL</p>
           </div>
         </Link>
       </div>
 
-      {/* Books Grid */}
+        {/* Reading and drafts grid */}
       <div className="content-grid">
         {/* Reading Resources */}
         {processedBooks.length > 0 && (
@@ -85,11 +85,11 @@ export default function MainPage() {
           </div>
         )}
 
-        {/* Regular Books */}
+        {/* Plain text reading resources */}
         {regularBooks.length > 0 && (
           <div className="section-card">
             <div className="section-header">
-              <h2>📄 Text Books</h2>
+              <h2>📄 Plain Text Reading</h2>
               <span className="section-count">{regularBooks.length}</span>
             </div>
             <div className="books-grid">
@@ -141,9 +141,9 @@ export default function MainPage() {
         {books.length === 0 && imports.length === 0 && (
           <div className="empty-state">
             <div className="empty-icon">📚</div>
-            <h3>No books yet</h3>
-            <p>Start by importing your first Japanese text file</p>
-            <Link to="/import" className="btn">Import Your First Book</Link>
+            <h3>No reading yet</h3>
+            <p>Start by creating your first draft</p>
+            <Link to="/import" className="btn">Create Draft</Link>
           </div>
         )}
       </div>

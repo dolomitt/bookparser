@@ -6,10 +6,20 @@
   background-color: #1a1a1a;
   border-radius: 8px;
   border: 1px solid #444;
-  font-size: 1.1em;
-  line-height: 1.8;
+  font-size: clamp(1.24rem, 0.9vw + 1rem, 1.58rem);
+  line-height: 2.25;
   color: #f2f2f2;
   overflow-wrap: anywhere;
+}
+
+.import-content,
+.sentence-text,
+.token {
+  font-family: "Segoe UI", "Helvetica Neue", Arial, "BIZ UDPMincho", "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", "Meiryo", serif;
+}
+
+.token-popup {
+  font-family: "Meiryo", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", "Hiragino Sans", sans-serif;
 }
 
 .import-source-panel {
@@ -27,13 +37,17 @@
   gap: 4px;
 }
 
-.import-file-heading > span:first-child {
-  font-size: 0.85em;
-  color: #bdbdbd;
+.import-display-title {
+  font-size: 1.15em;
+  color: #f2f2f2;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .import-file-name {
-  font-size: 0.95em;
+  font-size: 0.72em;
+  color: #bdbdbd;
+  font-weight: 500;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -220,6 +234,47 @@
   text-align: center;
 }
 
+.jlpt-options-grid {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) 1fr 1fr;
+  gap: 12px;
+  align-items: end;
+}
+
+.jlpt-option-group,
+.jlpt-option-label {
+  color: #fff;
+}
+
+.jlpt-option-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.jlpt-option-group span {
+  font-size: 0.9em;
+}
+
+.jlpt-option-group select {
+  width: 100%;
+  padding: 7px;
+  background-color: #444;
+  color: #fff;
+  border: 1px solid #666;
+  border-radius: 3px;
+}
+
+.jlpt-option-label {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+}
+
+.jlpt-option-label input[type="checkbox"] {
+  margin-right: 8px;
+}
+
 /* Sentence container */
 .sentence-container {
   position: relative;
@@ -228,6 +283,7 @@
 
 .sentence-text {
   color: #f2f2f2;
+  line-height: inherit;
 }
 
 /* Bookmark indicator without layout shift */
@@ -238,57 +294,87 @@
 }
 
 /* Sentence controls */
+.sentence-leading-controls {
+  display: inline-flex;
+  align-items: baseline;
+  margin-right: 8px;
+  vertical-align: 0.08em;
+}
+
 .sentence-controls {
   margin-left: 8px;
+  margin-right: 14px;
   display: inline-flex;
-  gap: 4px;
-  align-items: center;
+  gap: 6px;
+  align-items: baseline;
+  vertical-align: 0.08em;
+}
+
+.sentence-edit-controls {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.sentence-edit-menu {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .sentence-btn {
-  border: none;
-  color: white;
-  padding: 4px 6px;
-  font-size: 0.8em;
-  border-radius: 3px;
+  align-items: center;
+  background: transparent;
+  border: 2px solid #aab0b8;
+  border-radius: 50%;
+  color: #d7dce2;
   cursor: pointer;
-  min-width: 24px;
-  min-height: 24px;
+  display: inline-flex;
+  font-family: "Meiryo", "Yu Gothic UI", "Yu Gothic", sans-serif;
+  font-size: 0.62em;
+  font-weight: 700;
+  height: 1.45rem;
+  justify-content: center;
+  line-height: 1;
+  min-height: 1.45rem;
+  min-width: 1.45rem;
+  padding: 0;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+  width: 1.45rem;
 }
 
-.sentence-btn.local {
-  background-color: #28a745;
+.sentence-btn:hover,
+.sentence-btn:focus-visible,
+.sentence-btn.active {
+  background-color: rgba(170, 176, 184, 0.14);
+  border-color: #f2f2f2;
+  color: #ffffff;
+  outline: none;
 }
 
-.sentence-btn.remote {
-  background-color: #007bff;
+.sentence-btn.play {
+  font-size: 0.54em;
+  padding-left: 0.1rem;
 }
 
-.sentence-btn.tts {
-  background-color: #ff6b35;
+.sentence-btn.translation,
+.sentence-btn.notes,
+.sentence-btn.edit {
+  font-size: 0.58em;
 }
 
-.sentence-btn.translation {
-  background-color: #6c757d;
+.sentence-btn.delete {
+  border-color: #d23b3b;
+  color: #ffb4b4;
+  font-size: 0.7em;
 }
 
-.sentence-btn.notes {
-  background-color: #0f766e;
-}
-
-.sentence-btn.bookmark {
-  background-color: #ffc107;
-  color: #000;
-}
-
-.sentence-btn.bookmark:hover {
-  background-color: #e0a800;
-}
-
-.sentence-btn.bookmark.active {
-  background-color: #ff9800;
-  color: #fff;
-  box-shadow: 0 0 8px rgba(255, 152, 0, 0.5);
+.sentence-btn.delete:hover,
+.sentence-btn.delete:focus-visible {
+  background-color: rgba(185, 28, 28, 0.22);
+  border-color: #ff6b6b;
+  color: #ffffff;
 }
 
 /* Sentence status message */
@@ -308,25 +394,23 @@
 
 /* Token styles */
 .token {
-  display: inline-flex;
-  margin: 0px 1px;
-  padding: 2px 3px;
+  display: inline-block;
+  margin: 0 2px;
+  padding: 0 2px;
   background-color: transparent;
   color: #f2f2f2;
   border-radius: 2px;
   cursor: pointer;
-  font-size: 1.1em;
+  font-size: 1em;
   border: none;
   font-weight: normal;
   transition: background-color 0.2s ease, color 0.2s ease;
-  min-height: 28px;
-  min-width: 16px;
-  align-items: center;
-  justify-content: center;
+  min-height: 0;
+  min-width: 0;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-  line-height: 1.5;
+  line-height: inherit;
 }
 
 /* Blinking animation for processing buttons */
@@ -387,9 +471,10 @@
 }
 
 .token ruby rt {
-  font-size: 0.75em;
-  color: #ccc;
+  font-size: 0.52em;
+  color: #d6d6d6;
   font-weight: normal;
+  line-height: 1.1;
   pointer-events: none;
 }
 
@@ -400,33 +485,43 @@
   background-color: #1a1a1a;
   border: 3px solid #4fc3f7;
   border-radius: 8px;
-  padding: 16px;
+  padding: 18px 20px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
   z-index: 99999;
-  max-width: 320px;
-  min-width: 220px;
-  font-size: 0.95em;
+  max-width: 440px;
+  min-width: 320px;
+  font-size: 1rem;
   color: #f2f2f2;
-  line-height: 1.5;
+  line-height: 1.45;
   pointer-events: auto;
   display: block;
   visibility: visible;
 }
 
 .token-popup-header {
-  margin-bottom: 8px;
-  font-weight: bold;
+  margin-bottom: 6px;
+  font-size: 1.28rem;
+  font-weight: 700;
   color: #4fc3f7;
+  line-height: 1.2;
 }
 
 .token-popup-reading {
-  margin-bottom: 6px;
+  margin-bottom: 12px;
   color: #ccc;
-  font-size: 0.85em;
+  font-size: 0.9rem;
+  line-height: 1.2;
 }
 
 .token-popup-reading strong {
   font-weight: bold;
+}
+
+.token-popup-pattern {
+  margin-bottom: 10px;
+  color: #ffd166;
+  font-size: 0.98rem;
+  line-height: 1.45;
 }
 
 .token-popup-merged-indicator {
@@ -441,6 +536,19 @@
 
 .token-popup-field strong {
   font-weight: bold;
+}
+
+.token-popup-meaning {
+  margin-bottom: 10px;
+  font-size: 1.05rem;
+  line-height: 1.45;
+}
+
+.token-popup-secondary {
+  margin-bottom: 8px;
+  color: #bdbdbd;
+  font-size: 0.92rem;
+  line-height: 1.45;
 }
 
 .token-popup-close {
@@ -470,9 +578,10 @@
   z-index: 1000;
   max-width: 400px;
   font-size: 0.9em;
+  font-family: "Segoe UI", "Meiryo", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", "Hiragino Sans", sans-serif;
   color: #f2f2f2;
   line-height: 1.4;
-  display: none;
+  display: block;
 }
 
 .translation-popup-label {
@@ -525,6 +634,12 @@
 
 .sentence-note-line {
   margin-bottom: 6px;
+}
+
+.sentence-note-line.grammar {
+  padding-left: 8px;
+  border-left: 3px solid #ffd166;
+  color: #ffe0a3;
 }
 
 .sentence-note-line:last-child {
@@ -585,31 +700,36 @@
     gap: 15px;
   }
 
+  .jlpt-options-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
   .sentence-controls {
-    gap: 3px;
-    margin-left: 3px;
+    gap: 5px;
+    margin-left: 5px;
     vertical-align: middle;
   }
 
   .sentence-btn {
-    min-height: 32px;
-    min-width: 32px;
-    padding: 6px 8px;
-    font-size: 0.8em;
+    height: 1.55rem;
+    min-height: 1.55rem;
+    min-width: 1.55rem;
+    width: 1.55rem;
     touch-action: manipulation;
   }
 
   [data-token] {
-    margin: 0 !important;
-    padding: 1px 2px !important;
-    min-height: 28px !important;
+    margin: 0 1px !important;
+    padding: 0 1px !important;
+    min-height: 0 !important;
     min-width: auto !important;
   }
 
   .token {
-    min-height: 28px;
+    min-height: 0;
     min-width: auto;
-    padding: 1px 2px;
+    padding: 0 1px;
   }
 
   .token-popup {
@@ -662,10 +782,10 @@
   }
 
   .sentence-btn {
-    min-height: 32px;
-    min-width: 32px;
-    padding: 6px 8px;
-    font-size: 0.8em;
+    height: 1.55rem;
+    min-height: 1.55rem;
+    min-width: 1.55rem;
+    width: 1.55rem;
   }
 }
 
@@ -692,7 +812,9 @@ button {
 
 /* Prevent text selection on interactive elements */
 .token,
-.sentence-controls {
+.sentence-leading-controls,
+.sentence-controls,
+.sentence-edit-controls {
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
