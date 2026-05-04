@@ -66,7 +66,90 @@ test('GET /api/books returns existing book files', async () => {
 
   assert.equal(response.status, 200);
   assert.ok(Array.isArray(response.body));
-  assert.ok(response.body.includes(expectedFile));
+  assert.ok(response.body.some((book) => book.filename === expectedFile));
+});
+
+test('GET /api/books returns generated summary title when available', async () => {
+  const expectedFile = 'titled.book';
+  fs.writeFileSync(
+    path.join(booksDir, expectedFile),
+    JSON.stringify({ content: { summary: { title: 'Generated Reading Title' } } }),
+    'utf-8'
+  );
+
+  const response = await request(app).get('/api/books');
+
+  assert.equal(response.status, 200);
+  const listed = response.body.find((book) => book.filename === expectedFile);
+  assert.equal(listed.displayTitle, 'Generated Reading Title');
+  assert.equal(listed.summaryTitle, 'Generated Reading Title');
+});
+
+test('GET /api/books returns word count and JLPT difficulty when processed tokens exist', async () => {
+  const expectedFile = 'stats.book';
+  fs.writeFileSync(
+    path.join(booksDir, expectedFile),
+    JSON.stringify({
+      content: {
+        processedSentences: {
+          0: {
+            tokens: [
+              { surface: '人', pos: '名詞' },
+              { surface: 'も', pos: '助詞' },
+              { surface: 'かもしれない', pos: '助動詞', jlptGrammar: { level: 'N4' } },
+              { surface: 'に際して', pos: '助詞', jlptGrammar: { level: 'N1' } },
+              { surface: '。', pos: '記号' }
+            ]
+          }
+        }
+      }
+    }),
+    'utf-8'
+  );
+
+  const response = await request(app).get('/api/books');
+
+  assert.equal(response.status, 200);
+  const listed = response.body.find((book) => book.filename === expectedFile);
+  assert.equal(listed.wordCount, 4);
+  assert.equal(listed.difficultyLevel, 'N1');
+  assert.equal(listed.jlptTaggedCount, 2);
+  assert.equal(listed.jlptLevelCounts.N4, 1);
+  assert.equal(listed.jlptLevelCounts.N1, 1);
+});
+
+test('GET /api/books uses JLPT distribution instead of single hardest token', async () => {
+  const expectedFile = 'stats-distribution.book';
+  fs.writeFileSync(
+    path.join(booksDir, expectedFile),
+    JSON.stringify({
+      content: {
+        processedSentences: {
+          0: {
+            tokens: [
+              { surface: 'これ', pos: '名詞', jlptGrammar: { level: 'N4' } },
+              { surface: 'それ', pos: '名詞', jlptGrammar: { level: 'N4' } },
+              { surface: 'あれ', pos: '名詞', jlptGrammar: { level: 'N4' } },
+              { surface: 'どれ', pos: '名詞', jlptGrammar: { level: 'N4' } },
+              { surface: 'に際して', pos: '助詞', jlptGrammar: { level: 'N1' } },
+              { surface: '。', pos: '記号' }
+            ]
+          }
+        }
+      }
+    }),
+    'utf-8'
+  );
+
+  const response = await request(app).get('/api/books');
+
+  assert.equal(response.status, 200);
+  const listed = response.body.find((book) => book.filename === expectedFile);
+  assert.equal(listed.wordCount, 5);
+  assert.equal(listed.difficultyLevel, 'N4');
+  assert.equal(listed.jlptTaggedCount, 5);
+  assert.equal(listed.jlptLevelCounts.N4, 4);
+  assert.equal(listed.jlptLevelCounts.N1, 1);
 });
 
 test('GET /api/books/:book returns plain text content', async () => {
@@ -106,7 +189,60 @@ test('GET /api/imports returns files in import directory', async () => {
 
   assert.equal(response.status, 200);
   assert.ok(Array.isArray(response.body));
-  assert.ok(response.body.includes(expectedFile));
+  assert.ok(response.body.some((file) => file.filename === expectedFile));
+});
+
+test('GET /api/imports returns generated draft summary title when available', async () => {
+  const expectedFile = 'draft-title.txt';
+  fs.writeFileSync(path.join(uploadsDir, expectedFile), 'line 1', 'utf-8');
+  fs.writeFileSync(
+    path.join(booksDir, `${expectedFile}.book`),
+    JSON.stringify({
+      metadata: { status: 'draft', completed: false },
+      content: { summary: { title: 'Draft Summary Title' } }
+    }),
+    'utf-8'
+  );
+
+  const response = await request(app).get('/api/imports');
+
+  assert.equal(response.status, 200);
+  const listed = response.body.find((file) => file.filename === expectedFile);
+  assert.equal(listed.displayTitle, 'Draft Summary Title');
+  assert.equal(listed.summaryTitle, 'Draft Summary Title');
+});
+
+test('GET /api/imports returns word count and JLPT difficulty for draft progress', async () => {
+  const expectedFile = 'draft-stats.txt';
+  fs.writeFileSync(path.join(uploadsDir, expectedFile), 'line 1', 'utf-8');
+  fs.writeFileSync(
+    path.join(booksDir, `${expectedFile}.book`),
+    JSON.stringify({
+      metadata: { status: 'draft', completed: false },
+      content: {
+        processedSentences: {
+          0: {
+            tokens: [
+              { surface: 'これ', pos: '名詞' },
+              { surface: 'という', pos: '助詞', jlptGrammar: { level: 'N3' } },
+              { surface: '。', pos: '記号' }
+            ]
+          }
+        }
+      }
+    }),
+    'utf-8'
+  );
+
+  const response = await request(app).get('/api/imports');
+
+  assert.equal(response.status, 200);
+  const listed = response.body.find((file) => file.filename === expectedFile);
+  assert.equal(listed.wordCount, 2);
+  assert.equal(listed.difficultyLevel, 'N3');
+  assert.equal(listed.jlptTaggedCount, 1);
+  assert.equal(listed.jlptLevelCounts.N3, 1);
+  assert.equal(listed.jlptGrammarCounts.N3, 1);
 });
 
 test('GET /api/imports excludes imports that already have completed .book files', async () => {
@@ -133,9 +269,9 @@ test('GET /api/imports excludes imports that already have completed .book files'
 
   assert.equal(response.status, 200);
   assert.ok(Array.isArray(response.body));
-  assert.ok(response.body.includes(pendingName));
-  assert.ok(response.body.includes(draftName));
-  assert.ok(!response.body.includes(completedName));
+  assert.ok(response.body.some((file) => file.filename === pendingName));
+  assert.ok(response.body.some((file) => file.filename === draftName));
+  assert.ok(!response.body.some((file) => file.filename === completedName));
 });
 
 test('GET /api/books excludes draft progress files that still have import sources', async () => {
@@ -158,8 +294,44 @@ test('GET /api/books excludes draft progress files that still have import source
   const response = await request(app).get('/api/books');
 
   assert.equal(response.status, 200);
-  assert.ok(!response.body.includes(`${draftName}.book`));
-  assert.ok(response.body.includes(`${completedName}.book`));
+  assert.ok(!response.body.some((book) => book.filename === `${draftName}.book`));
+  assert.ok(response.body.some((book) => book.filename === `${completedName}.book`));
+});
+
+test('DELETE /api/books/:book deletes a saved reading resource and matching source text', async () => {
+  const filename = 'delete-reading.txt';
+  fs.writeFileSync(path.join(uploadsDir, filename), 'source line', 'utf-8');
+  fs.writeFileSync(path.join(booksDir, filename), 'book source line', 'utf-8');
+  fs.writeFileSync(
+    path.join(booksDir, `${filename}.book`),
+    JSON.stringify({ metadata: { status: 'reading', completed: true } }),
+    'utf-8'
+  );
+
+  const response = await request(app).delete(`/api/books/${filename}.book`);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.success, true);
+  assert.ok(!fs.existsSync(path.join(booksDir, `${filename}.book`)));
+  assert.ok(!fs.existsSync(path.join(booksDir, filename)));
+  assert.ok(!fs.existsSync(path.join(uploadsDir, filename)));
+});
+
+test('DELETE /api/import/:filename deletes draft source and progress file', async () => {
+  const filename = 'delete-draft.txt';
+  fs.writeFileSync(path.join(uploadsDir, filename), 'source line', 'utf-8');
+  fs.writeFileSync(
+    path.join(booksDir, `${filename}.book`),
+    JSON.stringify({ metadata: { status: 'draft', completed: false } }),
+    'utf-8'
+  );
+
+  const response = await request(app).delete(`/api/import/${filename}`);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.success, true);
+  assert.ok(!fs.existsSync(path.join(uploadsDir, filename)));
+  assert.ok(!fs.existsSync(path.join(booksDir, `${filename}.book`)));
 });
 
 test('POST /api/import/url rejects invalid URLs', async () => {

@@ -490,7 +490,7 @@
   z-index: 99999;
   max-width: 440px;
   min-width: 320px;
-  font-size: 1rem;
+  font-size: 0.98rem;
   color: #f2f2f2;
   line-height: 1.45;
   pointer-events: auto;
@@ -500,7 +500,7 @@
 
 .token-popup-header {
   margin-bottom: 6px;
-  font-size: 1.28rem;
+  font-size: 1.18rem;
   font-weight: 700;
   color: #4fc3f7;
   line-height: 1.2;
@@ -509,7 +509,7 @@
 .token-popup-reading {
   margin-bottom: 12px;
   color: #ccc;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   line-height: 1.2;
 }
 
@@ -520,7 +520,7 @@
 .token-popup-pattern {
   margin-bottom: 10px;
   color: #ffd166;
-  font-size: 0.98rem;
+  font-size: 0.94rem;
   line-height: 1.45;
 }
 
@@ -540,14 +540,14 @@
 
 .token-popup-meaning {
   margin-bottom: 10px;
-  font-size: 1.05rem;
+  font-size: 1rem;
   line-height: 1.45;
 }
 
 .token-popup-secondary {
   margin-bottom: 8px;
   color: #bdbdbd;
-  font-size: 0.92rem;
+  font-size: 0.9rem;
   line-height: 1.45;
 }
 

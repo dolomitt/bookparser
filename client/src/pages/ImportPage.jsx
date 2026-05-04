@@ -325,22 +325,10 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
                 right: '12px',
                 bottom: '12px',
                 transform: 'none',
-                backgroundColor: '#1a1a1a',
-                border: '2px solid #4fc3f7',
-                borderRadius: '8px',
-                padding: '14px',
-                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.8)',
-                zIndex: 99999,
                 maxWidth: 'none',
                 minWidth: '0',
                 maxHeight: '55vh',
                 overflowY: 'auto',
-                fontSize: '0.95em',
-                color: '#f2f2f2',
-                lineHeight: '1.5',
-                pointerEvents: 'auto',
-                display: 'block',
-                visibility: 'visible'
               } : {
                 position: 'fixed',
                 left: `${popupPosition.x}px`,
@@ -348,20 +336,6 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
                   ? { top: `${popupPosition.top}px` }
                   : { bottom: `${popupPosition.bottom}px` }),
                 transform: 'translateX(-50%)',
-                backgroundColor: '#1a1a1a',
-                border: '3px solid #4fc3f7',
-                borderRadius: '8px',
-                padding: '16px',
-                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.8)',
-                zIndex: 99999,
-                maxWidth: '440px',
-                minWidth: '320px',
-                fontSize: '1em',
-                color: '#f2f2f2',
-                lineHeight: '1.5',
-                pointerEvents: 'auto',
-                display: 'block',
-                visibility: 'visible'
               }}
             >
               <div className="token-popup-header">

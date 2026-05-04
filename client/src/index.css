@@ -195,23 +195,23 @@ button {
 .home-container {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 16px 20px;
   min-height: calc(100vh - 69px);
 }
 
 .hero-section {
   text-align: center;
-  margin-bottom: 24px;
-  padding: 32px 24px;
+  margin-bottom: 14px;
+  padding: 18px 20px;
   background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
   border-radius: 8px;
   border: 1px solid #333;
 }
 
 .hero-title {
-  font-size: 2.5rem;
+  font-size: 2rem;
   font-weight: 700;
-  margin: 0 0 1rem 0;
+  margin: 0 0 0.55rem 0;
   background: linear-gradient(135deg, #4fc3f7 0%, #29b6f6 50%, #0288d1 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -219,25 +219,25 @@ button {
 }
 
 .hero-subtitle {
-  font-size: 1.2rem;
+  font-size: 1rem;
   color: #b0b0b0;
-  margin: 0 0 2rem 0;
+  margin: 0 0 1rem 0;
   max-width: 600px;
   margin-left: auto;
   margin-right: auto;
-  line-height: 1.6;
+  line-height: 1.4;
 }
 
 .hero-stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 160px));
+  grid-template-columns: repeat(2, minmax(0, 130px));
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .stat-card {
   background: #333;
-  padding: 16px;
+  padding: 10px 14px;
   border-radius: 8px;
   border: 1px solid #444;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -249,27 +249,27 @@ button {
 }
 
 .stat-number {
-  font-size: 2.5rem;
+  font-size: 1.8rem;
   font-weight: 700;
   color: #4fc3f7;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.15rem;
 }
 
 .stat-label {
-  font-size: 0.9rem;
+  font-size: 0.76rem;
   color: #888;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .quick-actions {
-  margin-bottom: 24px;
+  margin-bottom: 14px;
 }
 
 .action-card {
   display: flex;
   align-items: center;
-  padding: 20px;
+  padding: 12px 16px;
   background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
   border-radius: 8px;
   text-decoration: none;
@@ -287,32 +287,32 @@ button {
 }
 
 .action-icon {
-  font-size: 3rem;
-  margin-right: 1.5rem;
+  font-size: 1.75rem;
+  margin-right: 0.8rem;
 }
 
 .action-content h3 {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.5rem;
+  margin: 0 0 0.15rem 0;
+  font-size: 1.1rem;
   font-weight: 600;
 }
 
 .action-content p {
   margin: 0;
   opacity: 0.9;
-  font-size: 1rem;
+  font-size: 0.9rem;
 }
 
 .content-grid {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 1rem;
 }
 
 .section-card {
   background: #2a2a2a;
   border-radius: 8px;
-  padding: 20px;
+  padding: 14px;
   border: 1px solid #333;
 }
 
@@ -320,14 +320,14 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1.5rem;
-  padding-bottom: 1rem;
+  margin-bottom: 0.9rem;
+  padding-bottom: 0.65rem;
   border-bottom: 1px solid #333;
 }
 
 .section-header h2 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.15rem;
   font-weight: 600;
 }
 
@@ -343,16 +343,15 @@ button {
 .books-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .book-card {
   display: flex;
   align-items: center;
-  padding: 16px;
+  padding: 12px;
   background: #333;
   border-radius: 8px;
-  text-decoration: none;
   color: #f2f2f2;
   transition: all 0.3s ease;
   border: 1px solid #444;
@@ -379,9 +378,23 @@ button {
 .book-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-  text-decoration: none;
   color: #fff;
   border-color: #555;
+}
+
+.book-card-main {
+  align-items: center;
+  color: inherit;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  padding-right: 26px;
+  text-decoration: none;
+}
+
+.book-card-main:hover {
+  color: inherit;
+  text-decoration: none;
 }
 
 .book-card.processed {
@@ -397,31 +410,47 @@ button {
 }
 
 .book-icon {
-  font-size: 2rem;
-  margin-right: 1rem;
+  font-size: 1.45rem;
+  margin-right: 0.75rem;
   opacity: 0.8;
 }
 
 .book-info {
   flex: 1;
+  min-width: 0;
 }
 
 .book-info h4 {
-  margin: 0 0 0.3rem 0;
-  font-size: 1.1rem;
+  margin: 0 0 0.2rem 0;
+  font-size: 1rem;
   font-weight: 600;
   word-break: break-word;
 }
 
+.book-filename {
+  color: #aaa;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  margin: -0.05rem 0 0.25rem 0;
+  overflow-wrap: anywhere;
+}
+
+.book-stats {
+  color: #c7d2da;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  margin: 0 0 0.28rem 0;
+}
+
 .book-type {
-  font-size: 0.85rem;
+  font-size: 0.72rem;
   color: #888;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .book-arrow {
-  font-size: 1.2rem;
+  font-size: 1rem;
   opacity: 0.6;
   transition: all 0.3s ease;
 }
@@ -431,9 +460,54 @@ button {
   transform: translateX(3px);
 }
 
+.book-delete-btn {
+  align-items: center;
+  background: transparent;
+  border: 1px solid #744;
+  border-radius: 50%;
+  color: #ffb4b4;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.95rem;
+  font-weight: 700;
+  height: 26px;
+  justify-content: center;
+  line-height: 1;
+  min-width: 26px;
+  padding: 0;
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+  width: 26px;
+  z-index: 1;
+}
+
+.book-delete-btn:hover,
+.book-delete-btn:focus-visible {
+  background: rgba(185, 28, 28, 0.2);
+  border-color: #ff6b6b;
+  color: #fff;
+  outline: none;
+}
+
+.book-delete-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.home-message {
+  background: #263238;
+  border: 1px solid #455a64;
+  border-radius: 6px;
+  color: #f2f2f2;
+  grid-column: 1 / -1;
+  padding: 12px 14px;
+}
+
 .empty-state {
   text-align: center;
-  padding: 4rem 2rem;
+  padding: 2.5rem 1.5rem;
   color: #888;
 }
 
@@ -457,28 +531,30 @@ button {
 /* Responsive Design */
 @media (max-width: 768px) {
   .home-container {
-    padding: 12px;
+    padding: 10px;
   }
 
   .hero-section {
-    padding: 20px 14px;
+    padding: 14px 12px;
+    margin-bottom: 10px;
   }
 
   .hero-title {
-    font-size: 1.75rem;
+    font-size: 1.45rem;
   }
 
   .hero-subtitle {
-    font-size: 1rem;
+    font-size: 0.88rem;
+    margin-bottom: 0.8rem;
   }
 
   .hero-stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
 
   .stat-card {
-    padding: 12px 8px;
+    padding: 9px 8px;
   }
 
   .stat-number {
@@ -491,12 +567,12 @@ button {
   }
 
   .action-card {
-    padding: 16px;
+    padding: 10px 12px;
   }
 
   .action-icon {
-    font-size: 2rem;
-    margin-right: 1rem;
+    font-size: 1.4rem;
+    margin-right: 0.65rem;
   }
 
   .books-grid {
@@ -504,7 +580,7 @@ button {
   }
 
   .section-card {
-    padding: 14px;
+    padding: 12px;
   }
 }
 

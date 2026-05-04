@@ -8,8 +8,10 @@ import { config, logConfig } from './config/index.js';
 import ollamaService from './services/ollamaService.js';
 import japaneseService from './services/japaneseService.js';
 import jlptGrammarService from './services/jlptGrammarService.js';
+import jlptVocabularyService from './services/jlptVocabularyService.js';
 import booksRouter from './routes/books.js';
 import ttsRouter from './routes/tts.js';
+import { getBookStats } from './utils/resourceStats.js';
 
 // Log configuration
 logConfig();
@@ -98,9 +100,42 @@ app.get('/api/imports', (req, res) => {
       const completedBookPath = path.join(config.booksDir, `${file}.book`);
       return !fs.existsSync(completedBookPath) || !isCompletedBookFile(completedBookPath);
     });
-    res.json(pendingImports);
+    res.json(pendingImports.map(getImportListItem));
   });
 });
+
+function getImportListItem(file) {
+  const item = {
+    filename: file,
+    displayTitle: file,
+    summaryTitle: null,
+    wordCount: null,
+    difficultyLevel: null,
+    jlptTaggedCount: null,
+    jlptLevelCounts: {},
+    jlptVocabularyCounts: {},
+    jlptGrammarCounts: {}
+  };
+
+  const draftBookPath = path.join(config.booksDir, `${file}.book`);
+  if (!fs.existsSync(draftBookPath)) {
+    return item;
+  }
+
+  try {
+    const bookData = JSON.parse(fs.readFileSync(draftBookPath, 'utf-8'));
+    const summaryTitle = String(bookData?.content?.summary?.title || '').trim();
+    if (summaryTitle) {
+      item.displayTitle = summaryTitle;
+      item.summaryTitle = summaryTitle;
+    }
+    Object.assign(item, getBookStats(bookData));
+  } catch {
+    // Fall back to the filename for legacy or malformed draft files.
+  }
+
+  return item;
+}
 
 function isCompletedBookFile(bookPath) {
   if (!bookPath.endsWith('.book')) return true;
@@ -617,7 +652,9 @@ app.post('/api/import', uploadSingleTxt, async (req, res) => {
               dictionarySource: dictLookup ? dictLookup.source : null
             };
           }));
-          const enhancedTokens = jlptGrammarService.annotateTokens(dictionaryTokens);
+          const enhancedTokens = jlptGrammarService.annotateTokens(
+            jlptVocabularyService.annotateTokens(dictionaryTokens)
+          );
 
           // Count different types of tokens
           const words = tokens.filter(token =>
@@ -1001,6 +1038,36 @@ app.delete('/api/import/:filename/sentence/:sentenceIndex', (req, res) => {
     console.error('Error deleting sentence:', error);
     res.status(500).json({ error: 'Failed to delete sentence' });
   }
+});
+
+app.delete('/api/import/:filename', (req, res) => {
+  const filename = path.basename(req.params.filename);
+  if (filename !== req.params.filename) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
+
+  const targets = [
+    path.join(config.uploadDir, filename),
+    path.join(config.booksDir, `${filename}.book`)
+  ];
+
+  const deleted = [];
+  for (const target of targets) {
+    if (!fs.existsSync(target)) continue;
+    try {
+      fs.unlinkSync(target);
+      deleted.push(path.basename(target));
+    } catch (error) {
+      console.error('Error deleting draft resource:', error);
+      return res.status(500).json({ error: 'Failed to delete draft resource' });
+    }
+  }
+
+  if (deleted.length === 0) {
+    return res.status(404).json({ error: 'Draft resource not found' });
+  }
+
+  res.json({ success: true, deleted });
 });
 
 // Save processed file to books with all analysis data
@@ -1431,7 +1498,9 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
 
     const aiExpressions = Array.isArray(ollamaAnalysis?.expressions) ? ollamaAnalysis.expressions : [];
     const expressionAnnotatedTokens = applyAiExpressionAnnotations(enhancedTokens, aiExpressions);
-    const jlptAnnotatedTokens = jlptGrammarService.annotateTokens(expressionAnnotatedTokens);
+    const jlptAnnotatedTokens = jlptGrammarService.annotateTokens(
+      jlptVocabularyService.annotateTokens(expressionAnnotatedTokens)
+    );
     const sentenceNotes = collectSentenceNotes(ollamaAnalysis, aiExpressions, jlptAnnotatedTokens);
     const tokensWithFrequency = japaneseService.enhanceTokensWithFrequency(jlptAnnotatedTokens, frequencySettings);
     const frequencyStats = japaneseService.getTokenFrequencyStats(tokensWithFrequency);

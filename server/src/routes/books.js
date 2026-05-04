@@ -2,6 +2,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { config } from '../config/index.js';
+import { getBookStats } from '../utils/resourceStats.js';
 
 const router = express.Router();
 
@@ -31,6 +32,39 @@ function isCompletedBookFile(bookPath) {
   }
 }
 
+function getBookListItem(file) {
+  const item = {
+    filename: file,
+    displayTitle: file,
+    summaryTitle: null,
+    wordCount: null,
+    difficultyLevel: null,
+    jlptTaggedCount: null,
+    jlptLevelCounts: {},
+    jlptVocabularyCounts: {},
+    jlptGrammarCounts: {}
+  };
+
+  if (!file.endsWith('.book')) {
+    return item;
+  }
+
+  try {
+    const bookPath = path.join(config.booksDir, file);
+    const bookData = JSON.parse(fs.readFileSync(bookPath, 'utf-8'));
+    const summaryTitle = String(bookData?.content?.summary?.title || '').trim();
+    if (summaryTitle) {
+      item.displayTitle = summaryTitle;
+      item.summaryTitle = summaryTitle;
+    }
+    Object.assign(item, getBookStats(bookData));
+  } catch {
+    // Fall back to the filename for legacy or malformed book files.
+  }
+
+  return item;
+}
+
 // List all books
 router.get('/', (req, res) => {
   fs.readdir(config.booksDir, (err, files) => {
@@ -45,7 +79,7 @@ router.get('/', (req, res) => {
       return isCompletedBookFile(path.join(config.booksDir, file));
     });
 
-    res.json(visibleBooks);
+    res.json(visibleBooks.map(getBookListItem));
   });
 });
 
@@ -80,6 +114,41 @@ router.get('/:book', (req, res) => {
     console.error('Error reading book:', error);
     res.status(500).json({ error: 'Failed to read book' });
   }
+});
+
+// Delete a saved reading resource.
+router.delete('/:book', (req, res) => {
+  const requestedName = req.params.book;
+  const safeName = path.basename(requestedName);
+
+  if (safeName !== requestedName) {
+    return res.status(400).json({ error: 'Invalid book path' });
+  }
+
+  const targets = [path.join(config.booksDir, safeName)];
+  if (safeName.endsWith('.book')) {
+    const baseName = safeName.replace(/\.book$/, '');
+    targets.push(path.join(config.booksDir, baseName));
+    targets.push(path.join(config.uploadDir, baseName));
+  }
+
+  const deleted = [];
+  for (const target of targets) {
+    if (!fs.existsSync(target)) continue;
+    try {
+      fs.unlinkSync(target);
+      deleted.push(path.basename(target));
+    } catch (error) {
+      console.error('Error deleting book resource:', error);
+      return res.status(500).json({ error: 'Failed to delete reading resource' });
+    }
+  }
+
+  if (deleted.length === 0) {
+    return res.status(404).json({ error: 'Reading resource not found' });
+  }
+
+  res.json({ success: true, deleted });
 });
 
 export default router;
