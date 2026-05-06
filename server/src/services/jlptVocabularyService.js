@@ -15,6 +15,16 @@ class JlptVocabularyService {
       .trim();
   }
 
+  normalizeReading(value) {
+    return this.normalizeValue(value).replace(/[\u30A1-\u30F6]/g, (char) =>
+      String.fromCharCode(char.charCodeAt(0) - 0x60)
+    );
+  }
+
+  hasKanji(value) {
+    return /[\u3400-\u4dbf\u4e00-\u9faf]/.test(String(value || ''));
+  }
+
   load() {
     try {
       const dataUrl = new URL('../data/jlptVocabulary.json', import.meta.url);
@@ -45,18 +55,23 @@ class JlptVocabularyService {
   }
 
   findMatch(token) {
-    const candidates = [
+    const surfaceCandidates = [
       token?.surface_form,
       token?.surface,
-      token?.basic_form,
-      token?.reading
+      token?.basic_form
     ];
+    const tokenHasKanji = surfaceCandidates.some((candidate) => this.hasKanji(candidate));
+    const candidates = tokenHasKanji
+      ? surfaceCandidates
+      : [...surfaceCandidates, token?.reading];
 
     for (const candidate of candidates) {
       const key = this.normalizeValue(candidate);
       if (!key) continue;
       const match = this.byVariant.get(key);
-      if (match) return match;
+      const tokenReading = this.normalizeReading(token?.reading);
+      const matchReading = this.normalizeReading(match?.reading);
+      if (match && (!tokenReading || !matchReading || tokenReading === matchReading)) return match;
     }
 
     return null;

@@ -11,6 +11,47 @@ const COMPACT_PROMPT_POS = new Set([
   '助動詞'
 ]);
 
+const LEARNER_PROMPT_POS = new Set([
+  '名詞',
+  '動詞',
+  '形容詞',
+  '副詞',
+  '連体詞',
+  '接続詞'
+]);
+
+const LEARNER_GRAMMAR_SURFACES = new Set([
+  'は',
+  'が',
+  'を',
+  'に',
+  'で',
+  'と',
+  'も',
+  'の',
+  'へ',
+  'から',
+  'まで',
+  'より',
+  'や',
+  'か',
+  'て',
+  'た',
+  'だ',
+  'です',
+  'ます',
+  'ない',
+  'たい',
+  'れる',
+  'られる',
+  'せる',
+  'させる',
+  'そう',
+  'よう',
+  'らしい',
+  'べき'
+]);
+
 function extractJsonObjectsFromBuffer(buffer) {
   const objects = [];
   let start = -1;
@@ -91,6 +132,9 @@ class OllamaService {
     this.modelLoadedStatusByBaseUrl = new Map();
     this.modelLoadInFlightByBaseUrl = new Map();
     this.contextMode = config.ollama.contextMode === 'compact' ? 'compact' : 'full';
+    this.aiTokenScope = ['all', 'learner'].includes(config.ollama.aiTokenScope)
+      ? config.ollama.aiTokenScope
+      : 'learner';
     const thinkEnv = process.env.BOOKPARSER_OLLAMA_THINK;
     this.think = thinkEnv !== undefined
       ? (thinkEnv === 'true' ? true : thinkEnv === 'false' ? false : thinkEnv)
@@ -591,6 +635,25 @@ ${sourceText}`;
     return healthyBaseUrls;
   }
 
+  async getAvailabilityStatus({ force = false } = {}) {
+    const endpoints = await Promise.all(this.baseUrls.map(async (baseUrl) => {
+      const healthy = await this.checkBaseUrlHealth(baseUrl, { force });
+      const status = this.healthStatusByBaseUrl.get(baseUrl);
+
+      return {
+        baseUrl,
+        healthy,
+        reason: status?.reason || ''
+      };
+    }));
+
+    return {
+      available: endpoints.some((endpoint) => endpoint.healthy),
+      model: this.model,
+      endpoints
+    };
+  }
+
   getTokenSurface(token) {
     return (token?.surface || token?.surface_form || '').trim();
   }
@@ -603,12 +666,29 @@ ${sourceText}`;
     return COMPACT_PROMPT_POS.has(token?.pos);
   }
 
+  isLearnerPromptToken(token) {
+    const surface = this.getTokenSurface(token);
+    if (!surface) return false;
+    if (token?.pos === '記号') return false;
+    if (token?.isSplitGrammarToken || token?.expressionSurface) return true;
+    if (token?.expressionMeaning || token?.expressionNote) return true;
+    if (LEARNER_PROMPT_POS.has(token?.pos)) return true;
+    if ((token?.pos === '助詞' || token?.pos === '助動詞') && LEARNER_GRAMMAR_SURFACES.has(surface)) {
+      return true;
+    }
+    return false;
+  }
+
   buildPromptTokens(tokens) {
-    if (this.contextMode !== 'compact') {
+    if (this.aiTokenScope === 'all' && this.contextMode !== 'compact') {
       return tokens;
     }
 
-    const filtered = tokens.filter((token) => this.isCompactPromptToken(token));
+    const isRelevantToken = this.aiTokenScope === 'learner'
+      ? (token) => this.isLearnerPromptToken(token)
+      : (token) => this.isCompactPromptToken(token);
+
+    const filtered = tokens.filter(isRelevantToken);
     const seenSurfaces = new Set();
     const deduped = [];
 
@@ -623,8 +703,8 @@ ${sourceText}`;
       return deduped;
     }
 
-    // Fallback to original tokens to avoid sending an empty token list.
-    return tokens;
+    // Fallback to non-symbol tokens to avoid sending an empty token list.
+    return tokens.filter((token) => token?.pos !== '記号');
   }
 
   // Test Ollama connection and list available models
@@ -693,10 +773,18 @@ ${sourceText}`;
 
         const promptTokens = this.buildPromptTokens(tokens);
         const tokenList = promptTokens.map((token) => this.getTokenSurface(token)).filter(Boolean).join(' | ');
+        const indexedTokenList = tokens
+          .map((token, index) => {
+            const surface = this.getTokenSurface(token);
+            if (!surface) return '';
+            return `[${index}] ${surface} (${token.reading || ''}, ${token.pos || ''})`;
+          })
+          .filter(Boolean)
+          .join(' | ');
         this.log('[Ollama] Token list for analysis:', tokenList);
-        if (this.contextMode === 'compact') {
+        if (promptTokens.length !== tokens.length) {
           this.log(
-            `[Ollama] Compact mode: prompt tokens reduced from ${tokens.length} to ${promptTokens.length}`
+            `[Ollama] AI token scope "${this.aiTokenScope}": prompt tokens reduced from ${tokens.length} to ${promptTokens.length}`
           );
         }
 
@@ -723,16 +811,40 @@ ${sourceText}`;
 
         this.log(`[Ollama] Using fixed response limit: ${fixedNumPredict} tokens for ${promptTokens.length} prompt tokens`);
 
-        const prompt = `Translate this Japanese sentence and analyze listed tokens.
+        const prompt = `Translate this Japanese sentence and analyze only the listed learner-relevant tokens.
+Do not add punctuation or tokens that are not listed.
 Identify fixed expressions/set phrases (if any) and include them.
+Before translating, review whether the token boundaries and meanings are suitable for this sentence.
+If adjacent listed tokens should be merged, or a token's meaning is clearly the wrong dictionary sense, suggest a correction in tokenCorrections.
+Only suggest corrections when you are confident. Use tokenIndexes from Indexed tokens. Do not reorder tokens.
 
 ${contextText}
 
 Tokens: ${tokenList}
+Indexed tokens: ${indexedTokenList}
 
 Return JSON only:
 {
   "fullLineTranslation": "English translation",
+  "tokenCorrections": [
+    {
+      "type": "merge",
+      "tokenIndexes": [0, 1],
+      "surface": "joined surface from adjacent tokens",
+      "reading": "reading of merged token",
+      "translation": "natural meaning",
+      "contextualMeaning": "why this merged token is correct here",
+      "grammaticalRole": "grammar role"
+    },
+    {
+      "type": "overrideMeaning",
+      "tokenIndexes": [0],
+      "surface": "token",
+      "translation": "correct sense in this sentence",
+      "contextualMeaning": "why this sense is correct here",
+      "grammaticalRole": "grammar role"
+    }
+  ],
   "tokens": [
     {
       "surface": "token",

@@ -47,6 +47,24 @@ const isKnownJlptGrammar = (token, jlptSettings = {}) => {
   return JLPT_LEVEL_RANK[grammarLevel] <= JLPT_LEVEL_RANK[knownLevel];
 };
 
+const getDisplayToken = (token = {}) => {
+  if (
+    token.surface === '未' &&
+    token.reading === 'み' &&
+    /Sheep|Ram|Goat|zodiac|south-southwest|lunar calendar/i.test(token.translation || '')
+  ) {
+    return {
+      ...token,
+      translation: 'not yet; un-; non-; before',
+      contextualMeaning: 'not yet; un-; non-',
+      jlptVocabulary: null,
+      vocabularyJlptLevel: null
+    };
+  }
+
+  return token;
+};
+
 function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBookmark, jlptSettings = {} }) {
   const [activePopup, setActivePopup] = useState(null);
   const [popupPosition, setPopupPosition] = useState({ x: 0, top: null, bottom: null });
@@ -165,7 +183,8 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
 
   return (
     <div style={{ display: 'inline', position: 'relative' }}>
-      {tokens.map((token, tokenIdx) => {
+      {tokens.map((rawToken, tokenIdx) => {
+        const token = getDisplayToken(rawToken);
         const isMergedVerb = token.pos === '動詞' && (token.pos_detail === 'compound' || token.pos_detail === 'inflected');
         const isPunctuation = token.pos === '記号' || token.surface === '」';
         const shouldHideBasedOnFrequency = token.frequency && token.frequency.shouldHideFurigana;
@@ -249,11 +268,14 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
               WebkitUserSelect: 'none',
               WebkitTouchCallout: 'none',
               lineHeight: 'inherit',
-              textDecoration: 'none',
+              textDecorationLine: hasGrammarHighlight ? 'underline' : 'none',
+              textDecorationColor: hasGrammarHighlight
+                ? (isExpressionHovered ? '#ffd166' : 'rgba(255, 209, 102, 0.75)')
+                : 'transparent',
+              textDecorationThickness: hasGrammarHighlight ? '3px' : 'auto',
+              textUnderlineOffset: hasGrammarHighlight ? '0.14em' : 'auto',
               borderTop: '1px solid transparent',
-              borderBottom: hasGrammarHighlight
-                ? `3px solid ${isExpressionHovered ? '#ffd166' : 'rgba(255, 209, 102, 0.7)'}`
-                : '3px solid transparent',
+              borderBottom: '1px solid transparent',
               borderLeft: '1px solid transparent',
               borderRight: '1px solid transparent',
               borderTopLeftRadius: '0',
@@ -291,7 +313,7 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
       {activePopup !== null && activePopup.startsWith(`${sentenceIndex}-`) && (
         (() => {
           const tokenIdx = parseInt(activePopup.split('-')[1]);
-          const token = tokens[tokenIdx];
+          const token = getDisplayToken(tokens[tokenIdx]);
           if (!token) return null;
 
           const tokenJlptGrammar = token.jlptGrammar || null;
@@ -419,6 +441,13 @@ export default function ImportPage() {
   const [processedSentences, setProcessedSentences] = useState({});
   const [processingSentences, setProcessingSentences] = useState({});
   const [pageAiProcessing, setPageAiProcessing] = useState(false);
+  const [ollamaStatus, setOllamaStatus] = useState({
+    checking: true,
+    available: false,
+    model: '',
+    endpoints: [],
+    message: 'Checking Ollama'
+  });
   const [activeSentenceNotes, setActiveSentenceNotes] = useState(null);
   const [activeSentenceControls, setActiveSentenceControls] = useState(null);
   const [activeTranslationSentence, setActiveTranslationSentence] = useState(null);
@@ -427,6 +456,7 @@ export default function ImportPage() {
   const [bookSummarySentences, setBookSummarySentences] = useState([]);
   const [bookSummaryGeneratedAt, setBookSummaryGeneratedAt] = useState(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const pageAiRunRef = useRef(0);
   const [ollamaStreamPopup, setOllamaStreamPopup] = useState({
     visible: false,
     sentenceIndex: null,
@@ -511,8 +541,51 @@ export default function ImportPage() {
   const [currentReadingPosition, setCurrentReadingPosition] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadOllamaStatus = async () => {
+      try {
+        const response = await axios.get('/api/ollama/status');
+        if (cancelled) return;
+
+        const endpoints = Array.isArray(response.data?.endpoints) ? response.data.endpoints : [];
+        const firstUnavailable = endpoints.find((endpoint) => !endpoint.healthy);
+        setOllamaStatus({
+          checking: false,
+          available: Boolean(response.data?.available),
+          model: response.data?.model || '',
+          endpoints,
+          message: response.data?.available
+            ? 'Ollama ready'
+            : (firstUnavailable?.reason || 'Ollama unavailable')
+        });
+      } catch (error) {
+        if (cancelled) return;
+        setOllamaStatus({
+          checking: false,
+          available: false,
+          model: '',
+          endpoints: [],
+          message: error.response?.data?.details || error.message || 'Ollama unavailable'
+        });
+      }
+    };
+
+    loadOllamaStatus();
+    const intervalId = window.setInterval(loadOllamaStatus, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    pageAiRunRef.current += 1;
     setInitialLoadComplete(false);
     setIsCompletedBookView(isBookViewHint);
+    setPageAiProcessing(false);
+    setMessage('');
     setLines([]);
     setSentences([]);
     setProcessedSentences({});
@@ -555,6 +628,27 @@ export default function ImportPage() {
       document.removeEventListener('touchstart', handleOutsideNotesClick, true);
     };
   }, [activeSentenceNotes]);
+
+  useEffect(() => {
+    const handleTranslationDocumentClick = (event) => {
+      if (activeTranslationSentence === null) return;
+
+      const clickedTranslationButton = event.target.closest('.sentence-btn.translation');
+      if (!clickedTranslationButton) {
+        setActiveTranslationSentence(null);
+      }
+    };
+
+    if (activeTranslationSentence !== null) {
+      document.addEventListener('click', handleTranslationDocumentClick, true);
+      document.addEventListener('touchstart', handleTranslationDocumentClick, true);
+    }
+
+    return () => {
+      document.removeEventListener('click', handleTranslationDocumentClick, true);
+      document.removeEventListener('touchstart', handleTranslationDocumentClick, true);
+    };
+  }, [activeTranslationSentence]);
 
   useEffect(() => {
     const handleOutsideControlsClick = (event) => {
@@ -1838,6 +1932,11 @@ export default function ImportPage() {
   const handleRunAiForCurrentPage = async () => {
     if (pageAiProcessing) return;
 
+    if (ollamaStatus.checking || !ollamaStatus.available) {
+      setMessage(`AI processing unavailable: ${ollamaStatus.message}`);
+      return;
+    }
+
     const pageSentenceEntries = paginatedSentences.filter((entry) => !entry.isLineBreak);
     const totalPageSentences = pageSentenceEntries.length;
 
@@ -1850,6 +1949,10 @@ export default function ImportPage() {
       `Run AI processing for all ${totalPageSentences} sentences on page ${currentPage}?`
     );
     if (!confirmed) return;
+
+    const runId = pageAiRunRef.current + 1;
+    pageAiRunRef.current = runId;
+    const isCurrentRun = () => pageAiRunRef.current === runId;
 
     setPageAiProcessing(true);
     setMessage(`AI processing page ${currentPage}: 0/${totalPageSentences}`);
@@ -1886,6 +1989,7 @@ export default function ImportPage() {
     }
 
     const updateProgress = () => {
+      if (!isCurrentRun()) return;
       const completed = processedCount + skippedCount + errorCount;
       setMessage(`AI processing page ${currentPage}: ${completed}/${totalPageSentences}`);
       setOllamaStreamPopup((prev) => ({
@@ -1904,6 +2008,10 @@ export default function ImportPage() {
 
     const runWorker = async () => {
       while (true) {
+        if (!isCurrentRun()) {
+          return;
+        }
+
         const currentCursor = cursor;
         cursor += 1;
         if (currentCursor >= sentenceIndexesToProcess.length) {
@@ -1933,6 +2041,10 @@ export default function ImportPage() {
 
           const response = await axios.post('/api/parse', requestData);
 
+          if (!isCurrentRun()) {
+            return;
+          }
+
           if (response.data.analysis && response.data.analysis.tokens) {
             const sentenceData = {
               tokens: response.data.analysis.tokens,
@@ -1950,24 +2062,32 @@ export default function ImportPage() {
         } catch (error) {
           console.error(`AI page processing failed for sentence ${sentenceIndex}:`, error);
           errorCount++;
-          setOllamaStreamPopup((prev) => ({
-            ...prev,
-            visible: true,
-            status: `page ${currentPage}: error`,
-            content: `${prev.content}Error on sentence ${sentenceIndex}: ${error.message || 'unknown error'}\n`
-          }));
+          if (isCurrentRun()) {
+            setOllamaStreamPopup((prev) => ({
+              ...prev,
+              visible: true,
+              status: `page ${currentPage}: error`,
+              content: `${prev.content}Error on sentence ${sentenceIndex}: ${error.message || 'unknown error'}\n`
+            }));
+          }
         } finally {
-          setProcessingSentences((prev) => {
-            const updated = { ...prev };
-            delete updated[sentenceIndex];
-            return updated;
-          });
-          updateProgress();
+          if (isCurrentRun()) {
+            setProcessingSentences((prev) => {
+              const updated = { ...prev };
+              delete updated[sentenceIndex];
+              return updated;
+            });
+            updateProgress();
+          }
         }
       }
     };
 
     await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+
+    if (!isCurrentRun()) {
+      return;
+    }
 
     if (errorCount > 0) {
       setMessage(
@@ -2159,6 +2279,13 @@ export default function ImportPage() {
 
   const paginatedSentences = sentences.length > 0 ? getPaginatedSentences() : [];
   const displayTitle = String(bookSummaryTitle || '').trim() || filename;
+  const visibleMessage = !filename && /^AI (processing page|page processing)/i.test(message)
+    ? ''
+    : message;
+  const aiPageDisabled = pageAiProcessing || ollamaStatus.checking || !ollamaStatus.available;
+  const aiPageTitle = ollamaStatus.available
+    ? 'Run remote AI processing for all sentences on this page'
+    : `Ollama unavailable: ${ollamaStatus.message}`;
 
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= totalPages) {
@@ -2220,9 +2347,9 @@ export default function ImportPage() {
               <button
                 onClick={handleRunAiForCurrentPage}
                 className="btn"
-                style={{ backgroundColor: '#1d4ed8' }}
-                disabled={pageAiProcessing}
-                title="Run remote AI processing for all sentences on this page"
+                style={{ backgroundColor: aiPageDisabled ? '#64748b' : '#1d4ed8' }}
+                disabled={aiPageDisabled}
+                title={aiPageTitle}
               >
                 {pageAiProcessing ? 'AI Page Running...' : `AI This Page (${currentPage})`}
               </button>
@@ -2934,7 +3061,7 @@ export default function ImportPage() {
           )}
         </div>
       )}
-      {message && <div className="message">{message}</div>}
+      {visibleMessage && <div className="message">{visibleMessage}</div>}
     </div>
   );
 }

@@ -25,6 +25,47 @@ test('splitGrammarCompoundTokens splits にあたる into learner-friendly token
   assert.ok(output[0].expressionMeaning.includes('correspond'));
 });
 
+test('mergePrefixNounCompounds keeps mi noun compounds as one reader token', () => {
+  const input = [
+    { surface_form: '\u672a', reading: '\u30df', pos: '\u63a5\u982d\u8a5e', pos_detail_1: '\u540d\u8a5e\u63a5\u7d9a', basic_form: '\u672a', pronunciation: '\u30df' },
+    { surface_form: '\u89e3\u660e', reading: '\u30ab\u30a4\u30e1\u30a4', pos: '\u540d\u8a5e', pos_detail_1: '\u30b5\u5909\u63a5\u7d9a', basic_form: '\u89e3\u660e', pronunciation: '\u30ab\u30a4\u30e1\u30a4' },
+    { surface_form: '\u3060', reading: '\u30c0', pos: '\u52a9\u52d5\u8a5e', pos_detail_1: '*', basic_form: '\u3060', pronunciation: '\u30c0' }
+  ];
+
+  const output = japaneseService.mergePrefixNounCompounds(input);
+
+  assert.equal(output.length, 2);
+  assert.equal(output[0].surface_form, '\u672a\u89e3\u660e');
+  assert.equal(output[0].reading, '\u30df\u30ab\u30a4\u30e1\u30a4');
+  assert.equal(output[0].pos, '\u540d\u8a5e');
+  assert.equal(output[0].mergeReason, 'mi_prefix_noun');
+  assert.equal(output[1].surface_form, '\u3060');
+});
+
+test('mergeVerbTokens keeps verb stem plus nikui as one reader token', () => {
+  const input = [
+    { surface_form: '\u3067\u304d', reading: '\u30c7\u30ad', pos: '\u52d5\u8a5e', pos_detail_1: '\u81ea\u7acb', basic_form: '\u3067\u304d\u308b', pronunciation: '\u30c7\u30ad' },
+    { surface_form: '\u306b\u304f\u3044', reading: '\u30cb\u30af\u30a4', pos: '\u5f62\u5bb9\u8a5e', pos_detail_1: '\u975e\u81ea\u7acb', basic_form: '\u306b\u304f\u3044', pronunciation: '\u30cb\u30af\u30a4' },
+    { surface_form: '\u7406\u7531', reading: '\u30ea\u30e6\u30a6', pos: '\u540d\u8a5e', pos_detail_1: '\u4e00\u822c', basic_form: '\u7406\u7531', pronunciation: '\u30ea\u30e6\u30a6' }
+  ];
+
+  const output = japaneseService.mergeVerbTokens(input);
+
+  assert.equal(output.length, 2);
+  assert.equal(output[0].surface_form, '\u3067\u304d\u306b\u304f\u3044');
+  assert.equal(output[0].reading, '\u30c7\u30ad\u30cb\u30af\u30a4');
+  assert.equal(output[0].pos, '\u52d5\u8a5e');
+  assert.equal(output[0].mergeReason, 'verb_inflection_complete');
+  assert.equal(output[1].surface_form, '\u7406\u7531');
+});
+
+test('lookupInJMDict uses rule glosses for merged stem adjective tokens', async () => {
+  const output = await japaneseService.lookupInJMDict('\u3067\u304d\u306b\u304f\u3044', '\u3067\u304d\u306b\u304f\u3044');
+
+  assert.equal(output.meanings, 'hard to happen or form; unlikely to develop');
+  assert.equal(output.source, 'Rule');
+});
+
 test('splitGrammarCompoundTokens can be disabled', () => {
   const input = [{
     surface_form: 'にあたる',

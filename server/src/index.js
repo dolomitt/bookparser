@@ -91,6 +91,22 @@ if (shouldRunExternalChecks) {
 app.use('/api/books', booksRouter);
 app.use('/api/text-to-speech', ttsRouter);
 
+app.get('/api/ollama/status', async (req, res) => {
+  try {
+    const status = await ollamaService.getAvailabilityStatus({
+      force: req.query.force === 'true'
+    });
+    res.json(status);
+  } catch (error) {
+    console.error('Error checking Ollama status:', error);
+    res.status(500).json({
+      available: false,
+      error: 'Failed to check Ollama status',
+      details: error.message
+    });
+  }
+});
+
 // List imports in progress
 app.get('/api/imports', (req, res) => {
   fs.readdir(config.uploadDir, (err, files) => {
@@ -260,6 +276,11 @@ function extractTagContent(html, tagName) {
 
 function htmlToPlainText(html) {
   const source = String(html || '');
+  const structuredArticle = extractStructuredArticleText(source);
+  if (structuredArticle) {
+    return structuredArticle;
+  }
+
   const mainHtml =
     extractTagContent(source, 'article') ||
     extractTagContent(source, 'main') ||
@@ -276,6 +297,55 @@ function htmlToPlainText(html) {
       .replace(/<\/(?:p|div|section|article|main|header|footer|h[1-6]|li)>/gi, '\n')
       .replace(/<[^>]+>/g, ' ')
   );
+}
+
+function getArticleType(value) {
+  if (Array.isArray(value)) return value.map(getArticleType).join(' ');
+  return String(value || '');
+}
+
+function collectStructuredNodes(value, nodes = []) {
+  if (!value || typeof value !== 'object') return nodes;
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectStructuredNodes(item, nodes));
+    return nodes;
+  }
+
+  nodes.push(value);
+  collectStructuredNodes(value['@graph'], nodes);
+  collectStructuredNodes(value.mainEntity, nodes);
+  collectStructuredNodes(value.mainEntityOfPage, nodes);
+  return nodes;
+}
+
+function extractStructuredArticleText(html) {
+  const scripts = String(html || '').matchAll(
+    /<script\b[^>]*type=["'][^"']*application\/ld\+json[^"']*["'][^>]*>([\s\S]*?)<\/script>/gi
+  );
+
+  for (const script of scripts) {
+    const jsonText = decodeHtmlEntities(script[1]).trim();
+    if (!jsonText) continue;
+
+    try {
+      const payload = JSON.parse(jsonText);
+      const article = collectStructuredNodes(payload).find((node) => {
+        const type = getArticleType(node['@type']);
+        return /\b(?:Article|NewsArticle|BlogPosting)\b/i.test(type) && node.articleBody;
+      });
+
+      if (article) {
+        return [article.headline, article.articleBody]
+          .filter(Boolean)
+          .join('\n\n');
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return '';
 }
 
 function markdownToPlainText(markdown) {
@@ -474,12 +544,13 @@ async function scrapeArticleWithCrawl4AI(articleUrl) {
 
   const markdown = getMarkdownText(result?.markdown);
   const title = result?.metadata?.title || '';
+  const rawHtmlStructuredText = result?.html ? extractStructuredArticleText(result.html) : '';
   const fallbackHtmlText = result?.cleaned_html ? htmlToPlainText(result.cleaned_html) : '';
 
   return {
     provider: 'crawl4ai',
     title: String(title || '').trim(),
-    text: markdown ? markdownToPlainText(markdown) : fallbackHtmlText
+    text: rawHtmlStructuredText || (markdown ? markdownToPlainText(markdown) : fallbackHtmlText)
   };
 }
 
@@ -542,7 +613,11 @@ async function scrapeArticleDirectly(articleUrl) {
 async function scrapeArticle(articleUrl) {
   if (config.crawl4ai.baseUrl) {
     try {
-      return await scrapeArticleWithCrawl4AI(articleUrl);
+      const article = await scrapeArticleWithCrawl4AI(articleUrl);
+      if (normalizeArticleLines(article.text, article).length > 0) {
+        return article;
+      }
+      console.warn('[URL Import] Crawl4AI returned no readable article text, falling back');
     } catch (error) {
       console.warn('[URL Import] Crawl4AI failed, falling back:', error.message);
     }
@@ -550,7 +625,11 @@ async function scrapeArticle(articleUrl) {
 
   if (config.firecrawl.apiKey) {
     try {
-      return await scrapeArticleWithFirecrawl(articleUrl);
+      const article = await scrapeArticleWithFirecrawl(articleUrl);
+      if (normalizeArticleLines(article.text, article).length > 0) {
+        return article;
+      }
+      console.warn('[URL Import] Firecrawl returned no readable article text, falling back');
     } catch (error) {
       console.warn('[URL Import] Firecrawl failed, falling back to direct fetch:', error.message);
     }
@@ -595,11 +674,15 @@ app.post('/api/import', uploadSingleTxt, async (req, res) => {
           });
 
           // Apply basic token merging
+          const prefixCompoundTokens = japaneseService.mergePrefixNounCompounds(
+            japaneseService.mergePunctuationTokens(grammarSplitTokens)
+          );
+
           const tokens = japaneseService.mergeGrammarExpressions(
             japaneseService.mergeAuxiliarySequences(japaneseService.mergeVerbTokens(
               japaneseService.mergeNounCompounds(japaneseService.mergeCoordinatedNounPhrases(
                 japaneseService.mergeNominalizedNounPhrases(
-                  japaneseService.mergePunctuationTokens(grammarSplitTokens)
+                  prefixCompoundTokens
                 )
               )),
               {
@@ -1353,6 +1436,148 @@ function collectSentenceNotes(ollamaAnalysis = null, aiExpressions = [], tokens 
   return notes.slice(0, 4);
 }
 
+function normalizeTokenSurface(value) {
+  return String(value || '').replace(/\s+/g, '').trim();
+}
+
+function getCorrectionTokenIndexes(correction) {
+  const indexes = Array.isArray(correction?.tokenIndexes)
+    ? correction.tokenIndexes
+    : (Array.isArray(correction?.indexes) ? correction.indexes : []);
+
+  return indexes
+    .map((index) => Number(index))
+    .filter((index) => Number.isInteger(index) && index >= 0);
+}
+
+function areAdjacentIndexes(indexes) {
+  if (indexes.length === 0) return false;
+  for (let i = 1; i < indexes.length; i++) {
+    if (indexes[i] !== indexes[i - 1] + 1) return false;
+  }
+  return true;
+}
+
+function buildMergedToken(tokens, indexes, correction) {
+  const sourceTokens = indexes.map((index) => tokens[index]);
+  if (sourceTokens.some((token) => !token || token.pos === '記号')) return null;
+
+  const joinedSurface = sourceTokens.map((token) => token.surface_form || token.surface || '').join('');
+  const proposedSurface = normalizeTokenSurface(correction.surface || joinedSurface);
+  if (normalizeTokenSurface(joinedSurface) !== proposedSurface) return null;
+
+  const primaryToken = sourceTokens.find((token) => token.pos !== '接頭詞') || sourceTokens[0];
+
+  return {
+    ...primaryToken,
+    surface_form: joinedSurface,
+    surface: joinedSurface,
+    basic_form: sourceTokens.map((token) => token.basic_form || token.surface_form || token.surface || '').join(''),
+    reading: correction.reading || sourceTokens.map((token) => token.reading || token.surface_form || token.surface || '').join(''),
+    pos: primaryToken.pos || sourceTokens[0].pos,
+    pos_detail: 'ai_corrected_merge',
+    isAiCorrectedToken: true,
+    aiCorrectionType: 'merge',
+    aiCorrectionIndexes: indexes,
+    aiCorrectionTranslation: correction.translation || '',
+    aiCorrectionContextualMeaning: correction.contextualMeaning || correction.reason || '',
+    aiCorrectionGrammaticalRole: correction.grammaticalRole || primaryToken.pos || '',
+    originalTokens: sourceTokens
+  };
+}
+
+function applyAiTokenCorrections(tokens, corrections = []) {
+  if (!Array.isArray(tokens) || tokens.length === 0 || !Array.isArray(corrections)) {
+    return { tokens, appliedCorrections: [] };
+  }
+
+  let correctedTokens = tokens.map((token, index) => ({
+    ...token,
+    originalTokenIndex: index
+  }));
+  const appliedCorrections = [];
+  const consumedIndexes = new Set();
+  const mergeByStartIndex = new Map();
+
+  const mergeCorrections = corrections
+    .filter((correction) => correction?.type === 'merge')
+    .map((correction) => ({
+      correction,
+      indexes: getCorrectionTokenIndexes(correction)
+    }))
+    .filter(({ indexes }) => indexes.length >= 2 && indexes.length <= 5 && areAdjacentIndexes(indexes))
+    .sort((a, b) => a.indexes[0] - b.indexes[0]);
+
+  for (const { correction, indexes } of mergeCorrections) {
+    if (indexes.some((index) => index >= tokens.length || consumedIndexes.has(index))) continue;
+
+    const mergedToken = buildMergedToken(tokens, indexes, correction);
+    if (!mergedToken) continue;
+
+    mergeByStartIndex.set(indexes[0], { token: mergedToken, indexes });
+    indexes.forEach((index) => consumedIndexes.add(index));
+    appliedCorrections.push({
+      type: 'merge',
+      tokenIndexes: indexes,
+      surface: mergedToken.surface_form,
+      translation: mergedToken.aiCorrectionTranslation,
+      contextualMeaning: mergedToken.aiCorrectionContextualMeaning
+    });
+  }
+
+  if (mergeByStartIndex.size > 0) {
+    correctedTokens = [];
+    for (let index = 0; index < tokens.length; index++) {
+      const merge = mergeByStartIndex.get(index);
+      if (merge) {
+        correctedTokens.push(merge.token);
+        index = merge.indexes[merge.indexes.length - 1];
+        continue;
+      }
+
+      if (!consumedIndexes.has(index)) {
+        correctedTokens.push({
+          ...tokens[index],
+          originalTokenIndex: index
+        });
+      }
+    }
+  }
+
+  for (const correction of corrections) {
+    if (correction?.type !== 'overrideMeaning') continue;
+    const indexes = getCorrectionTokenIndexes(correction);
+    if (indexes.length !== 1 || indexes[0] >= tokens.length || consumedIndexes.has(indexes[0])) continue;
+
+    const targetSurface = normalizeTokenSurface(correction.surface);
+    const tokenIndex = indexes[0];
+    correctedTokens = correctedTokens.map((token) => {
+      if (token.originalTokenIndex !== tokenIndex) return token;
+      if (targetSurface && normalizeTokenSurface(token.surface_form || token.surface) !== targetSurface) return token;
+
+      return {
+        ...token,
+        isAiCorrectedToken: true,
+        aiCorrectionType: 'overrideMeaning',
+        aiCorrectionIndexes: indexes,
+        aiCorrectionTranslation: correction.translation || '',
+        aiCorrectionContextualMeaning: correction.contextualMeaning || correction.reason || '',
+        aiCorrectionGrammaticalRole: correction.grammaticalRole || token.pos || ''
+      };
+    });
+
+    appliedCorrections.push({
+      type: 'overrideMeaning',
+      tokenIndexes: indexes,
+      surface: correction.surface || tokens[tokenIndex]?.surface_form || tokens[tokenIndex]?.surface,
+      translation: correction.translation || '',
+      contextualMeaning: correction.contextualMeaning || correction.reason || ''
+    });
+  }
+
+  return { tokens: correctedTokens, appliedCorrections };
+}
+
 async function processTextAnalysis(payload, onOllamaChunk = null) {
   const {
     text,
@@ -1373,10 +1598,14 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
     const tokensAfterPunctuation = verbMergeOptions.mergePunctuation !== false
       ? japaneseService.mergePunctuationTokens(grammarSplitTokens)
       : grammarSplitTokens;
+    const tokensAfterPrefixes = japaneseService.mergePrefixNounCompounds(
+      tokensAfterPunctuation,
+      verbMergeOptions
+    );
 
     let tokens;
     if (verbMergeOptions.useCompoundDetection) {
-      const compoundTokens = japaneseService.detectCompoundVerbs(tokensAfterPunctuation);
+      const compoundTokens = japaneseService.detectCompoundVerbs(tokensAfterPrefixes);
       tokens = japaneseService.mergeGrammarExpressions(
         japaneseService.mergeAuxiliarySequences(japaneseService.mergeVerbTokens(
           japaneseService.mergeNounCompounds(
@@ -1395,7 +1624,7 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
         japaneseService.mergeAuxiliarySequences(japaneseService.mergeVerbTokens(
           japaneseService.mergeNounCompounds(
             japaneseService.mergeCoordinatedNounPhrases(
-              japaneseService.mergeNominalizedNounPhrases(tokensAfterPunctuation, verbMergeOptions),
+              japaneseService.mergeNominalizedNounPhrases(tokensAfterPrefixes, verbMergeOptions),
               verbMergeOptions
             ),
             verbMergeOptions
@@ -1405,12 +1634,6 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
         verbMergeOptions
       );
     }
-
-    const words = tokens.filter(token =>
-      token.pos === '名詞' || token.pos === '動詞' || token.pos === '形容詞' || token.pos === '副詞'
-    );
-    const nouns = tokens.filter(token => token.pos === '名詞');
-    const verbs = tokens.filter(token => token.pos === '動詞');
 
     const basicTokens = tokens.map(token => ({
       surface_form: token.surface_form,
@@ -1437,7 +1660,10 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
           onOllamaChunk
         );
       } catch (ollamaError) {
-        // Continue with local dictionary data if Ollama fails
+        const error = new Error(`AI processing unavailable: ${ollamaError.message || 'Ollama request failed'}`);
+        error.statusCode = 503;
+        error.code = 'AI_PROCESSING_UNAVAILABLE';
+        throw error;
       }
     }
 
@@ -1453,8 +1679,26 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
       }
     }
 
-    const enhancedTokens = await Promise.all(basicTokens.map(async (token) => {
-      const aiData = tokenAnalysisData.find(ai => ai.surface === token.surface_form) || {};
+    const tokenCorrectionResult = applyAiTokenCorrections(
+      basicTokens,
+      ollamaAnalysis?.tokenCorrections
+    );
+    const analysisTokens = tokenCorrectionResult.tokens;
+
+    const words = analysisTokens.filter(token =>
+      token.pos === '名詞' || token.pos === '動詞' || token.pos === '形容詞' || token.pos === '副詞'
+    );
+    const nouns = analysisTokens.filter(token => token.pos === '名詞');
+    const verbs = analysisTokens.filter(token => token.pos === '動詞');
+
+    const enhancedTokens = await Promise.all(analysisTokens.map(async (token) => {
+      const aiData = token.aiCorrectionTranslation
+        ? {
+            translation: token.aiCorrectionTranslation,
+            contextualMeaning: token.aiCorrectionContextualMeaning,
+            grammaticalRole: token.aiCorrectionGrammaticalRole
+          }
+        : (tokenAnalysisData.find(ai => ai.surface === token.surface_form) || {});
 
       let dictLookup = null;
       if (token.pos !== '記号') {
@@ -1492,7 +1736,9 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
         translation: translation,
         contextualMeaning: aiData.contextualMeaning || 'N/A',
         grammaticalRole: aiData.grammaticalRole || token.pos,
-        dictionarySource: dictLookup ? dictLookup.source : null
+        dictionarySource: dictLookup ? dictLookup.source : null,
+        aiCorrectionType: token.aiCorrectionType || null,
+        aiCorrectionIndexes: token.aiCorrectionIndexes || null
       };
     }));
 
@@ -1506,7 +1752,7 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
     const frequencyStats = japaneseService.getTokenFrequencyStats(tokensWithFrequency);
 
     const analysisStatus = useRemoteProcessing
-      ? (ollamaAnalysis ? 'Processed with AI translations' : 'Processed with dictionary only (AI unavailable)')
+      ? 'Processed with AI translations'
       : 'Processed with local dictionary';
 
     result = {
@@ -1517,13 +1763,14 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
       fullSentenceTranslation: fullLineTranslation,
       sentenceNotes: sentenceNotes,
       analysis: {
-        totalTokens: tokens.length,
+        totalTokens: analysisTokens.length,
         words: words.length,
         nouns: nouns.length,
         verbs: verbs.length,
         characters: text.length,
         tokens: tokensWithFrequency,
         hasAIAnalysis: !!ollamaAnalysis,
+        tokenCorrections: tokenCorrectionResult.appliedCorrections,
         frequencyStats: frequencyStats,
         sentenceNotes: sentenceNotes
       }
@@ -1563,9 +1810,10 @@ app.post('/api/parse', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Error processing text:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       error: 'Failed to process text',
-      details: error.message
+      details: error.message,
+      code: error.code || 'PROCESSING_FAILED'
     });
   }
 });

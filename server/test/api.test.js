@@ -343,6 +343,35 @@ test('POST /api/import/url rejects invalid URLs', async () => {
   assert.match(response.body.error, /valid http or https URL/);
 });
 
+test('GET /api/ollama/status reports configured Ollama availability', async () => {
+  const { default: ollamaService } = await import('../src/services/ollamaService.js');
+  const originalGetAvailabilityStatus = ollamaService.getAvailabilityStatus;
+
+  ollamaService.getAvailabilityStatus = async ({ force } = {}) => {
+    assert.equal(force, true);
+    return {
+      available: false,
+      model: 'test-model',
+      endpoints: [{
+        baseUrl: 'http://127.0.0.1:11434',
+        healthy: false,
+        reason: 'fetch failed'
+      }]
+    };
+  };
+
+  try {
+    const response = await request(app).get('/api/ollama/status?force=true');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.available, false);
+    assert.equal(response.body.model, 'test-model');
+    assert.equal(response.body.endpoints[0].reason, 'fetch failed');
+  } finally {
+    ollamaService.getAvailabilityStatus = originalGetAvailabilityStatus;
+  }
+});
+
 test('POST /api/import/url imports readable article text into the imports directory', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url, options = {}) => ({
@@ -383,6 +412,146 @@ test('POST /api/import/url imports readable article text into the imports direct
     const importedText = fs.readFileSync(path.join(uploadsDir, response.body.filename), 'utf-8');
     assert.match(importedText, /これはテスト記事です。/);
     assert.match(importedText, /環境への影響を説明します。/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('POST /api/import/url falls back when Crawl4AI returns no readable text', async () => {
+  const originalFetch = globalThis.fetch;
+  const title = '\u306a\u305c\u3001\u304c\u3093\u306f\u5fc3\u81d3\u306b\u201c\u3067\u304d\u306a\u3044\u201d\u306e\u304b\uff1f';
+  const firstParagraph = '\u304c\u3093\u304c\u5fc3\u81d3\u306b\u767a\u751f\u3059\u308b\u3053\u3068\u306f\u975e\u5e38\u306b\u307e\u308c\u3060\u3002';
+  const secondParagraph = '\u6700\u65b0\u306e\u7814\u7a76\u304c\u3001\u305d\u306e\u7269\u7406\u7684\u306a\u30e1\u30ab\u30cb\u30ba\u30e0\u3092\u660e\u3089\u304b\u306b\u3057\u305f\u3002';
+  const calls = [];
+
+  globalThis.fetch = async (url) => {
+    calls.push(url);
+
+    if (url === 'http://crawl4ai.test/crawl') {
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({
+          success: true,
+          results: [{
+            success: true,
+            metadata: { title },
+            markdown: { raw_markdown: '' }
+          }]
+        }),
+        text: async () => ''
+      };
+    }
+
+    return {
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: {
+        get: () => 'text/html; charset=utf-8'
+      },
+      text: async () => `<!doctype html>
+        <html>
+          <head>
+            <title>${title} | WIRED.jp</title>
+            <script type="application/ld+json">
+              ${JSON.stringify({
+                '@context': 'https://schema.org',
+                '@type': 'NewsArticle',
+                headline: title,
+                articleBody: `${firstParagraph}\n\n${secondParagraph}`
+              })}
+            </script>
+          </head>
+          <body><article></article></body>
+        </html>`
+    };
+  };
+
+  try {
+    const response = await request(app)
+      .post('/api/import/url')
+      .send({ url: 'https://wired.jp/article/heartbeat-mechanical-load-inhibits-cancer-growth/' });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.provider, 'direct');
+    assert.deepEqual(calls, [
+      'http://crawl4ai.test/crawl',
+      'https://wired.jp/article/heartbeat-mechanical-load-inhibits-cancer-growth/'
+    ]);
+
+    const importedText = fs.readFileSync(path.join(uploadsDir, response.body.filename), 'utf-8');
+    assert.match(importedText, new RegExp(firstParagraph));
+    assert.match(importedText, new RegExp(secondParagraph));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('POST /api/import/url prefers structured Crawl4AI HTML over page chrome markdown', async () => {
+  const originalFetch = globalThis.fetch;
+  const title = '\u306a\u305c\u3001\u304c\u3093\u306f\u5fc3\u81d3\u306b\u201c\u3067\u304d\u306a\u3044\u201d\u306e\u304b\uff1f';
+  const firstParagraph = '\u304c\u3093\u304c\u5fc3\u81d3\u306b\u767a\u751f\u3059\u308b\u3053\u3068\u306f\u975e\u5e38\u306b\u307e\u308c\u3060\u3002';
+  const secondParagraph = '\u6700\u65b0\u306e\u7814\u7a76\u304c\u3001\u305d\u306e\u7269\u7406\u7684\u306a\u30e1\u30ab\u30cb\u30ba\u30e0\u3092\u660e\u3089\u304b\u306b\u3057\u305f\u3002';
+
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: async () => ({
+      success: true,
+      results: [{
+        success: true,
+        metadata: { title: `${title} | WIRED.jp` },
+        markdown: {
+          raw_markdown: [
+            'Privacy Center',
+            'Currently, only residents from GDPR countries can opt out.',
+            'Social Media',
+            'Essential',
+            'OK',
+            title,
+            'Business',
+            'Culture',
+            'Gear',
+            'Mobility',
+            'Science',
+            'Health'
+          ].join('\n')
+        },
+        html: `<!doctype html>
+          <html>
+            <head>
+              <script type="application/ld+json">
+                ${JSON.stringify({
+                  '@context': 'https://schema.org',
+                  '@type': 'NewsArticle',
+                  headline: title,
+                  articleBody: `${firstParagraph}\n\n${secondParagraph}`
+                })}
+              </script>
+            </head>
+            <body>cookie settings</body>
+          </html>`
+      }]
+    }),
+    text: async () => ''
+  });
+
+  try {
+    const response = await request(app)
+      .post('/api/import/url')
+      .send({ url: 'https://wired.jp/article/heartbeat-mechanical-load-inhibits-cancer-growth/' });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.provider, 'crawl4ai');
+
+    const importedText = fs.readFileSync(path.join(uploadsDir, response.body.filename), 'utf-8');
+    assert.doesNotMatch(importedText, /Privacy Center/);
+    assert.doesNotMatch(importedText, /Social Media/);
+    assert.match(importedText, new RegExp(firstParagraph));
+    assert.match(importedText, new RegExp(secondParagraph));
   } finally {
     globalThis.fetch = originalFetch;
   }

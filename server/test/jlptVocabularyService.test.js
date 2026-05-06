@@ -12,6 +12,15 @@ test('jlptVocabularyService annotates tokens with vocabulary JLPT level', () => 
   assert.equal(token.vocabularyJlptLevel, 'N5');
 });
 
+test('jlptVocabularyService does not match kanji entries with a different reading', () => {
+  const [token] = jlptVocabularyService.annotateTokens([
+    { surface_form: '\u672a', reading: '\u307f', basic_form: '\u672a' }
+  ]);
+
+  assert.equal(token.jlptVocabulary, undefined);
+  assert.equal(token.vocabularyJlptLevel, undefined);
+});
+
 test('jlptVocabularyService can match by reading when surface form differs', () => {
   const [token] = jlptVocabularyService.annotateTokens([
     { surface_form: 'おちゃ', reading: 'おちゃ', basic_form: 'おちゃ' }

@@ -51,6 +51,45 @@ class JapaneseService {
   async lookupInJMDict(word, reading) {
     //console.log(`[JMDict] Looking up word: "${word}", reading: "${reading}"`);
 
+    if (word === '未' && this.katakanaToHiragana(reading) === 'み') {
+      return {
+        word,
+        reading,
+        meanings: 'not yet; un-; non-; before',
+        partOfSpeech: ['pref'],
+        source: 'JMDict'
+      };
+    }
+
+    if (word === 'できにくい') {
+      return {
+        word,
+        reading,
+        meanings: 'hard to happen or form; unlikely to develop',
+        partOfSpeech: ['v'],
+        source: 'Rule'
+      };
+    }
+
+    const stemAdjectiveMeanings = [
+      { suffix: 'にくい', meaning: 'hard to do; difficult to do; unlikely to happen' },
+      { suffix: 'やすい', meaning: 'easy to do; likely to happen' },
+      { suffix: 'づらい', meaning: 'hard to do; difficult to do' },
+      { suffix: 'がたい', meaning: 'hard to do; difficult to do' }
+    ];
+    const stemAdjectiveMeaning = stemAdjectiveMeanings.find(({ suffix }) =>
+      typeof word === 'string' && word.length > suffix.length && word.endsWith(suffix)
+    );
+    if (stemAdjectiveMeaning) {
+      return {
+        word,
+        reading,
+        meanings: stemAdjectiveMeaning.meaning,
+        partOfSpeech: ['v'],
+        source: 'Rule'
+      };
+    }
+
     if (!this.jmdictDb) {
       console.log('[JMDict] Database not available - skipping lookup');
       return null;
@@ -395,6 +434,48 @@ class JapaneseService {
     return mergedTokens;
   }
 
+  mergePrefixNounCompounds(tokens, options = {}) {
+    const { mergePrefixNounCompounds = true } = options;
+    if (!mergePrefixNounCompounds) return tokens;
+
+    const mergedTokens = [];
+    let i = 0;
+
+    while (i < tokens.length) {
+      const prefixToken = tokens[i];
+      const nounToken = tokens[i + 1];
+
+      const matchesUnPrefixCompound =
+        prefixToken?.surface_form === '未' &&
+        prefixToken?.pos === '接頭詞' &&
+        this.isMergeableNounToken(nounToken);
+
+      if (matchesUnPrefixCompound) {
+        const compoundGroup = [prefixToken, nounToken];
+        mergedTokens.push({
+          surface_form: compoundGroup.map(t => t.surface_form).join(''),
+          reading: compoundGroup.map(t => t.reading || t.surface_form).join(''),
+          pos: '名詞',
+          pos_detail_1: 'prefix_compound',
+          pos_detail_2: nounToken.pos_detail_2,
+          pos_detail_3: nounToken.pos_detail_3,
+          basic_form: compoundGroup.map(t => t.basic_form || t.surface_form).join(''),
+          pronunciation: compoundGroup.map(t => t.pronunciation || t.reading || t.surface_form).join(''),
+          isPrefixCompound: true,
+          originalTokens: compoundGroup,
+          mergeReason: 'mi_prefix_noun'
+        });
+        i += compoundGroup.length;
+        continue;
+      }
+
+      mergedTokens.push(prefixToken);
+      i += 1;
+    }
+
+    return mergedTokens;
+  }
+
   mergeNominalizedNounPhrases(tokens, options = {}) {
     const { mergeNominalizedNounPhrases = true } = options;
     if (!mergeNominalizedNounPhrases) return tokens;
@@ -658,6 +739,7 @@ class JapaneseService {
       'いる', 'ある', 'おる', 'くる', 'いく', 'みる', 'しまう', 'おく',
       'あげる', 'くれる', 'もらう', 'やる', 'いただく', 'さしあげる'
     ];
+    const stemAdjectiveSuffixes = new Set(['にくい', 'やすい', 'づらい', 'がたい']);
 
     while (i < tokens.length) {
       const currentToken = tokens[i];
@@ -686,6 +768,15 @@ class JapaneseService {
           }
           // Merge auxiliary verb patterns
           else if (mergeAuxiliaryVerbs && auxiliaryPatterns.includes(nextToken.surface_form)) {
+            shouldMerge = true;
+          }
+          // Merge verb stem + auxiliary adjective patterns like できにくい.
+          else if (
+            mergeVerbSuffixes &&
+            nextToken.pos === '形容詞' &&
+            nextToken.pos_detail_1 === '非自立' &&
+            stemAdjectiveSuffixes.has(nextToken.surface_form)
+          ) {
             shouldMerge = true;
           }
           // Merge specific particles that attach to verbs

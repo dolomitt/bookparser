@@ -74,6 +74,7 @@ export const config = {
     maxTokens: parseInt(process.env.BOOKPARSER_OLLAMA_MAX_TOKENS) || 10000, // Fixed response token limit
     summaryMaxTokens: parseInt(process.env.BOOKPARSER_OLLAMA_SUMMARY_MAX_TOKENS) || 16000,
     contextMode: (process.env.BOOKPARSER_CONTEXT_MODE || 'full').toLowerCase(),
+    aiTokenScope: (process.env.BOOKPARSER_AI_TOKEN_SCOPE || 'learner').toLowerCase(),
     contextWindow: parseInt(process.env.BOOKPARSER_CONTEXT_WINDOW || '', 10),
     get baseUrl() {
       return `http://${this.host}:${this.port}`;
@@ -111,6 +112,7 @@ export function logConfig() {
   console.log('BOOKPARSER_OLLAMA_MAX_RETRIES:', config.ollama.maxRetries);
   console.log('BOOKPARSER_OLLAMA_SUMMARY_MAX_TOKENS:', config.ollama.summaryMaxTokens);
   console.log('BOOKPARSER_CONTEXT_MODE:', config.ollama.contextMode);
+  console.log('BOOKPARSER_AI_TOKEN_SCOPE:', config.ollama.aiTokenScope);
   if (!Number.isNaN(config.ollama.contextWindow)) {
     console.log('BOOKPARSER_CONTEXT_WINDOW:', config.ollama.contextWindow);
   }
