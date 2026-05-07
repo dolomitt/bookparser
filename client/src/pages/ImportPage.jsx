@@ -2,6 +2,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import './ImportPage.css';
+import {
+  cacheImportPayload,
+  getCachedImportPayload,
+  updateCachedImportSentence
+} from '../utils/offlineCache';
 
 // Cookie utility functions
 const setCookie = (name, value, days = 30) => {
@@ -43,6 +48,12 @@ const TOKEN_SPACING = {
   AFTER_WORDS_PARTICLES: 'afterWordsParticles',
   NONE: 'none'
 };
+const READING_FONT_SCALE = {
+  DEFAULT: 1,
+  MIN: 0.85,
+  MAX: 1.5,
+  STEP: 0.05
+};
 const WORD_SPACE_POS = new Set(['名詞', '動詞', '形容詞', '副詞', '連体詞', '接頭詞']);
 const PARTICLE_POS = '助詞';
 const PUNCTUATION_POS = '記号';
@@ -83,6 +94,17 @@ const shouldAddDisplaySpace = (token = {}, nextToken = null, spacingMode = TOKEN
   if (spacingMode !== TOKEN_SPACING.AFTER_WORDS_PARTICLES || !nextToken) return false;
   if (isPunctuationToken(token) || isPunctuationToken(nextToken)) return false;
   return WORD_SPACE_POS.has(token.pos) || token.pos === PARTICLE_POS;
+};
+
+const clampReadingFontScale = (value) => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return READING_FONT_SCALE.DEFAULT;
+
+  const clamped = Math.min(
+    READING_FONT_SCALE.MAX,
+    Math.max(READING_FONT_SCALE.MIN, numericValue)
+  );
+  return Math.round(clamped * 100) / 100;
 };
 
 function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBookmark, jlptSettings = {}, tokenSpacing = TOKEN_SPACING.NONE }) {
@@ -550,8 +572,17 @@ export default function ImportPage() {
     return getCookie('tokenSpacing') || TOKEN_SPACING.AFTER_WORDS_PARTICLES;
   });
 
+  const [readingFontScale, setReadingFontScale] = useState(() => {
+    return clampReadingFontScale(getCookie('readingFontScale') || READING_FONT_SCALE.DEFAULT);
+  });
+
   const [showJlptOptions, setShowJlptOptions] = useState(() => {
     const saved = getCookie('showJlptOptions');
+    return saved !== null ? saved : false;
+  });
+
+  const [showDisplayOptions, setShowDisplayOptions] = useState(() => {
+    const saved = getCookie('showDisplayOptions');
     return saved !== null ? saved : false;
   });
 
@@ -767,8 +798,16 @@ export default function ImportPage() {
   }, [tokenSpacing]);
 
   useEffect(() => {
+    setCookie('readingFontScale', readingFontScale);
+  }, [readingFontScale]);
+
+  useEffect(() => {
     setCookie('showJlptOptions', showJlptOptions);
   }, [showJlptOptions]);
+
+  useEffect(() => {
+    setCookie('showDisplayOptions', showDisplayOptions);
+  }, [showDisplayOptions]);
 
   // Function to split text into sentences using Japanese dot (。)
   const splitIntoSentences = (text) => {
@@ -846,49 +885,52 @@ export default function ImportPage() {
 
     if (!initialLoadComplete) {
       console.log('Initial load for:', filename);
-      axios.get(`/api/import/${filename}`).then(res => {
-        if (cancelled) return;
-        console.log('File data loaded:', res.data);
-        const isImportSource = res.data?.sourceLocation === 'imports';
-        const shouldUseCompletedView = isBookViewHint || (!isImportSource && !!res.data.isCompletedBookView);
+      const applyFileData = (data, { fromCache = false } = {}) => {
+        console.log('File data loaded:', data);
+        const isImportSource = data?.sourceLocation === 'imports';
+        const shouldUseCompletedView = isBookViewHint || (!isImportSource && !!data.isCompletedBookView);
         setIsCompletedBookView(shouldUseCompletedView);
-        setBookSummaryTitle(String(res.data.existingSummaryTitle || '').trim());
+        setBookSummaryTitle(String(data.existingSummaryTitle || '').trim());
         setBookSummarySentences(
-          Array.isArray(res.data.existingSummarySentences)
-            ? res.data.existingSummarySentences.map((sentence) => String(sentence || '').trim()).filter(Boolean)
+          Array.isArray(data.existingSummarySentences)
+            ? data.existingSummarySentences.map((sentence) => String(sentence || '').trim()).filter(Boolean)
             : []
         );
-        setBookSummaryGeneratedAt(res.data.existingSummaryGeneratedAt || null);
-        setLines(res.data.lines);
+        setBookSummaryGeneratedAt(data.existingSummaryGeneratedAt || null);
+        setLines(data.lines);
 
-        const allSentences = buildSentencesFromLines(res.data.lines);
+        const allSentences = buildSentencesFromLines(data.lines);
 
         setSentences(allSentences);
-        console.log(`Split ${res.data.lines.length} lines into ${allSentences.length} sentences`);
+        console.log(`Split ${data.lines.length} lines into ${allSentences.length} sentences`);
+
+        const existingProcessedSentences = data.existingProcessedSentences || {};
 
         // Load existing processed sentences if available
-        if (res.data.existingProcessedSentences && Object.keys(res.data.existingProcessedSentences).length > 0) {
-          console.log('Loading existing processed sentences:', res.data.existingProcessedSentences);
-          setProcessedSentences(res.data.existingProcessedSentences);
-          console.log(`Loaded ${Object.keys(res.data.existingProcessedSentences).length} previously processed sentences`);
+        if (Object.keys(existingProcessedSentences).length > 0) {
+          console.log('Loading existing processed sentences:', existingProcessedSentences);
+          setProcessedSentences(existingProcessedSentences);
+          console.log(`Loaded ${Object.keys(existingProcessedSentences).length} previously processed sentences`);
         } else {
           setProcessedSentences({});
         }
 
         // Load existing verb merge options if available
-        if (res.data.existingVerbMergeOptions && Object.keys(res.data.existingVerbMergeOptions).length > 0) {
+        if (data.existingVerbMergeOptions && Object.keys(data.existingVerbMergeOptions).length > 0) {
           setVerbMergeOptions(prev => ({
             ...prev,
-            ...res.data.existingVerbMergeOptions
+            ...data.existingVerbMergeOptions
           }));
-          console.log('Loaded existing verb merge options:', res.data.existingVerbMergeOptions);
+          console.log('Loaded existing verb merge options:', data.existingVerbMergeOptions);
         }
 
         setInitialLoadComplete(true);
 
         // Only auto-process if there are unprocessed sentences
-        const unprocessedCount = allSentences.filter((s, i) => !s.isLineBreak && !res.data.existingProcessedSentences[i]).length;
-        if (unprocessedCount > 0) {
+        const unprocessedCount = allSentences.filter((s, i) => !s.isLineBreak && !existingProcessedSentences[i]).length;
+        if (fromCache) {
+          setMessage('Offline mode: loaded cached text from this device.');
+        } else if (unprocessedCount > 0) {
           console.log(`Found ${unprocessedCount} unprocessed sentences, starting auto-processing...`);
           autoProcessTimer = setTimeout(() => {
             if (!cancelled) {
@@ -900,15 +942,35 @@ export default function ImportPage() {
           setMessage('All sentences already processed - ready for reading!');
           setTimeout(() => setMessage(''), 3000);
         }
-      }).catch(error => {
-        if (cancelled) return;
-        console.error('Error loading file data:', error);
-        setIsCompletedBookView(isBookViewHint);
-        setBookSummaryTitle('');
-        setBookSummarySentences([]);
-        setBookSummaryGeneratedAt(null);
-        setInitialLoadComplete(true);
-      });
+      };
+
+      const loadFileData = async () => {
+        try {
+          const res = await axios.get(`/api/import/${filename}`);
+          await cacheImportPayload(filename, res.data);
+          if (!cancelled) {
+            applyFileData(res.data);
+          }
+        } catch (error) {
+          const cachedData = await getCachedImportPayload(filename);
+          if (cancelled) return;
+
+          if (cachedData) {
+            applyFileData(cachedData, { fromCache: true });
+            return;
+          }
+
+          console.error('Error loading file data:', error);
+          setIsCompletedBookView(isBookViewHint);
+          setBookSummaryTitle('');
+          setBookSummarySentences([]);
+          setBookSummaryGeneratedAt(null);
+          setMessage('This text is not cached on this device yet.');
+          setInitialLoadComplete(true);
+        }
+      };
+
+      loadFileData();
     }
 
     return () => {
@@ -1651,6 +1713,10 @@ export default function ImportPage() {
     }));
   };
 
+  const handleReadingFontScaleChange = (delta) => {
+    setReadingFontScale((current) => clampReadingFontScale(current + delta));
+  };
+
   const autoSave = async (sentenceIndex, sentenceData) => {
     try {
       // Save only the specific sentence that was processed
@@ -1662,6 +1728,7 @@ export default function ImportPage() {
       };
 
       await axios.post(`/api/import/${filename}/save-sentence`, saveData);
+      await updateCachedImportSentence(filename, sentenceIndex, sentenceData, verbMergeOptions);
       console.log(`Auto-saved sentence ${sentenceIndex}`);
       return true;
     } catch (error) {
@@ -2313,6 +2380,8 @@ export default function ImportPage() {
   const visibleMessage = !filename && /^AI (processing page|page processing)/i.test(message)
     ? ''
     : message;
+  const readingFontSize = `clamp(${(1.24 * readingFontScale).toFixed(2)}rem, ${(0.9 * readingFontScale).toFixed(2)}vw + ${(1 * readingFontScale).toFixed(2)}rem, ${(1.58 * readingFontScale).toFixed(2)}rem)`;
+  const readingMobileFontSize = `${readingFontScale.toFixed(2)}rem`;
   const aiPageDisabled = pageAiProcessing || ollamaStatus.checking || !ollamaStatus.available;
   const aiPageTitle = ollamaStatus.available
     ? 'Run remote AI processing for all sentences on this page'
@@ -2370,6 +2439,21 @@ export default function ImportPage() {
             <span className="import-display-title">{displayTitle}</span>
             <span className="import-file-name">{filename}</span>
           </h3>
+          {bookSummarySentences.length > 0 && (
+            <div className="import-summary-note">
+              <div className="import-summary-title">Reading Summary (3 sentences)</div>
+              <ol className="import-summary-list">
+                {bookSummarySentences.map((sentence, idx) => (
+                  <li key={`summary-${idx}`}>{sentence}</li>
+                ))}
+              </ol>
+              {bookSummaryGeneratedAt && (
+                <div className="import-summary-meta">
+                  Generated: {new Date(bookSummaryGeneratedAt).toLocaleString()}
+                </div>
+              )}
+            </div>
+          )}
           <div className="controls-section">
             {!isCompletedBookView && (
               <button onClick={handleSave} className="btn">Move to Reading</button>
@@ -2405,53 +2489,81 @@ export default function ImportPage() {
             </button>
             <button
               onClick={() => setShowTtsOptions(!showTtsOptions)}
-              className="btn"
+              className="btn option-toggle"
             >
               {showTtsOptions ? 'Hide' : 'Show'} TTS Options
             </button>
             <button
               onClick={() => setShowVerbOptions(!showVerbOptions)}
-              className="btn"
+              className="btn option-toggle"
             >
               {showVerbOptions ? 'Hide' : 'Show'} Verb Options
             </button>
             <button
               onClick={() => setShowFrequencyOptions(!showFrequencyOptions)}
-              className="btn"
+              className="btn option-toggle"
             >
               {showFrequencyOptions ? 'Hide' : 'Show'} Frequency Options
             </button>
             <button
               onClick={() => setShowJlptOptions(!showJlptOptions)}
-              className="btn"
+              className="btn option-toggle"
             >
               {showJlptOptions ? 'Hide' : 'Show'} JLPT Grammar
             </button>
-            <label className="controls-select">
-              <span>Spaces</span>
-              <select
-                value={tokenSpacing}
-                onChange={(event) => setTokenSpacing(event.target.value)}
-              >
-                <option value={TOKEN_SPACING.AFTER_WORDS_PARTICLES}>After words, particles</option>
-                <option value={TOKEN_SPACING.NONE}>None</option>
-              </select>
-            </label>
+            <button
+              onClick={() => setShowDisplayOptions(!showDisplayOptions)}
+              className="btn option-toggle"
+            >
+              {showDisplayOptions ? 'Hide' : 'Show'} Display Options
+            </button>
           </div>
 
-          {bookSummarySentences.length > 0 && (
-            <div className="import-summary-note">
-              <div className="import-summary-title">Reading Summary (3 sentences)</div>
-              <ol className="import-summary-list">
-                {bookSummarySentences.map((sentence, idx) => (
-                  <li key={`summary-${idx}`}>{sentence}</li>
-                ))}
-              </ol>
-              {bookSummaryGeneratedAt && (
-                <div className="import-summary-meta">
-                  Generated: {new Date(bookSummaryGeneratedAt).toLocaleString()}
+          {showDisplayOptions && (
+            <div className="options-panel">
+              <h4>Display Options</h4>
+
+              <div className="display-options-grid">
+                <label className="display-option-group">
+                  <span>Spaces</span>
+                  <select
+                    value={tokenSpacing}
+                    onChange={(event) => setTokenSpacing(event.target.value)}
+                  >
+                    <option value={TOKEN_SPACING.AFTER_WORDS_PARTICLES}>After words, particles</option>
+                    <option value={TOKEN_SPACING.NONE}>None</option>
+                  </select>
+                </label>
+
+                <div className="display-option-group">
+                  <span>Text size</span>
+                  <div className="font-size-controls">
+                    <button
+                      type="button"
+                      className="font-size-btn"
+                      onClick={() => handleReadingFontScaleChange(-READING_FONT_SCALE.STEP)}
+                      disabled={readingFontScale <= READING_FONT_SCALE.MIN}
+                      aria-label="Decrease reading text size"
+                      title="Decrease reading text size"
+                    >
+                      -
+                    </button>
+                    <span className="font-size-value">
+                      {Math.round(readingFontScale * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      className="font-size-btn"
+                      onClick={() => handleReadingFontScaleChange(READING_FONT_SCALE.STEP)}
+                      disabled={readingFontScale >= READING_FONT_SCALE.MAX}
+                      aria-label="Increase reading text size"
+                      title="Increase reading text size"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
           )}
 
@@ -2745,16 +2857,20 @@ export default function ImportPage() {
                 <button
                   onClick={() => handlePageChange(1)}
                   disabled={currentPage === 1}
-                  className="btn pagination-btn"
+                  className="btn pagination-btn pagination-edge"
+                  title="First page"
+                  aria-label="First page"
                 >
-                  First
+                  &lt;&lt;
                 </button>
                 <button
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1}
-                  className="btn pagination-btn"
+                  className="btn pagination-btn pagination-step"
+                  title="Previous page"
+                  aria-label="Previous page"
                 >
-                  Previous
+                  &lt;
                 </button>
 
                 <span className="pagination-pages">
@@ -2774,7 +2890,9 @@ export default function ImportPage() {
                       <button
                         key={pageNum}
                         onClick={() => handlePageChange(pageNum)}
-                        className={`btn pagination-btn ${currentPage === pageNum ? 'active' : ''}`}
+                        className={`btn pagination-btn pagination-page ${currentPage === pageNum ? 'active' : ''}`}
+                        aria-label={`Page ${pageNum}`}
+                        aria-current={currentPage === pageNum ? 'page' : undefined}
                       >
                         {pageNum}
                       </button>
@@ -2785,22 +2903,32 @@ export default function ImportPage() {
                 <button
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === totalPages}
-                  className="btn pagination-btn"
+                  className="btn pagination-btn pagination-step"
+                  title="Next page"
+                  aria-label="Next page"
                 >
-                  Next
+                  &gt;
                 </button>
                 <button
                   onClick={() => handlePageChange(totalPages)}
                   disabled={currentPage === totalPages}
-                  className="btn pagination-btn"
+                  className="btn pagination-btn pagination-edge"
+                  title="Last page"
+                  aria-label="Last page"
                 >
-                  Last
+                  &gt;&gt;
                 </button>
               </div>
             </>
           )}
 
-          <div className="import-content">
+          <div
+            className="import-content"
+            style={{
+              '--reading-font-size': readingFontSize,
+              '--reading-mobile-font-size': readingMobileFontSize
+            }}
+          >
             {paginatedSentences.map((sentence, index) => {
               const sentenceIndex = sentence.originalIndex;
 
@@ -3048,16 +3176,20 @@ export default function ImportPage() {
               <button
                 onClick={() => handlePageChange(1)}
                 disabled={currentPage === 1}
-                className="btn pagination-btn"
+                className="btn pagination-btn pagination-edge"
+                title="First page"
+                aria-label="First page"
               >
-                First
+                &lt;&lt;
               </button>
               <button
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
-                className="btn pagination-btn"
+                className="btn pagination-btn pagination-step"
+                title="Previous page"
+                aria-label="Previous page"
               >
-                Previous
+                &lt;
               </button>
 
               <span className="pagination-pages">
@@ -3077,7 +3209,9 @@ export default function ImportPage() {
                     <button
                       key={pageNum}
                       onClick={() => handlePageChange(pageNum)}
-                      className={`btn pagination-btn ${currentPage === pageNum ? 'active' : ''}`}
+                      className={`btn pagination-btn pagination-page ${currentPage === pageNum ? 'active' : ''}`}
+                      aria-label={`Page ${pageNum}`}
+                      aria-current={currentPage === pageNum ? 'page' : undefined}
                     >
                       {pageNum}
                     </button>
@@ -3088,16 +3222,20 @@ export default function ImportPage() {
               <button
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
-                className="btn pagination-btn"
+                className="btn pagination-btn pagination-step"
+                title="Next page"
+                aria-label="Next page"
               >
-                Next
+                &gt;
               </button>
               <button
                 onClick={() => handlePageChange(totalPages)}
                 disabled={currentPage === totalPages}
-                className="btn pagination-btn"
+                className="btn pagination-btn pagination-edge"
+                title="Last page"
+                aria-label="Last page"
               >
-                Last
+                &gt;&gt;
               </button>
             </div>
           )}

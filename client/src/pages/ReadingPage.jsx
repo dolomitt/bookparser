@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { cacheBookText, getCachedBookText } from '../utils/offlineCache';
 
 // Cookie utility functions for bookmarks
 const setCookie = (name, value, days = 30) => {
@@ -29,11 +30,39 @@ export default function ReadingPage() {
   const { book } = useParams();
   const [lines, setLines] = useState([]);
   const [progress, setProgress] = useState(0);
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
-    fetch(`/api/books/${book}`)
-      .then(res => res.text())
-      .then(text => setLines(text.split('\n')));
+    let cancelled = false;
+
+    const loadBook = async () => {
+      setMessage('');
+
+      try {
+        const response = await fetch(`/api/books/${book}`);
+        if (!response.ok) throw new Error('Could not load book');
+
+        const text = await response.text();
+        await cacheBookText(book, text);
+
+        if (!cancelled) {
+          setLines(text.split('\n'));
+        }
+      } catch (error) {
+        const cachedText = await getCachedBookText(book);
+
+        if (!cancelled) {
+          if (cachedText !== null) {
+            setLines(cachedText.split('\n'));
+            setMessage('Offline mode: loaded cached text from this device.');
+          } else {
+            setMessage('This book is not cached on this device yet.');
+          }
+        }
+      }
+    };
+
+    loadBook();
 
     // Load progress from cookie-based bookmark
     const bookmark = getCookie(`bookmark_${book.replace('.book', '').replace('.txt', '')}`);
@@ -44,6 +73,10 @@ export default function ReadingPage() {
       const saved = localStorage.getItem(`progress-${book}`);
       if (saved) setProgress(Number(saved));
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [book]);
 
   const handleLineClick = (idx) => {
@@ -67,6 +100,7 @@ export default function ReadingPage() {
   return (
     <div className="container">
       <h2>{book}</h2>
+      {message && <div className="note">{message}</div>}
       <div className="reading-area">
         {lines.map((line, idx) => (
           <div

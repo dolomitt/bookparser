@@ -1,5 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  cacheResourceList,
+  getCachedBookItems,
+  getCachedImportItems,
+  getCachedResourceList
+} from '../utils/offlineCache';
 
 function ResourceCard({
   to,
@@ -52,8 +58,64 @@ export default function MainPage() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    fetch('/api/books').then(res => res.json()).then(setBooks);
-    fetch('/api/imports').then(res => res.json()).then(setImports);
+    let cancelled = false;
+
+    const mergeByFilename = (primary = [], fallback = []) => {
+      const seen = new Set();
+      return [...primary, ...fallback].filter((item) => {
+        const filename = typeof item === 'string' ? item : item?.filename;
+        if (!filename || seen.has(filename)) return false;
+        seen.add(filename);
+        return true;
+      });
+    };
+
+    const loadLists = async () => {
+      try {
+        const [booksResponse, importsResponse] = await Promise.all([
+          fetch('/api/books'),
+          fetch('/api/imports')
+        ]);
+
+        if (!booksResponse.ok || !importsResponse.ok) {
+          throw new Error('Could not load reading list');
+        }
+
+        const [nextBooks, nextImports] = await Promise.all([
+          booksResponse.json(),
+          importsResponse.json()
+        ]);
+
+        await Promise.all([
+          cacheResourceList('books', nextBooks),
+          cacheResourceList('imports', nextImports)
+        ]);
+
+        if (!cancelled) {
+          setBooks(nextBooks);
+          setImports(nextImports);
+        }
+      } catch (error) {
+        const [cachedBooks, cachedImports, openedBooks, openedImports] = await Promise.all([
+          getCachedResourceList('books'),
+          getCachedResourceList('imports'),
+          getCachedBookItems(),
+          getCachedImportItems()
+        ]);
+
+        if (!cancelled) {
+          setBooks(mergeByFilename(cachedBooks || [], openedBooks));
+          setImports(mergeByFilename(cachedImports || [], openedImports));
+          setMessage('Offline mode: showing reading cached on this device.');
+        }
+      }
+    };
+
+    loadLists();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const normalizeListItem = (item) => {
@@ -64,6 +126,7 @@ export default function MainPage() {
         summaryTitle: null,
         wordCount: null,
         difficultyLevel: null,
+        offlineOnly: item?.offlineOnly || false,
         jlptTaggedCount: null,
         jlptLevelCounts: {},
         jlptVocabularyCounts: {},
@@ -79,6 +142,7 @@ export default function MainPage() {
       summaryTitle: item?.summaryTitle || null,
       wordCount: Number.isInteger(item?.wordCount) ? item.wordCount : null,
       difficultyLevel: item?.difficultyLevel || null,
+      offlineOnly: item?.offlineOnly || false,
       jlptTaggedCount: Number.isInteger(item?.jlptTaggedCount) ? item.jlptTaggedCount : null,
       jlptLevelCounts: item?.jlptLevelCounts || item?.jlptGrammarCounts || {},
       jlptVocabularyCounts: item?.jlptVocabularyCounts || {},
@@ -185,7 +249,7 @@ export default function MainPage() {
                     icon="🔍"
                     title={displayName}
                     filename={originalName}
-                    type="Reading"
+                    type={book.offlineOnly ? 'Reading (offline)' : 'Reading'}
                     wordCount={book.wordCount}
                     difficultyLevel={book.difficultyLevel}
                     deleting={deletingResource === `reading:${filename}`}
@@ -217,7 +281,7 @@ export default function MainPage() {
                   icon="📝"
                   title={book.displayTitle || book.filename}
                   filename={book.filename}
-                  type="Plain Text"
+                  type={book.offlineOnly ? 'Plain Text (offline)' : 'Plain Text'}
                   wordCount={book.wordCount}
                   difficultyLevel={book.difficultyLevel}
                   deleting={deletingResource === `reading:${book.filename}`}
@@ -248,7 +312,7 @@ export default function MainPage() {
                   icon="⏳"
                   title={file.displayTitle || file.filename}
                   filename={file.filename}
-                  type="Draft"
+                  type={file.offlineOnly ? 'Draft (offline)' : 'Draft'}
                   wordCount={file.wordCount}
                   difficultyLevel={file.difficultyLevel}
                   deleting={deletingResource === `draft:${file.filename}`}
