@@ -39,6 +39,13 @@ const hasKanji = (text) => {
 };
 
 const JLPT_LEVEL_RANK = { N5: 1, N4: 2, N3: 3, N2: 4, N1: 5 };
+const TOKEN_SPACING = {
+  AFTER_WORDS_PARTICLES: 'afterWordsParticles',
+  NONE: 'none'
+};
+const WORD_SPACE_POS = new Set(['名詞', '動詞', '形容詞', '副詞', '連体詞', '接頭詞']);
+const PARTICLE_POS = '助詞';
+const PUNCTUATION_POS = '記号';
 
 const isKnownJlptGrammar = (token, jlptSettings = {}) => {
   const knownLevel = jlptSettings.knownLevel;
@@ -65,7 +72,20 @@ const getDisplayToken = (token = {}) => {
   return token;
 };
 
-function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBookmark, jlptSettings = {} }) {
+const isPunctuationToken = (token = {}) => (
+  token.pos === PUNCTUATION_POS ||
+  token.surface === '」' ||
+  token.surface === '、' ||
+  token.surface === '。'
+);
+
+const shouldAddDisplaySpace = (token = {}, nextToken = null, spacingMode = TOKEN_SPACING.NONE) => {
+  if (spacingMode !== TOKEN_SPACING.AFTER_WORDS_PARTICLES || !nextToken) return false;
+  if (isPunctuationToken(token) || isPunctuationToken(nextToken)) return false;
+  return WORD_SPACE_POS.has(token.pos) || token.pos === PARTICLE_POS;
+};
+
+function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBookmark, jlptSettings = {}, tokenSpacing = TOKEN_SPACING.NONE }) {
   const [activePopup, setActivePopup] = useState(null);
   const [popupPosition, setPopupPosition] = useState({ x: 0, top: null, bottom: null });
   const [hoveredExpressionId, setHoveredExpressionId] = useState(null);
@@ -185,8 +205,10 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
     <div style={{ display: 'inline', position: 'relative' }}>
       {tokens.map((rawToken, tokenIdx) => {
         const token = getDisplayToken(rawToken);
+        const nextToken = tokenIdx + 1 < tokens.length ? getDisplayToken(tokens[tokenIdx + 1]) : null;
         const isMergedVerb = token.pos === '動詞' && (token.pos_detail === 'compound' || token.pos_detail === 'inflected');
-        const isPunctuation = token.pos === '記号' || token.surface === '」';
+        const isPunctuation = isPunctuationToken(token);
+        const addDisplaySpace = shouldAddDisplaySpace(token, nextToken, tokenSpacing);
         const shouldHideBasedOnFrequency = token.frequency && token.frequency.shouldHideFurigana;
         const shouldShowRuby = hasKanji(token.surface) && token.reading && token.reading !== token.surface && !shouldHideBasedOnFrequency;
         const hasAIData = token.translation && token.translation !== 'N/A';
@@ -245,8 +267,9 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
             key={tokenIdx}
             data-token={`${sentenceIndex}-${tokenIdx}`}
             style={{
+              '--token-margin': addDisplaySpace ? '0 0.35em 0 0' : '0',
               display: 'inline-block',
-              margin: '0 2px',
+              margin: 'var(--token-margin)',
               padding: '0 2px',
               backgroundColor: isActive && !isPunctuation
                 ? activeColor
@@ -523,6 +546,10 @@ export default function ImportPage() {
     };
   });
 
+  const [tokenSpacing, setTokenSpacing] = useState(() => {
+    return getCookie('tokenSpacing') || TOKEN_SPACING.AFTER_WORDS_PARTICLES;
+  });
+
   const [showJlptOptions, setShowJlptOptions] = useState(() => {
     const saved = getCookie('showJlptOptions');
     return saved !== null ? saved : false;
@@ -734,6 +761,10 @@ export default function ImportPage() {
   useEffect(() => {
     setCookie('jlptSettings', jlptSettings);
   }, [jlptSettings]);
+
+  useEffect(() => {
+    setCookie('tokenSpacing', tokenSpacing);
+  }, [tokenSpacing]);
 
   useEffect(() => {
     setCookie('showJlptOptions', showJlptOptions);
@@ -2396,6 +2427,16 @@ export default function ImportPage() {
             >
               {showJlptOptions ? 'Hide' : 'Show'} JLPT Grammar
             </button>
+            <label className="controls-select">
+              <span>Spaces</span>
+              <select
+                value={tokenSpacing}
+                onChange={(event) => setTokenSpacing(event.target.value)}
+              >
+                <option value={TOKEN_SPACING.AFTER_WORDS_PARTICLES}>After words, particles</option>
+                <option value={TOKEN_SPACING.NONE}>None</option>
+              </select>
+            </label>
           </div>
 
           {bookSummarySentences.length > 0 && (
@@ -2800,6 +2841,7 @@ export default function ImportPage() {
                         isCurrentReading={isCurrentReading}
                         onBookmark={saveReadingBookmark}
                         jlptSettings={jlptSettings}
+                        tokenSpacing={tokenSpacing}
                       />
                     </span>
                   ) : (

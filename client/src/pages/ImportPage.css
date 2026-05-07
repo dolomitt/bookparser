@@ -682,6 +682,22 @@
   margin-left: 0;
 }
 
+.controls-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #f2f2f2;
+  font-size: 0.95em;
+}
+
+.controls-select select {
+  padding: 7px 8px;
+  background-color: #444;
+  color: #fff;
+  border: 1px solid #666;
+  border-radius: 4px;
+}
+
 /* Mobile responsive styles */
 @media (max-width: 768px) {
   .import-source-row,
@@ -726,7 +742,7 @@
   }
 
   [data-token] {
-    margin: 0 1px !important;
+    margin: var(--token-margin, 0 1px) !important;
     padding: 0 1px !important;
     min-height: 0 !important;
     min-width: auto !important;
