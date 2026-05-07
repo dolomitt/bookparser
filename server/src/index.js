@@ -121,10 +121,16 @@ app.get('/api/imports', (req, res) => {
 });
 
 function getImportListItem(file) {
+  const uploadPath = path.join(config.uploadDir, file);
+  const draftBookPath = path.join(config.booksDir, `${file}.book`);
+  const uploadStat = fs.existsSync(uploadPath) ? fs.statSync(uploadPath) : null;
+  const draftStat = fs.existsSync(draftBookPath) ? fs.statSync(draftBookPath) : null;
+  const fallbackImportedAt = (draftStat?.mtime || uploadStat?.mtime || new Date(0)).toISOString();
   const item = {
     filename: file,
     displayTitle: file,
     summaryTitle: null,
+    importedAt: fallbackImportedAt,
     wordCount: null,
     difficultyLevel: null,
     jlptTaggedCount: null,
@@ -133,7 +139,6 @@ function getImportListItem(file) {
     jlptGrammarCounts: {}
   };
 
-  const draftBookPath = path.join(config.booksDir, `${file}.book`);
   if (!fs.existsSync(draftBookPath)) {
     return item;
   }
@@ -145,6 +150,7 @@ function getImportListItem(file) {
       item.displayTitle = summaryTitle;
       item.summaryTitle = summaryTitle;
     }
+    item.importedAt = bookData?.metadata?.savedAt || bookData?.metadata?.lastUpdated || fallbackImportedAt;
     Object.assign(item, getBookStats(bookData));
   } catch {
     // Fall back to the filename for legacy or malformed draft files.

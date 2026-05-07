@@ -850,10 +850,36 @@
   }
 
   .ollama-stream-popup {
-    inset: auto 8px 8px 8px !important;
+    inset: auto max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)) !important;
     width: auto !important;
     max-width: none !important;
-    max-height: 60vh !important;
+    max-height: min(52vh, calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))) !important;
+    min-height: 0 !important;
+    border-radius: 8px !important;
+  }
+
+  .ollama-stream-popup-header {
+    flex: 0 0 auto;
+    gap: 8px;
+    min-width: 0;
+    padding: 8px 10px !important;
+    font-size: 0.82em !important;
+  }
+
+  .ollama-stream-popup-header > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .ollama-stream-popup-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    padding: 10px !important;
+    font-size: 0.76em !important;
+    line-height: 1.35 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -885,6 +911,10 @@
     min-height: 1.55rem;
     min-width: 1.55rem;
     width: 1.55rem;
+  }
+
+  .ollama-stream-popup {
+    max-height: min(46vh, calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom))) !important;
   }
 }
 

@@ -124,9 +124,10 @@ export default function MainPage() {
         filename: item,
         displayTitle: item,
         summaryTitle: null,
+        importedAt: null,
         wordCount: null,
         difficultyLevel: null,
-        offlineOnly: item?.offlineOnly || false,
+        offlineOnly: false,
         jlptTaggedCount: null,
         jlptLevelCounts: {},
         jlptVocabularyCounts: {},
@@ -140,6 +141,7 @@ export default function MainPage() {
       filename,
       displayTitle: displayTitle || filename,
       summaryTitle: item?.summaryTitle || null,
+      importedAt: item?.importedAt || item?.updatedAt || null,
       wordCount: Number.isInteger(item?.wordCount) ? item.wordCount : null,
       difficultyLevel: item?.difficultyLevel || null,
       offlineOnly: item?.offlineOnly || false,
@@ -151,7 +153,14 @@ export default function MainPage() {
   };
 
   const bookItems = books.map(normalizeListItem).filter((book) => book.filename);
-  const importItems = imports.map(normalizeListItem).filter((file) => file.filename);
+  const getItemTime = (item) => {
+    const time = Date.parse(item?.importedAt || '');
+    return Number.isFinite(time) ? time : 0;
+  };
+  const importItems = imports
+    .map(normalizeListItem)
+    .filter((file) => file.filename)
+    .sort((a, b) => getItemTime(b) - getItemTime(a));
 
   // Separate .book files from regular text files
   const processedBooks = bookItems.filter(book => book.filename.endsWith('.book'));

@@ -3121,6 +3121,7 @@ export default function ImportPage() {
               }}
             >
               <div
+                className="ollama-stream-popup-header"
                 style={{
                   padding: '10px 12px',
                   borderBottom: '1px solid #2a2a2a',
@@ -3155,6 +3156,7 @@ export default function ImportPage() {
                 </button>
               </div>
               <div
+                className="ollama-stream-popup-body"
                 style={{
                   padding: '12px',
                   overflowY: 'auto',
