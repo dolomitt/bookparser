@@ -398,14 +398,14 @@
   font-family: "Meiryo", "Yu Gothic UI", "Yu Gothic", sans-serif;
   font-size: 0.62em;
   font-weight: 700;
-  height: 1.45rem;
+  height: 1.32rem;
   justify-content: center;
   line-height: 1;
-  min-height: 1.45rem;
-  min-width: 1.45rem;
+  min-height: 1.32rem;
+  min-width: 1.32rem;
   padding: 0;
   transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
-  width: 1.45rem;
+  width: 1.32rem;
 }
 
 .sentence-btn:hover,
@@ -836,11 +836,15 @@
     align-items: stretch;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
   }
 
   .controls-section .btn {
     width: 100%;
     min-width: 0;
+    min-height: 34px;
+    padding: 6px 8px;
+    font-size: 0.82em;
     white-space: normal;
   }
 
@@ -885,11 +889,15 @@
 
 @media (max-width: 480px) {
   .options-panel {
+    margin-left: auto;
+    margin-right: auto;
+    width: calc(100% - 12px);
     padding: 12px;
   }
 
   .import-summary-note {
-    margin: 8px 0 14px;
+    margin: 8px auto 14px;
+    width: calc(100% - 12px);
     padding: 10px 12px;
   }
 
@@ -898,9 +906,12 @@
   }
 
   .import-content {
-    margin-left: -8px;
-    margin-right: -8px;
-    padding: 12px;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+    padding: 8px 0;
+    background-color: transparent;
+    border: none;
     font-size: var(--reading-mobile-font-size, 1rem);
     line-height: 1.75;
     border-radius: 0;
