@@ -93,6 +93,7 @@ const isPunctuationToken = (token = {}) => (
 const shouldAddDisplaySpace = (token = {}, nextToken = null, spacingMode = TOKEN_SPACING.NONE) => {
   if (spacingMode !== TOKEN_SPACING.AFTER_WORDS_PARTICLES || !nextToken) return false;
   if (isPunctuationToken(token) || isPunctuationToken(nextToken)) return false;
+  if (nextToken.pos_detail === '接尾' || nextToken.pos_detail_1 === '接尾') return false;
   return WORD_SPACE_POS.has(token.pos) || token.pos === PARTICLE_POS;
 };
 
