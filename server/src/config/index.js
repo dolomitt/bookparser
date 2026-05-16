@@ -18,7 +18,10 @@ function normalizeBaseUrl(value) {
     if (!parsed.hostname) {
       return null;
     }
-    return `${parsed.protocol}//${parsed.host}`;
+    const path = parsed.pathname && parsed.pathname !== '/'
+      ? parsed.pathname.replace(/\/+$/, '')
+      : '';
+    return `${parsed.protocol}//${parsed.host}${path}`;
   } catch {
     return null;
   }
@@ -39,9 +42,49 @@ function parseOllamaBaseUrls(endpointsRaw, host, port) {
   return fallback ? [fallback] : ['http://127.0.0.1:11434'];
 }
 
+function parseBoolean(value, defaultValue = false) {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue;
+  }
+
+  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+}
+
 const ollamaHost = process.env.BOOKPARSER_OLLAMA_HOST || '192.168.1.43';
 const ollamaPort = process.env.BOOKPARSER_OLLAMA_PORT || '11434';
-const ollamaBaseUrls = parseOllamaBaseUrls(process.env.BOOKPARSER_OLLAMA_ENDPOINTS, ollamaHost, ollamaPort);
+const openAiCompatibleEndpointRaw =
+  process.env.BOOKPARSER_OPENAI_ENDPOINTS ||
+  process.env.BOOKPARSER_AI_ENDPOINTS ||
+  process.env.BOOKPARSER_OLLAMA_ENDPOINTS;
+const openAiCompatibleHost = process.env.BOOKPARSER_OPENAI_HOST || ollamaHost;
+const openAiCompatiblePort = process.env.BOOKPARSER_OPENAI_PORT || ollamaPort;
+const ollamaBaseUrls = parseOllamaBaseUrls(
+  openAiCompatibleEndpointRaw,
+  openAiCompatibleHost,
+  openAiCompatiblePort
+).map((baseUrl) => (
+  /\/v\d+(?:\/|$)/.test(baseUrl) ? baseUrl : `${baseUrl}/v1`
+));
+const disableThinkingRaw =
+  process.env.BOOKPARSER_OPENAI_DISABLE_THINKING ??
+  process.env.BOOKPARSER_AI_DISABLE_THINKING;
+const disableThinking = disableThinkingRaw !== undefined
+  ? parseBoolean(disableThinkingRaw, false)
+  : process.env.BOOKPARSER_OLLAMA_THINK === 'false';
+const openAiResponseFormat = (
+  process.env.BOOKPARSER_OPENAI_RESPONSE_FORMAT ||
+  process.env.BOOKPARSER_AI_RESPONSE_FORMAT ||
+  'text'
+).trim().toLowerCase();
+const ttsProvider = (
+  process.env.BOOKPARSER_TTS_PROVIDER ||
+  process.env.TTS_PROVIDER ||
+  'voicevox'
+).trim().toLowerCase();
+const fishSpeechBaseUrl = normalizeBaseUrl(
+  process.env.FISH_SPEECH_BASE_URL ||
+  `${process.env.FISH_SPEECH_HOST || '192.168.1.43'}:${process.env.FISH_SPEECH_PORT || '16580'}`
+) || 'http://192.168.1.43:16580';
 
 export const config = {
   port: process.env.PORT || 5000,
@@ -60,24 +103,40 @@ export const config = {
     timeout: parseInt(process.env.FIRECRAWL_TIMEOUT) || 45000
   },
 
+  tts: {
+    provider: ['fish-speech', 'fish', 'voicevox'].includes(ttsProvider) ? ttsProvider : 'voicevox',
+    alignmentProvider: (
+      process.env.BOOKPARSER_TTS_ALIGNMENT_PROVIDER ||
+      process.env.TTS_ALIGNMENT_PROVIDER ||
+      'estimated'
+    ).trim().toLowerCase()
+  },
+
   ollama: {
-    host: ollamaHost,
-    port: ollamaPort,
+    provider: (process.env.BOOKPARSER_OPENAI_PROVIDER || process.env.BOOKPARSER_AI_PROVIDER || 'openai-compatible').trim().toLowerCase(),
+    host: openAiCompatibleHost,
+    port: openAiCompatiblePort,
     baseUrls: ollamaBaseUrls,
-    model: process.env.BOOKPARSER_OLLAMA_MODEL || 'gemma3:12b',
-    timeout: parseInt(process.env.BOOKPARSER_OLLAMA_TIMEOUT) || 120000, // 120 seconds default
-    healthTimeout: parseInt(process.env.BOOKPARSER_OLLAMA_HEALTH_TIMEOUT) || 3000,
-    healthCacheMs: parseInt(process.env.BOOKPARSER_OLLAMA_HEALTH_CACHE_MS) || 3000,
-    modelLoadTimeout: parseInt(process.env.BOOKPARSER_OLLAMA_MODEL_LOAD_TIMEOUT) || 90000,
-    modelLoadCacheMs: parseInt(process.env.BOOKPARSER_OLLAMA_MODEL_LOAD_CACHE_MS) || 5000,
-    maxRetries: parseInt(process.env.BOOKPARSER_OLLAMA_MAX_RETRIES) || 2,
-    maxTokens: parseInt(process.env.BOOKPARSER_OLLAMA_MAX_TOKENS) || 10000, // Fixed response token limit
-    summaryMaxTokens: parseInt(process.env.BOOKPARSER_OLLAMA_SUMMARY_MAX_TOKENS) || 16000,
+    apiKey: process.env.BOOKPARSER_OPENAI_API_KEY || process.env.OPENAI_API_KEY || process.env.BOOKPARSER_AI_API_KEY || '',
+    model: process.env.BOOKPARSER_OPENAI_MODEL || process.env.BOOKPARSER_AI_MODEL || process.env.BOOKPARSER_OLLAMA_MODEL || 'gemma3:12b',
+    timeout: parseInt(process.env.BOOKPARSER_OPENAI_TIMEOUT || process.env.BOOKPARSER_OLLAMA_TIMEOUT) || 120000, // 120 seconds default
+    healthTimeout: parseInt(process.env.BOOKPARSER_OPENAI_HEALTH_TIMEOUT || process.env.BOOKPARSER_OLLAMA_HEALTH_TIMEOUT) || 3000,
+    healthCacheMs: parseInt(process.env.BOOKPARSER_OPENAI_HEALTH_CACHE_MS || process.env.BOOKPARSER_OLLAMA_HEALTH_CACHE_MS) || 3000,
+    modelLoadTimeout: parseInt(process.env.BOOKPARSER_OPENAI_MODEL_LOAD_TIMEOUT || process.env.BOOKPARSER_OLLAMA_MODEL_LOAD_TIMEOUT) || 90000,
+    modelLoadCacheMs: parseInt(process.env.BOOKPARSER_OPENAI_MODEL_LOAD_CACHE_MS || process.env.BOOKPARSER_OLLAMA_MODEL_LOAD_CACHE_MS) || 5000,
+    maxRetries: parseInt(process.env.BOOKPARSER_OPENAI_MAX_RETRIES || process.env.BOOKPARSER_OLLAMA_MAX_RETRIES) || 2,
+    maxTokens: parseInt(process.env.BOOKPARSER_OPENAI_MAX_TOKENS || process.env.BOOKPARSER_OLLAMA_MAX_TOKENS) || 10000, // Fixed response token limit
+    analysisBaseMaxTokens: parseInt(process.env.BOOKPARSER_OPENAI_ANALYSIS_BASE_MAX_TOKENS || process.env.BOOKPARSER_AI_ANALYSIS_BASE_MAX_TOKENS) || 700,
+    analysisMaxTokensPerToken: parseInt(process.env.BOOKPARSER_OPENAI_ANALYSIS_MAX_TOKENS_PER_TOKEN || process.env.BOOKPARSER_AI_ANALYSIS_MAX_TOKENS_PER_TOKEN) || 90,
+    summaryMaxTokens: parseInt(process.env.BOOKPARSER_OPENAI_SUMMARY_MAX_TOKENS || process.env.BOOKPARSER_OLLAMA_SUMMARY_MAX_TOKENS) || 16000,
+    logStats: parseBoolean(process.env.BOOKPARSER_OPENAI_LOG_STATS || process.env.BOOKPARSER_AI_LOG_STATS, false),
+    disableThinking,
+    responseFormat: ['text', 'json_object'].includes(openAiResponseFormat) ? openAiResponseFormat : 'text',
     contextMode: (process.env.BOOKPARSER_CONTEXT_MODE || 'full').toLowerCase(),
     aiTokenScope: (process.env.BOOKPARSER_AI_TOKEN_SCOPE || 'learner').toLowerCase(),
     contextWindow: parseInt(process.env.BOOKPARSER_CONTEXT_WINDOW || '', 10),
     get baseUrl() {
-      return `http://${this.host}:${this.port}`;
+      return `http://${this.host}:${this.port}/v1`;
     }
   },
 
@@ -88,6 +147,32 @@ export const config = {
     get baseUrl() {
       return `http://${this.host}:${this.port}`;
     }
+  },
+
+  fishSpeech: {
+    baseUrl: fishSpeechBaseUrl,
+    apiKey: process.env.FISH_SPEECH_API_KEY || '',
+    referenceId: process.env.FISH_SPEECH_REFERENCE_ID || '',
+    format: process.env.FISH_SPEECH_FORMAT || 'wav',
+    timeout: parseInt(process.env.FISH_SPEECH_TIMEOUT) || 120000,
+    sampleRate: parseInt(process.env.FISH_SPEECH_SAMPLE_RATE) || 44100,
+    maxNewTokens: parseInt(process.env.FISH_SPEECH_MAX_NEW_TOKENS) || 1024,
+    chunkLength: parseInt(process.env.FISH_SPEECH_CHUNK_LENGTH) || 200,
+    topP: parseFloat(process.env.FISH_SPEECH_TOP_P) || 0.8,
+    repetitionPenalty: parseFloat(process.env.FISH_SPEECH_REPETITION_PENALTY) || 1.1,
+    temperature: parseFloat(process.env.FISH_SPEECH_TEMPERATURE) || 0.8,
+    seed: parseInt(process.env.FISH_SPEECH_SEED || '20260514', 10),
+    useMemoryCache: process.env.FISH_SPEECH_USE_MEMORY_CACHE || 'off'
+  },
+
+  mfa: {
+    runtime: (process.env.MFA_RUNTIME || 'local').trim().toLowerCase(),
+    command: process.env.MFA_COMMAND || 'mfa',
+    dockerCommand: process.env.MFA_DOCKER_COMMAND || 'docker',
+    dockerContainer: process.env.MFA_DOCKER_CONTAINER || '',
+    dictionary: process.env.MFA_DICTIONARY || 'japanese_mfa',
+    acousticModel: process.env.MFA_ACOUSTIC_MODEL || 'japanese_mfa',
+    timeout: parseInt(process.env.MFA_TIMEOUT) || 120000
   }
 };
 
@@ -100,23 +185,39 @@ export function logConfig() {
   console.log('CRAWL4AI_BASE_URL:', config.crawl4ai.baseUrl || '[not configured]');
   console.log('FIRECRAWL_API_URL:', config.firecrawl.apiUrl);
   console.log('FIRECRAWL_API_KEY:', config.firecrawl.apiKey ? '[configured]' : '[not configured]');
-  console.log('BOOKPARSER_OLLAMA_HOST:', config.ollama.host);
-  console.log('BOOKPARSER_OLLAMA_PORT:', config.ollama.port);
-  console.log('BOOKPARSER_OLLAMA_BASE_URLS:', config.ollama.baseUrls.join(', '));
-  console.log('BOOKPARSER_OLLAMA_MODEL:', config.ollama.model);
-  console.log('BOOKPARSER_OLLAMA_TIMEOUT:', config.ollama.timeout + 'ms');
-  console.log('BOOKPARSER_OLLAMA_HEALTH_TIMEOUT:', config.ollama.healthTimeout + 'ms');
-  console.log('BOOKPARSER_OLLAMA_HEALTH_CACHE_MS:', config.ollama.healthCacheMs + 'ms');
-  console.log('BOOKPARSER_OLLAMA_MODEL_LOAD_TIMEOUT:', config.ollama.modelLoadTimeout + 'ms');
-  console.log('BOOKPARSER_OLLAMA_MODEL_LOAD_CACHE_MS:', config.ollama.modelLoadCacheMs + 'ms');
-  console.log('BOOKPARSER_OLLAMA_MAX_RETRIES:', config.ollama.maxRetries);
-  console.log('BOOKPARSER_OLLAMA_SUMMARY_MAX_TOKENS:', config.ollama.summaryMaxTokens);
+  console.log('BOOKPARSER_AI_PROVIDER:', config.ollama.provider);
+  console.log('BOOKPARSER_OPENAI_BASE_URLS:', config.ollama.baseUrls.join(', '));
+  console.log('BOOKPARSER_OPENAI_API_KEY:', config.ollama.apiKey ? '[configured]' : '[not configured]');
+  console.log('BOOKPARSER_OPENAI_MODEL:', config.ollama.model);
+  console.log('BOOKPARSER_OPENAI_TIMEOUT:', config.ollama.timeout + 'ms');
+  console.log('BOOKPARSER_OPENAI_HEALTH_TIMEOUT:', config.ollama.healthTimeout + 'ms');
+  console.log('BOOKPARSER_OPENAI_HEALTH_CACHE_MS:', config.ollama.healthCacheMs + 'ms');
+  console.log('BOOKPARSER_OPENAI_MODEL_LOAD_TIMEOUT:', config.ollama.modelLoadTimeout + 'ms');
+  console.log('BOOKPARSER_OPENAI_MODEL_LOAD_CACHE_MS:', config.ollama.modelLoadCacheMs + 'ms');
+  console.log('BOOKPARSER_OPENAI_MAX_RETRIES:', config.ollama.maxRetries);
+  console.log('BOOKPARSER_OPENAI_ANALYSIS_BASE_MAX_TOKENS:', config.ollama.analysisBaseMaxTokens);
+  console.log('BOOKPARSER_OPENAI_ANALYSIS_MAX_TOKENS_PER_TOKEN:', config.ollama.analysisMaxTokensPerToken);
+  console.log('BOOKPARSER_OPENAI_SUMMARY_MAX_TOKENS:', config.ollama.summaryMaxTokens);
+  console.log('BOOKPARSER_OPENAI_LOG_STATS:', config.ollama.logStats);
+  console.log('BOOKPARSER_OPENAI_DISABLE_THINKING:', config.ollama.disableThinking);
+  console.log('BOOKPARSER_OPENAI_RESPONSE_FORMAT:', config.ollama.responseFormat);
   console.log('BOOKPARSER_CONTEXT_MODE:', config.ollama.contextMode);
   console.log('BOOKPARSER_AI_TOKEN_SCOPE:', config.ollama.aiTokenScope);
   if (!Number.isNaN(config.ollama.contextWindow)) {
     console.log('BOOKPARSER_CONTEXT_WINDOW:', config.ollama.contextWindow);
   }
+  console.log('BOOKPARSER_TTS_PROVIDER:', config.tts.provider);
+  console.log('BOOKPARSER_TTS_ALIGNMENT_PROVIDER:', config.tts.alignmentProvider);
   console.log('VOICEVOX_HOST:', config.voicevox.host);
   console.log('VOICEVOX_PORT:', config.voicevox.port);
   console.log('VOICEVOX_DEFAULT_SPEAKER:', config.voicevox.defaultSpeaker);
+  console.log('FISH_SPEECH_BASE_URL:', config.fishSpeech.baseUrl);
+  console.log('FISH_SPEECH_API_KEY:', config.fishSpeech.apiKey ? '[configured]' : '[not configured]');
+  console.log('FISH_SPEECH_REFERENCE_ID:', config.fishSpeech.referenceId || '[not configured]');
+  console.log('FISH_SPEECH_SEED:', Number.isNaN(config.fishSpeech.seed) ? '[random]' : config.fishSpeech.seed);
+  console.log('MFA_COMMAND:', config.mfa.command);
+  console.log('MFA_RUNTIME:', config.mfa.runtime);
+  console.log('MFA_DOCKER_CONTAINER:', config.mfa.dockerContainer || '[not configured]');
+  console.log('MFA_DICTIONARY:', config.mfa.dictionary);
+  console.log('MFA_ACOUSTIC_MODEL:', config.mfa.acousticModel);
 }

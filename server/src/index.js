@@ -98,10 +98,10 @@ app.get('/api/ollama/status', async (req, res) => {
     });
     res.json(status);
   } catch (error) {
-    console.error('Error checking Ollama status:', error);
+    console.error('Error checking AI engine status:', error);
     res.status(500).json({
       available: false,
-      error: 'Failed to check Ollama status',
+      error: 'Failed to check AI engine status',
       details: error.message
     });
   }
@@ -1442,6 +1442,36 @@ function collectSentenceNotes(ollamaAnalysis = null, aiExpressions = [], tokens 
   return notes.slice(0, 4);
 }
 
+function normalizeSpeechTags(ollamaAnalysis = null) {
+  const rawTags =
+    ollamaAnalysis?.speechTags ??
+    ollamaAnalysis?.ttsTags ??
+    ollamaAnalysis?.fishSpeechTags ??
+    [];
+  const candidates = Array.isArray(rawTags) ? rawTags : [rawTags];
+  const seen = new Set();
+
+  return candidates
+    .map((tag) => String(tag || '').trim())
+    .map((tag) => {
+      const inner = tag.match(/^\[(.+)\]$/)?.[1] || tag;
+      return inner
+        .replace(/[\r\n]/g, ' ')
+        .replace(/[()[\]{}<>]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    })
+    .filter((tag) => tag.length >= 3 && tag.length <= 80)
+    .filter((tag) => {
+      const key = tag.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 2)
+    .map((tag) => `[${tag}]`);
+}
+
 function normalizeTokenSurface(value) {
   return String(value || '').replace(/\s+/g, '').trim();
 }
@@ -1666,7 +1696,7 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
           onOllamaChunk
         );
       } catch (ollamaError) {
-        const error = new Error(`AI processing unavailable: ${ollamaError.message || 'Ollama request failed'}`);
+        const error = new Error(`AI processing unavailable: ${ollamaError.message || 'AI engine request failed'}`);
         error.statusCode = 503;
         error.code = 'AI_PROCESSING_UNAVAILABLE';
         throw error;
@@ -1754,6 +1784,7 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
       jlptVocabularyService.annotateTokens(expressionAnnotatedTokens)
     );
     const sentenceNotes = collectSentenceNotes(ollamaAnalysis, aiExpressions, jlptAnnotatedTokens);
+    const speechTags = useRemoteProcessing ? normalizeSpeechTags(ollamaAnalysis) : [];
     const tokensWithFrequency = japaneseService.enhanceTokensWithFrequency(jlptAnnotatedTokens, frequencySettings);
     const frequencyStats = japaneseService.getTokenFrequencyStats(tokensWithFrequency);
 
@@ -1768,6 +1799,7 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
       sentenceIndex: sentenceIndex,
       fullSentenceTranslation: fullLineTranslation,
       sentenceNotes: sentenceNotes,
+      speechTags,
       analysis: {
         totalTokens: analysisTokens.length,
         words: words.length,
@@ -1778,7 +1810,8 @@ async function processTextAnalysis(payload, onOllamaChunk = null) {
         hasAIAnalysis: !!ollamaAnalysis,
         tokenCorrections: tokenCorrectionResult.appliedCorrections,
         frequencyStats: frequencyStats,
-        sentenceNotes: sentenceNotes
+        sentenceNotes: sentenceNotes,
+        speechTags
       }
     };
   } else {
@@ -1824,7 +1857,7 @@ app.post('/api/parse', async (req, res) => {
   }
 });
 
-// Streaming endpoint for live Ollama output while processing.
+// Streaming endpoint for live AI output while processing.
 app.post('/api/parse/stream', async (req, res) => {
   const payload = {
     text: req.body.text,
@@ -1859,7 +1892,7 @@ app.post('/api/parse/stream', async (req, res) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
-  // Keep the connection alive through proxies while Ollama is generating.
+  // Keep the connection alive through proxies while the AI engine is generating.
   const keepAliveTimer = setInterval(() => {
     if (!res.writableEnded) {
       res.write(': keepalive\n\n');

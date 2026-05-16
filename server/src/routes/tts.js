@@ -1,13 +1,21 @@
 import express from 'express';
+import { config } from '../config/index.js';
+import fishSpeechService from '../services/fishSpeechService.js';
 import voicevoxService from '../services/voicevoxService.js';
 
 const router = express.Router();
+const ttsService = ['fish-speech', 'fish'].includes(config.tts.provider)
+  ? fishSpeechService
+  : voicevoxService;
+const ttsProviderLabel = ['fish-speech', 'fish'].includes(config.tts.provider)
+  ? 'Fish Speech'
+  : 'VOICEVOX';
 
-// Text-to-speech endpoint using VOICEVOX with timing data
+// Text-to-speech endpoint using the configured TTS provider with timing data
 router.post('/', async (req, res) => {
   console.log('Received /api/text-to-speech request');
   
-  const { text, speaker, includeTimings = false, speed = 1.0, volume = 1.0 } = req.body;
+  const { text, speaker, referenceId, speechTags, includeTimings = false, speed = 1.0, volume = 1.0 } = req.body;
 
   if (!text) {
     console.log('Error: No text provided for text-to-speech');
@@ -15,8 +23,10 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const result = await voicevoxService.generateSpeech(text, {
+    const result = await ttsService.generateSpeech(text, {
       speaker,
+      referenceId,
+      speechTags,
       includeTimings,
       speed,
       volume
@@ -25,7 +35,7 @@ router.post('/', async (req, res) => {
     if (includeTimings) {
       // Return JSON response with both audio and timing data
       res.json(result);
-      console.log(`[VOICEVOX] Audio and timing data sent to client (${result.timings.length} timing points)`);
+      console.log(`[${ttsProviderLabel}] Audio and timing data sent to client (${result.timings.length} timing points)`);
     } else {
       // Return audio data only
       res.set({
@@ -35,11 +45,11 @@ router.post('/', async (req, res) => {
       });
 
       res.send(Buffer.from(result));
-      console.log(`[VOICEVOX] Audio sent to client (${result.byteLength} bytes)`);
+      console.log(`[${ttsProviderLabel}] Audio sent to client (${result.byteLength} bytes)`);
     }
 
   } catch (error) {
-    console.error('[VOICEVOX] Text-to-speech error:', error);
+    console.error(`[${ttsProviderLabel}] Text-to-speech error:`, error);
     
     const statusCode = error.statusCode || 500;
     res.status(statusCode).json({

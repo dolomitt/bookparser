@@ -54,6 +54,13 @@ const READING_FONT_SCALE = {
   MAX: 1.5,
   STEP: 0.05
 };
+
+const getSpeechTagsFromResponse = (responseData = {}) => {
+  const rawTags = responseData.speechTags || responseData.analysis?.speechTags || [];
+  return Array.isArray(rawTags)
+    ? rawTags.filter((tag) => typeof tag === 'string' && tag.trim()).slice(0, 2)
+    : [];
+};
 const WORD_SPACE_POS = new Set(['名詞', '動詞', '形容詞', '副詞', '連体詞', '接頭詞']);
 const PARTICLE_POS = '助詞';
 const PUNCTUATION_POS = '記号';
@@ -484,6 +491,7 @@ export default function ImportPage() {
   const [urlImporting, setUrlImporting] = useState(false);
   const [message, setMessage] = useState('');
   const [sentenceMessages, setSentenceMessages] = useState({});
+  const [ttsGeneratingSentences, setTtsGeneratingSentences] = useState({});
   const [processedSentences, setProcessedSentences] = useState({});
   const [processingSentences, setProcessingSentences] = useState({});
   const [pageAiProcessing, setPageAiProcessing] = useState(false);
@@ -492,7 +500,7 @@ export default function ImportPage() {
     available: false,
     model: '',
     endpoints: [],
-    message: 'Checking Ollama'
+    message: 'Checking AI engine'
   });
   const [activeSentenceNotes, setActiveSentenceNotes] = useState(null);
   const [activeSentenceControls, setActiveSentenceControls] = useState(null);
@@ -615,8 +623,8 @@ export default function ImportPage() {
           model: response.data?.model || '',
           endpoints,
           message: response.data?.available
-            ? 'Ollama ready'
-            : (firstUnavailable?.reason || 'Ollama unavailable')
+            ? 'AI engine ready'
+            : (firstUnavailable?.reason || 'AI engine unavailable')
         });
       } catch (error) {
         if (cancelled) return;
@@ -625,7 +633,7 @@ export default function ImportPage() {
           available: false,
           model: '',
           endpoints: [],
-          message: error.response?.data?.details || error.message || 'Ollama unavailable'
+          message: error.response?.data?.details || error.message || 'AI engine unavailable'
         });
       }
     };
@@ -1043,8 +1051,13 @@ export default function ImportPage() {
     // Auto-save bookmark when user interacts with sentence
     saveReadingBookmark(sentenceIndex);
 
-    // Set processing message for this specific sentence
-    setSentenceMessages(prev => ({ ...prev, [sentenceIndex]: 'Generating speech...' }));
+    setSentenceMessages(prev => ({ ...prev, [sentenceIndex]: '' }));
+    setTtsGeneratingSentences(prev => ({ ...prev, [sentenceIndex]: true }));
+    const playbackRate = Math.max(0.25, Math.min(4, Number(ttsOptions.speed) || 1));
+    const playbackDelay = (seconds) => (seconds * 1000) / playbackRate;
+    const speechTags = Array.isArray(processedSentences[sentenceIndex]?.speechTags)
+      ? processedSentences[sentenceIndex].speechTags
+      : [];
 
     try {
       if (withTimings) {
@@ -1052,6 +1065,7 @@ export default function ImportPage() {
         const response = await axios.post('/api/text-to-speech', {
           text: sentence.text,
           speaker: ttsOptions.speaker,
+          speechTags,
           speed: ttsOptions.speed,
           volume: ttsOptions.volume,
           includeTimings: true
@@ -1072,8 +1086,6 @@ export default function ImportPage() {
           const duration = timing.endTime - timing.startTime;
           console.log(`${i.toString().padStart(2, '0')} | ${text.padEnd(4)} | ${timing.startTime.toFixed(3)}-${timing.endTime.toFixed(3)}s | ${duration.toFixed(3)}s`);
         });
-        setSentenceMessages(prev => ({ ...prev, [sentenceIndex]: '🔊 Using VoiceVox timing...' }));
-
         // Convert base64 audio to blob
         const audioData = atob(audio);
         const audioArray = new Uint8Array(audioData.length);
@@ -1085,6 +1097,8 @@ export default function ImportPage() {
 
         // Create and play audio element
         const audioElement = new Audio(audioUrl);
+        audioElement.volume = Math.max(0, Math.min(1, Number(ttsOptions.volume) || 1));
+        audioElement.playbackRate = playbackRate;
 
         // Set up timing-based text highlighting
         let highlightTimeouts = [];
@@ -1135,6 +1149,7 @@ export default function ImportPage() {
               const sentenceData = {
                 tokens: response.data.analysis.tokens,
                 fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
+                speechTags: getSpeechTagsFromResponse(response.data),
                 processingType: 'local'
               };
 
@@ -1396,7 +1411,7 @@ export default function ImportPage() {
               // Don't change padding to avoid text movement
               currentHighlight = tokenElement;
             }
-          }, tokenTiming.startTime * 1000); // Convert to milliseconds
+          }, playbackDelay(tokenTiming.startTime));
 
           highlightTimeouts.push(timeout);
 
@@ -1407,7 +1422,7 @@ export default function ImportPage() {
               tokenElement.style.backgroundColor = 'transparent';
               tokenElement.style.color = '';
             }
-          }, tokenTiming.endTime * 1000);
+          }, playbackDelay(tokenTiming.endTime));
 
           highlightTimeouts.push(clearTimeout);
         });
@@ -1428,6 +1443,7 @@ export default function ImportPage() {
         // Original behavior - audio only
         const response = await axios.post('/api/text-to-speech', {
           text: sentence.text,
+          speechTags,
           includeTimings: false
         }, {
           responseType: 'blob'
@@ -1441,6 +1457,8 @@ export default function ImportPage() {
 
         // Create and play audio element
         const audio = new Audio(audioUrl);
+        audio.volume = Math.max(0, Math.min(1, Number(ttsOptions.volume) || 1));
+        audio.playbackRate = playbackRate;
         audio.play();
 
         // Clean up the object URL after playing
@@ -1459,9 +1477,9 @@ export default function ImportPage() {
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
         errorMessage = 'Server not running. Please start the server with "npm run dev" in the bookparser directory.';
       } else if (error.response?.status === 503) {
-        errorMessage = 'Cannot connect to VOICEVOX engine';
+        errorMessage = 'Cannot connect to speech engine';
       } else if (error.response?.status === 502) {
-        errorMessage = 'VOICEVOX engine error';
+        errorMessage = 'Speech engine error';
       } else if (error.response?.data?.error) {
         errorMessage = error.response.data.error;
       } else {
@@ -1477,6 +1495,12 @@ export default function ImportPage() {
       setTimeout(() => {
         setSentenceMessages(prev => ({ ...prev, [sentenceIndex]: '' }));
       }, 3000);
+    } finally {
+      setTtsGeneratingSentences(prev => {
+        const updated = { ...prev };
+        delete updated[sentenceIndex];
+        return updated;
+      });
     }
   };
 
@@ -1636,6 +1660,7 @@ export default function ImportPage() {
           tokens: responseData.analysis.tokens,
           fullSentenceTranslation: responseData.fullSentenceTranslation || 'N/A',
           sentenceNotes: Array.isArray(responseData.sentenceNotes) ? responseData.sentenceNotes : [],
+          speechTags: getSpeechTagsFromResponse(responseData),
           processingType: useRemoteProcessing ? 'remote' : 'local'
         };
 
@@ -1853,6 +1878,7 @@ export default function ImportPage() {
           const sentenceData = {
             tokens: response.data.analysis.tokens,
             fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
+            speechTags: getSpeechTagsFromResponse(response.data),
             processingType: 'local'
           };
 
@@ -1966,6 +1992,7 @@ export default function ImportPage() {
             const sentenceData = {
               tokens: response.data.analysis.tokens,
               fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
+              speechTags: getSpeechTagsFromResponse(response.data),
               processingType: 'local_reprocessed'
             };
 
@@ -2101,88 +2128,74 @@ export default function ImportPage() {
 
     updateProgress();
 
-    let cursor = 0;
-    const configuredConcurrency = Number(import.meta.env.VITE_AI_PAGE_CONCURRENCY || 4);
-    const workerCount = Math.max(1, Math.min(configuredConcurrency, sentenceIndexesToProcess.length || 1));
+    for (const sentenceIndex of sentenceIndexesToProcess) {
+      if (!isCurrentRun()) {
+        return;
+      }
 
-    const runWorker = async () => {
-      while (true) {
+      const sentence = sentences[sentenceIndex];
+
+      setProcessingSentences((prev) => ({ ...prev, [sentenceIndex]: true }));
+      setOllamaStreamPopup((prev) => ({
+        ...prev,
+        visible: true,
+        status: `page ${currentPage}: ${processedCount + skippedCount + errorCount}/${totalPageSentences}`,
+        content: `${prev.content}Processing sentence ${sentenceIndex}...\n`
+      }));
+
+      try {
+        const requestData = {
+          text: sentence.text,
+          sentenceIndex: sentenceIndex,
+          verbMergeOptions: verbMergeOptions,
+          allSentences: allSentenceTexts,
+          useRemoteProcessing: true,
+          frequencySettings: frequencySettings
+        };
+
+        const response = await axios.post('/api/parse', requestData);
+
         if (!isCurrentRun()) {
           return;
         }
 
-        const currentCursor = cursor;
-        cursor += 1;
-        if (currentCursor >= sentenceIndexesToProcess.length) {
-          return;
-        }
-
-        const sentenceIndex = sentenceIndexesToProcess[currentCursor];
-        const sentence = sentences[sentenceIndex];
-
-        setProcessingSentences((prev) => ({ ...prev, [sentenceIndex]: true }));
-        setOllamaStreamPopup((prev) => ({
-          ...prev,
-          visible: true,
-          status: `page ${currentPage}: ${processedCount + skippedCount + errorCount}/${totalPageSentences}`,
-          content: `${prev.content}Processing sentence ${sentenceIndex}...\n`
-        }));
-
-        try {
-          const requestData = {
-            text: sentence.text,
-            sentenceIndex: sentenceIndex,
-            verbMergeOptions: verbMergeOptions,
-            allSentences: allSentenceTexts,
-            useRemoteProcessing: true,
-            frequencySettings: frequencySettings
+        if (response.data.analysis && response.data.analysis.tokens) {
+          const sentenceData = {
+            tokens: response.data.analysis.tokens,
+            fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
+            sentenceNotes: Array.isArray(response.data.sentenceNotes) ? response.data.sentenceNotes : [],
+            speechTags: getSpeechTagsFromResponse(response.data),
+            processingType: 'remote'
           };
 
-          const response = await axios.post('/api/parse', requestData);
-
-          if (!isCurrentRun()) {
-            return;
-          }
-
-          if (response.data.analysis && response.data.analysis.tokens) {
-            const sentenceData = {
-              tokens: response.data.analysis.tokens,
-              fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
-              sentenceNotes: Array.isArray(response.data.sentenceNotes) ? response.data.sentenceNotes : [],
-              processingType: 'remote'
-            };
-
-            setProcessedSentences((prev) => ({ ...prev, [sentenceIndex]: sentenceData }));
-            await autoSave(sentenceIndex, sentenceData);
-            processedCount++;
-          } else {
-            errorCount++;
-          }
-        } catch (error) {
-          console.error(`AI page processing failed for sentence ${sentenceIndex}:`, error);
+          setProcessedSentences((prev) => ({ ...prev, [sentenceIndex]: sentenceData }));
+          await autoSave(sentenceIndex, sentenceData);
+          processedCount++;
+        } else {
           errorCount++;
-          if (isCurrentRun()) {
-            setOllamaStreamPopup((prev) => ({
-              ...prev,
-              visible: true,
-              status: `page ${currentPage}: error`,
-              content: `${prev.content}Error on sentence ${sentenceIndex}: ${error.message || 'unknown error'}\n`
-            }));
-          }
-        } finally {
-          if (isCurrentRun()) {
-            setProcessingSentences((prev) => {
-              const updated = { ...prev };
-              delete updated[sentenceIndex];
-              return updated;
-            });
-            updateProgress();
-          }
+        }
+      } catch (error) {
+        console.error(`AI page processing failed for sentence ${sentenceIndex}:`, error);
+        errorCount++;
+        if (isCurrentRun()) {
+          setOllamaStreamPopup((prev) => ({
+            ...prev,
+            visible: true,
+            status: `page ${currentPage}: error`,
+            content: `${prev.content}Error on sentence ${sentenceIndex}: ${error.message || 'unknown error'}\n`
+          }));
+        }
+      } finally {
+        if (isCurrentRun()) {
+          setProcessingSentences((prev) => {
+            const updated = { ...prev };
+            delete updated[sentenceIndex];
+            return updated;
+          });
+          updateProgress();
         }
       }
-    };
-
-    await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+    }
 
     if (!isCurrentRun()) {
       return;
@@ -2215,7 +2228,7 @@ export default function ImportPage() {
     if (!filename || isGeneratingSummary) return;
 
     setIsGeneratingSummary(true);
-    setMessage('Generating title + 3-sentence summary with Ollama...');
+    setMessage('Generating title + 3-sentence summary with AI...');
 
     try {
       const response = await axios.post(`/api/import/${filename}/summarize`);
@@ -2383,10 +2396,10 @@ export default function ImportPage() {
     : message;
   const readingFontSize = `clamp(${(1.24 * readingFontScale).toFixed(2)}rem, ${(0.9 * readingFontScale).toFixed(2)}vw + ${(1 * readingFontScale).toFixed(2)}rem, ${(1.58 * readingFontScale).toFixed(2)}rem)`;
   const readingMobileFontSize = `${readingFontScale.toFixed(2)}rem`;
-  const aiPageDisabled = pageAiProcessing || ollamaStatus.checking || !ollamaStatus.available;
+  const aiPageDisabled = pageAiProcessing;
   const aiPageTitle = ollamaStatus.available
     ? 'Run remote AI processing for all sentences on this page'
-    : `Ollama unavailable: ${ollamaStatus.message}`;
+    : `AI engine unavailable: ${ollamaStatus.message}`;
 
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= totalPages) {
@@ -2946,6 +2959,7 @@ export default function ImportPage() {
           const showSentenceControls = sentence.text.trim() !== '」';
           const hasEditControls = !isCompletedBookView || hasSentenceNotes;
           const editControlsOpen = activeSentenceControls === sentenceIndex;
+          const isGeneratingSpeech = Boolean(ttsGeneratingSentences[sentenceIndex]);
 
               return (
                 <span key={sentenceIndex} className="sentence-container">
@@ -2953,9 +2967,11 @@ export default function ImportPage() {
                     <span className="sentence-leading-controls">
                       <button
                         onClick={() => handleTextToSpeech(sentenceIndex, true)}
-                        className="sentence-btn play"
-                        title="Play sentence"
-                        aria-label="Play sentence"
+                        className={`sentence-btn play ${isGeneratingSpeech ? 'generating' : ''}`}
+                        title={isGeneratingSpeech ? 'Generating audio' : 'Play sentence'}
+                        aria-label={isGeneratingSpeech ? 'Generating audio' : 'Play sentence'}
+                        aria-busy={isGeneratingSpeech}
+                        disabled={isGeneratingSpeech}
                       >
                         ▶
                       </button>
@@ -3134,7 +3150,7 @@ export default function ImportPage() {
                 }}
               >
                 <div>
-                  <strong>Ollama Live</strong>{' '}
+                  <strong>AI Live</strong>{' '}
                   {Number.isInteger(ollamaStreamPopup.sentenceIndex)
                     ? `(R: sentence ${ollamaStreamPopup.sentenceIndex})`
                     : '(R: page processing)'}

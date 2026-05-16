@@ -430,6 +430,36 @@
   border-color: transparent;
 }
 
+.sentence-btn.play.generating {
+  animation: sentence-play-pulse 0.72s ease-in-out infinite;
+  color: #ffffff;
+  cursor: wait;
+  opacity: 1;
+}
+
+.sentence-btn.play:disabled {
+  pointer-events: none;
+}
+
+@keyframes sentence-play-pulse {
+  0%, 100% {
+    opacity: 0.34;
+    transform: scale(0.96);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sentence-btn.play.generating {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
 .sentence-btn.translation,
 .sentence-btn.notes,
 .sentence-btn.edit {

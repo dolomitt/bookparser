@@ -115,9 +115,12 @@ class OllamaService {
     this.baseUrls = Array.isArray(config.ollama.baseUrls) && config.ollama.baseUrls.length > 0
       ? [...config.ollama.baseUrls]
       : [config.ollama.baseUrl];
+    this.provider = config.ollama.provider;
+    this.baseUrls = this.baseUrls.map((baseUrl) => this.formatBaseUrlForProvider(baseUrl));
     this.baseUrl = this.baseUrls[0];
     this.nextBaseUrlIndex = 0;
     this.model = config.ollama.model;
+    this.apiKey = config.ollama.apiKey;
     this.timeout = config.ollama.timeout;
     this.healthCheckTimeout = config.ollama.healthTimeout;
     this.healthCacheMs = config.ollama.healthCacheMs;
@@ -125,6 +128,9 @@ class OllamaService {
     this.modelLoadCacheMs = config.ollama.modelLoadCacheMs;
     this.maxRetries = config.ollama.maxRetries;
     this.maxTokens = config.ollama.maxTokens;
+    this.analysisBaseMaxTokens = config.ollama.analysisBaseMaxTokens;
+    this.analysisMaxTokensPerToken = config.ollama.analysisMaxTokensPerToken;
+    this.logStats = Boolean(config.ollama.logStats);
     this.verboseLogs = process.env.BOOKPARSER_VERBOSE_LOGS === 'true';
     this.healthStatusByBaseUrl = new Map();
     this.inFlightByBaseUrl = new Map(this.baseUrls.map((baseUrl) => [baseUrl, 0]));
@@ -135,10 +141,8 @@ class OllamaService {
     this.aiTokenScope = ['all', 'learner'].includes(config.ollama.aiTokenScope)
       ? config.ollama.aiTokenScope
       : 'learner';
-    const thinkEnv = process.env.BOOKPARSER_OLLAMA_THINK;
-    this.think = thinkEnv !== undefined
-      ? (thinkEnv === 'true' ? true : thinkEnv === 'false' ? false : thinkEnv)
-      : false;
+    this.disableThinking = Boolean(config.ollama.disableThinking);
+    this.responseFormat = config.ollama.responseFormat || 'text';
   }
 
   log(...args) {
@@ -218,102 +222,16 @@ class OllamaService {
   }
 
   async checkModelLoaded(baseUrl, { force = false } = {}) {
-    const cached = this.modelLoadedStatusByBaseUrl.get(baseUrl);
-    if (!force && this.isModelLoadedStatusFresh(cached)) {
-      return cached.loaded;
-    }
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.healthCheckTimeout);
-
-    try {
-      const response = await fetch(`${baseUrl}/api/ps`, { signal: controller.signal });
-      if (!response.ok) {
-        this.setModelLoadedStatus(baseUrl, false, `ps returned ${response.status}`);
-        return false;
-      }
-
-      const data = await response.json();
-      const loaded = this.isTargetModelRunning(Array.isArray(data?.models) ? data.models : []);
-      this.setModelLoadedStatus(
-        baseUrl,
-        loaded,
-        loaded ? '' : `model "${this.model}" not loaded`
-      );
-      return loaded;
-    } catch (error) {
-      this.setModelLoadedStatus(baseUrl, false, error?.message || 'model load check failed');
-      return false;
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    this.setModelLoadedStatus(baseUrl, true);
+    return true;
   }
 
   async warmupModel(baseUrl) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.modelLoadTimeout);
-
-    try {
-      const response = await fetch(`${baseUrl}/api/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: this.model,
-          prompt: ' ',
-          stream: false,
-          keep_alive: '10m',
-          options: {
-            num_predict: 0,
-            temperature: 0
-          }
-        }),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`warmup failed: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-
-      this.setModelLoadedStatus(baseUrl, true);
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    this.setModelLoadedStatus(baseUrl, true);
   }
 
   async ensureModelLoaded(baseUrl) {
-    const alreadyLoaded = await this.checkModelLoaded(baseUrl);
-    if (alreadyLoaded) {
-      return;
-    }
-
-    const inFlight = this.modelLoadInFlightByBaseUrl.get(baseUrl);
-    if (inFlight) {
-      await inFlight;
-      return;
-    }
-
-    const loadPromise = (async () => {
-      try {
-        this.log(`[Ollama] Model "${this.model}" is not loaded on ${baseUrl}; warming up before timed request...`);
-        await this.warmupModel(baseUrl);
-        const isLoadedAfterWarmup = await this.checkModelLoaded(baseUrl, { force: true });
-        if (!isLoadedAfterWarmup) {
-          const reason = this.modelLoadedStatusByBaseUrl.get(baseUrl)?.reason || 'unknown reason';
-          throw new Error(`model "${this.model}" still not loaded after warmup (${reason})`);
-        }
-      } catch (error) {
-        this.setModelLoadedStatus(baseUrl, false, error?.message || 'warmup failed');
-        throw error;
-      } finally {
-        this.modelLoadInFlightByBaseUrl.delete(baseUrl);
-      }
-    })();
-
-    this.modelLoadInFlightByBaseUrl.set(baseUrl, loadPromise);
-    await loadPromise;
+    return;
   }
 
   getOrderedBaseUrlsForAttempt(baseUrls, attempt = 1) {
@@ -333,19 +251,23 @@ class OllamaService {
   }
 
   async generateOnBaseUrl(baseUrl, payload, requestType = 'analysis') {
-    await this.ensureModelLoaded(baseUrl);
-
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
     const startedAt = Date.now();
-    console.log(`[Ollama] -> ${requestType} ${baseUrl}`);
+    const requestPath = this.getChatCompletionsPath();
+    console.log(`[AI] -> ${requestType} ${baseUrl}${requestPath}`);
 
     try {
-      const response = await fetch(`${baseUrl}/api/generate`, {
+      const headers = {
+        'Content-Type': 'application/json',
+      };
+      if (this.apiKey) {
+        headers.Authorization = `Bearer ${this.apiKey}`;
+      }
+
+      const response = await fetch(`${baseUrl}${requestPath}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(payload),
         signal: controller.signal
       });
@@ -358,20 +280,21 @@ class OllamaService {
 
       this.setHealthStatus(baseUrl, true);
       const durationMs = Date.now() - startedAt;
-      console.log(`[Ollama] <- ${requestType} ${baseUrl} (${durationMs}ms)`);
+      console.log(`[AI] <- ${requestType} ${baseUrl} (${durationMs}ms)`);
+      response.durationMs = durationMs;
       return response;
     } catch (error) {
       const durationMs = Date.now() - startedAt;
       if (error.name === 'AbortError') {
         this.setHealthStatus(baseUrl, false, `${requestType} timeout`);
-        console.warn(`[Ollama] xx ${requestType} ${baseUrl} timeout (${durationMs}ms)`);
+        console.warn(`[AI] xx ${requestType} ${baseUrl} timeout (${durationMs}ms)`);
         throw new Error(`${baseUrl}: request timed out after ${this.timeout / 1000} seconds`);
       }
 
       if (error.code === 'ECONNREFUSED' || /fetch failed/i.test(error.message || '')) {
         this.setHealthStatus(baseUrl, false, error.message);
       }
-      console.warn(`[Ollama] xx ${requestType} ${baseUrl} failed (${durationMs}ms): ${error.message || 'request failed'}`);
+      console.warn(`[AI] xx ${requestType} ${baseUrl} failed (${durationMs}ms): ${error.message || 'request failed'}`);
 
       throw error;
     } finally {
@@ -456,7 +379,7 @@ ${sourceText}`;
   }
 
   extractSummaryResult(data, maxSentences) {
-    const payload = this.extractJsonPayload(data.response || '{}');
+    const payload = this.extractJsonPayload(this.extractCompletionText(data) || '{}');
     const summaryTitle = this.normalizeSummaryTitle(payload);
     const summarySentences = this.normalizeSummarySentences(payload, maxSentences);
 
@@ -524,9 +447,32 @@ ${sourceText}`;
     return chunks.filter(Boolean);
   }
 
+  logResponseStats(requestType, baseUrl, data, durationMs) {
+    if (!this.logStats) {
+      return;
+    }
+
+    const usage = data?.usage || {};
+    const stats = data?.stats || {};
+    const promptTokens = usage.prompt_tokens ?? usage.input_tokens ?? null;
+    const completionTokens = usage.completion_tokens ?? usage.output_tokens ?? null;
+    const cachedTokens =
+      usage.prompt_tokens_details?.cached_tokens ??
+      usage.input_tokens_details?.cached_tokens ??
+      null;
+    const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens ?? null;
+    const ttft = Number.isFinite(stats.time_to_first_token)
+      ? `${stats.time_to_first_token}s`
+      : 'n/a';
+
+    console.log(
+      `[AI stats] ${requestType} ${baseUrl}: duration=${durationMs}ms prompt_tokens=${promptTokens ?? 'n/a'} completion_tokens=${completionTokens ?? 'n/a'} reasoning_tokens=${reasoningTokens ?? 'not_reported'} cached_tokens=${cachedTokens ?? 'not_reported'} ttft=${ttft}`
+    );
+  }
+
   async summarizeChunkWithFailover(chunkText, maxSentences, baseUrls, startOffset = 0) {
     if (!Array.isArray(baseUrls) || baseUrls.length === 0) {
-      throw new Error('No healthy Ollama servers available for summary chunk');
+      throw new Error('No healthy AI endpoints available for summary chunk');
     }
 
     const orderedBaseUrls = this.getOrderedBaseUrlsForAttempt(baseUrls, startOffset + 1);
@@ -535,21 +481,18 @@ ${sourceText}`;
 
     for (const baseUrl of orderedBaseUrls) {
       try {
-        const response = await this.generateOnBaseUrl(baseUrl, {
-          model: this.model,
-          prompt,
-          stream: false,
-          format: 'json',
-          think: this.think,
-          options: {
+        const response = await this.generateOnBaseUrl(
+          baseUrl,
+          this.buildChatCompletionPayload(prompt, {
+            stream: false,
             temperature: 0.2,
-            top_p: 0.9,
-            top_k: 40,
-            num_predict: Math.max(this.maxTokens, config.ollama.summaryMaxTokens || this.maxTokens)
-          }
-        }, 'summary');
+            maxTokens: Math.max(this.maxTokens, config.ollama.summaryMaxTokens || this.maxTokens)
+          }),
+          'summary'
+        );
 
         const data = await response.json();
+        this.logResponseStats('summary', baseUrl, data, response.durationMs);
         return this.extractSummaryResult(data, maxSentences);
       } catch (error) {
         lastError = error;
@@ -595,14 +538,31 @@ ${sourceText}`;
     const timeoutId = setTimeout(() => controller.abort(), this.healthCheckTimeout);
 
     try {
-      const response = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
+      const headers = {};
+      if (this.apiKey) {
+        headers.Authorization = `Bearer ${this.apiKey}`;
+      }
+
+      const response = await fetch(`${baseUrl}${this.getModelsPath()}`, { headers, signal: controller.signal });
       if (!response.ok) {
-        this.setHealthStatus(baseUrl, false, `tags returned ${response.status}`);
+        if ([404, 405, 501].includes(response.status)) {
+          this.setHealthStatus(baseUrl, true, `models endpoint unavailable (${response.status})`);
+          return true;
+        }
+        this.setHealthStatus(baseUrl, false, `models returned ${response.status}`);
         return false;
       }
 
       const data = await response.json();
-      const modelExists = data.models?.some((model) => model.name === this.model);
+      const models = Array.isArray(data?.data)
+        ? data.data
+        : (Array.isArray(data?.models) ? data.models : []);
+      const modelExists = models.length === 0 || models.some((model) => {
+        const candidates = [model?.id, model?.name, model?.model]
+          .map((value) => String(value || '').trim())
+          .filter(Boolean);
+        return candidates.includes(this.model);
+      });
       if (!modelExists) {
         this.setHealthStatus(baseUrl, false, `model "${this.model}" missing`);
         return false;
@@ -620,7 +580,7 @@ ${sourceText}`;
 
   async getHealthyBaseUrlsForRequest() {
     const candidateBaseUrls = [...this.baseUrls];
-    this.log('[Ollama] Candidate servers for this request:', candidateBaseUrls.join(', '));
+    this.log('[AI] Candidate endpoints for this request:', candidateBaseUrls.join(', '));
 
     const healthStatuses = await Promise.all(
       candidateBaseUrls.map((baseUrl) => this.checkBaseUrlHealth(baseUrl))
@@ -628,11 +588,31 @@ ${sourceText}`;
     const healthyBaseUrls = candidateBaseUrls.filter((baseUrl, index) => healthStatuses[index]);
 
     if (healthyBaseUrls.length === 0) {
-      throw new Error(`No healthy Ollama servers available: ${candidateBaseUrls.join(', ')}`);
+      throw new Error(`No healthy AI endpoints available: ${candidateBaseUrls.join(', ')}`);
     }
 
-    this.log('[Ollama] Healthy servers for this request:', healthyBaseUrls.join(', '));
+    this.log('[AI] Healthy endpoints for this request:', healthyBaseUrls.join(', '));
     return healthyBaseUrls;
+  }
+
+  getChatCompletionsPath() {
+    return this.provider === 'lmstudio'
+      ? '/api/v0/chat/completions'
+      : '/chat/completions';
+  }
+
+  getModelsPath() {
+    return this.provider === 'lmstudio'
+      ? '/api/v0/models'
+      : '/models';
+  }
+
+  formatBaseUrlForProvider(baseUrl) {
+    if (this.provider !== 'lmstudio') {
+      return baseUrl;
+    }
+
+    return baseUrl.replace(/\/v\d+(?:\/)?$/i, '');
   }
 
   async getAvailabilityStatus({ force = false } = {}) {
@@ -656,6 +636,158 @@ ${sourceText}`;
 
   getTokenSurface(token) {
     return (token?.surface || token?.surface_form || '').trim();
+  }
+
+  extractCompletionText(data) {
+    if (typeof data?.response === 'string') {
+      return data.response;
+    }
+
+    const choice = Array.isArray(data?.choices) ? data.choices[0] : null;
+    const messageContent = choice?.message?.content;
+    if (typeof messageContent === 'string') {
+      return messageContent;
+    }
+
+    if (Array.isArray(messageContent)) {
+      return messageContent
+        .map((part) => typeof part === 'string' ? part : (part?.text || part?.content || ''))
+        .join('');
+    }
+
+    return '';
+  }
+
+  buildChatCompletionPayload(prompt, {
+    stream = false,
+    temperature = 0.3,
+    maxTokens = this.maxTokens,
+    systemPrompt = ''
+  } = {}) {
+    const systemContent = this.disableThinking && systemPrompt
+      ? `${systemPrompt}\n\n/no_think`
+      : systemPrompt;
+    const userContent = this.disableThinking && !systemPrompt
+      ? `${prompt}\n\n/no_think`
+      : prompt;
+    const messages = [];
+
+    if (systemContent) {
+      messages.push({
+        role: 'system',
+        content: systemContent
+      });
+    }
+
+    messages.push({
+      role: 'user',
+      content: userContent
+    });
+
+    const payload = {
+      model: this.model,
+      messages,
+      stream,
+      temperature,
+      top_p: 0.9,
+      max_tokens: maxTokens
+    };
+
+    if (this.responseFormat) {
+      payload.response_format = { type: this.responseFormat };
+    }
+
+    if (this.disableThinking) {
+      payload.reasoning_effort = 'none';
+    }
+
+    return payload;
+  }
+
+  getAnalysisMaxTokens(promptTokenCount = 0) {
+    const estimated = this.analysisBaseMaxTokens + (Math.max(1, promptTokenCount) * this.analysisMaxTokensPerToken);
+    return Math.max(512, Math.min(this.maxTokens, estimated));
+  }
+
+  buildAnalysisSystemPrompt() {
+    return `Translate this Japanese sentence and analyze only the listed learner-relevant tokens.
+Do not add punctuation or tokens that are not listed.
+Identify fixed expressions/set phrases (if any) and include them.
+Before translating, review whether the token boundaries and meanings are suitable for this sentence.
+If adjacent listed tokens should be merged, or a token's meaning is clearly the wrong dictionary sense, suggest a correction in tokenCorrections.
+Only suggest corrections when you are confident. Use tokenIndexes from Indexed tokens. Do not reorder tokens.
+For Fish Speech TTS, choose 0-2 short bracketed speech direction tags that match the sentence's mood and delivery.
+Use natural-language tags such as "[calm, clear narration]", "[tense, quiet]", "[sad]", "[excited]", "[speaking slowly]", or "[urgent, quick pacing]".
+Do not add speaker identity, character names, sound effects, or tags that contradict the sentence. Use [] bracket syntax only.
+Keep all string values concise. Use short phrases, not full explanations, except sentenceNotes.
+For each token, return only surface, translation, contextualMeaning, and grammaticalRole.
+Use [] for tokenCorrections, expressions, and sentenceNotes when none are needed.
+
+Return JSON only:
+{
+  "fullLineTranslation": "English translation",
+  "speechTags": [
+    "[calm, clear narration]"
+  ],
+  "tokenCorrections": [
+    {
+      "type": "merge",
+      "tokenIndexes": [0, 1],
+      "surface": "joined surface from adjacent tokens",
+      "reading": "reading of merged token",
+      "translation": "natural meaning",
+      "contextualMeaning": "why this merged token is correct here",
+      "grammaticalRole": "grammar role"
+    },
+    {
+      "type": "overrideMeaning",
+      "tokenIndexes": [0],
+      "surface": "token",
+      "translation": "correct sense in this sentence",
+      "contextualMeaning": "why this sense is correct here",
+      "grammaticalRole": "grammar role"
+    }
+  ],
+  "tokens": [
+    {
+      "surface": "token",
+      "translation": "brief meaning",
+      "contextualMeaning": "brief context sense",
+      "grammaticalRole": "brief role"
+    }
+  ],
+  "expressions": [
+    {
+      "surface": "set phrase or multi-token expression from sentence",
+      "meaning": "natural English meaning",
+      "note": "brief grammar/set-phrase note"
+    }
+  ],
+  "sentenceNotes": [
+    {
+      "type": "grammar|nuance|context",
+      "text": "short note explaining one important point in this sentence"
+    }
+  ]
+}`;
+  }
+
+  parseOpenAiStreamChunk(line) {
+    const trimmed = String(line || '').trim();
+    if (!trimmed.startsWith('data:')) return null;
+
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === '[DONE]') {
+      return payload === '[DONE]' ? { done: true, content: '' } : null;
+    }
+
+    const parsed = JSON.parse(payload);
+    const choice = Array.isArray(parsed?.choices) ? parsed.choices[0] : null;
+    const content = choice?.delta?.content ?? choice?.message?.content ?? '';
+    return {
+      done: choice?.finish_reason != null,
+      content: typeof content === 'string' ? content : ''
+    };
   }
 
   isCompactPromptToken(token) {
@@ -715,21 +847,29 @@ ${sourceText}`;
       try {
         const isHealthy = await this.checkBaseUrlHealth(baseUrl, { force: true });
         if (isHealthy) {
-          const response = await fetch(`${baseUrl}/api/tags`);
+          const headers = {};
+          if (this.apiKey) {
+            headers.Authorization = `Bearer ${this.apiKey}`;
+          }
+          const response = await fetch(`${baseUrl}${this.getModelsPath()}`, { headers });
           if (!response.ok) {
             this.log(`[Ollama] ❌ Failed to connect to ${baseUrl}: ${response.status} ${response.statusText}`);
             continue;
           }
           const data = await response.json();
+          const models = Array.isArray(data?.data)
+            ? data.data
+            : (Array.isArray(data?.models) ? data.models : []);
+          const modelNames = models.map((model) => model.id || model.name || model.model).filter(Boolean);
           this.log(`[Ollama] ✅ Connected to ${baseUrl}`);
-          this.log('[Ollama] Available models:', data.models?.map(m => m.name) || 'No models found');
+          this.log('[Ollama] Available models:', modelNames.length > 0 ? modelNames : 'No models found');
 
           // Check if our configured model exists
-          const modelExists = data.models?.some(m => m.name === this.model);
+          const modelExists = modelNames.length === 0 || modelNames.includes(this.model);
           if (modelExists) {
             this.log(`[Ollama] ✅ Model "${this.model}" is available on ${baseUrl}`);
           } else {
-            this.log(`[Ollama] ⚠️ Model "${this.model}" not found on ${baseUrl}. Available models:`, data.models?.map(m => m.name));
+            this.log(`[Ollama] Model "${this.model}" not found on ${baseUrl}. Available models:`, modelNames);
           }
         } else {
           const reason = this.healthStatusByBaseUrl.get(baseUrl)?.reason;
@@ -806,88 +946,30 @@ ${sourceText}`;
 
         this.log('[Ollama] Context text:', contextText);
 
-        // Use fixed token limit for response
-        const fixedNumPredict = this.maxTokens;
+        const fixedNumPredict = this.getAnalysisMaxTokens(promptTokens.length);
 
         this.log(`[Ollama] Using fixed response limit: ${fixedNumPredict} tokens for ${promptTokens.length} prompt tokens`);
 
-        const prompt = `Translate this Japanese sentence and analyze only the listed learner-relevant tokens.
-Do not add punctuation or tokens that are not listed.
-Identify fixed expressions/set phrases (if any) and include them.
-Before translating, review whether the token boundaries and meanings are suitable for this sentence.
-If adjacent listed tokens should be merged, or a token's meaning is clearly the wrong dictionary sense, suggest a correction in tokenCorrections.
-Only suggest corrections when you are confident. Use tokenIndexes from Indexed tokens. Do not reorder tokens.
-
-${contextText}
+        const analysisSystemPrompt = this.buildAnalysisSystemPrompt();
+        const prompt = `${contextText}
 
 Tokens: ${tokenList}
-Indexed tokens: ${indexedTokenList}
-
-Return JSON only:
-{
-  "fullLineTranslation": "English translation",
-  "tokenCorrections": [
-    {
-      "type": "merge",
-      "tokenIndexes": [0, 1],
-      "surface": "joined surface from adjacent tokens",
-      "reading": "reading of merged token",
-      "translation": "natural meaning",
-      "contextualMeaning": "why this merged token is correct here",
-      "grammaticalRole": "grammar role"
-    },
-    {
-      "type": "overrideMeaning",
-      "tokenIndexes": [0],
-      "surface": "token",
-      "translation": "correct sense in this sentence",
-      "contextualMeaning": "why this sense is correct here",
-      "grammaticalRole": "grammar role"
-    }
-  ],
-  "tokens": [
-    {
-      "surface": "token",
-      "translation": "meaning",
-      "contextualMeaning": "context explanation",
-      "grammaticalRole": "grammar role"
-    }
-  ],
-  "expressions": [
-    {
-      "surface": "set phrase or multi-token expression from sentence",
-      "meaning": "natural English meaning",
-      "note": "brief grammar/set-phrase note"
-    }
-  ],
-  "sentenceNotes": [
-    {
-      "type": "grammar|nuance|context",
-      "text": "short note explaining one important point in this sentence"
-    }
-  ]
-}`;
+Indexed tokens: ${indexedTokenList}`;
 
         this.log('[Ollama] 🚀 Sending request to Ollama API...');
         this.log('[Ollama] Using model:', this.model);
-        this.log('[Ollama] Prompt length:', prompt.length, 'characters');
+        this.log('[Ollama] System prompt length:', analysisSystemPrompt.length, 'characters');
+        this.log('[Ollama] Dynamic prompt length:', prompt.length, 'characters');
 
         const startTime = Date.now();
 
         const shouldStream = typeof onChunk === 'function';
-        const requestPayload = {
-          model: this.model,
-          prompt: prompt,
+        const requestPayload = this.buildChatCompletionPayload(prompt, {
           stream: shouldStream,
-          format: 'json',
-          think: this.think,
-          options: {
-            temperature: 0.3,
-            top_p: 0.9,
-            top_k: 40,
-            num_predict: fixedNumPredict // Fixed response length
-          }
-        };
+          temperature: 0.3,
+          maxTokens: fixedNumPredict,
+          systemPrompt: analysisSystemPrompt
+        });
 
         const response = await this.generateOnBaseUrl(
           activeBaseUrl,
@@ -905,77 +987,61 @@ Return JSON only:
         let responseText = '';
         if (shouldStream) {
           if (!response.body) {
-            throw new Error('Ollama streaming response body is empty');
+            throw new Error('OpenAI-compatible streaming response body is empty');
           }
 
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let pending = '';
           let streamedChunkCount = 0;
-          let streamedThinkingChunkCount = 0;
 
           while (true) {
             const { value, done } = await reader.read();
             if (done) break;
 
             pending += decoder.decode(value, { stream: true });
-            const extracted = extractJsonObjectsFromBuffer(pending);
-            pending = extracted.remaining;
+            const lines = pending.split(/\r?\n/);
+            pending = lines.pop() || '';
 
-            for (const objectJson of extracted.objects) {
+            for (const line of lines) {
+              if (!line.trim()) continue;
               try {
-                const parsedChunk = JSON.parse(objectJson);
-                const chunkText = typeof parsedChunk.response === 'string' ? parsedChunk.response : '';
-                const thinkingText = typeof parsedChunk.thinking === 'string' ? parsedChunk.thinking : '';
+                const parsedChunk = this.parseOpenAiStreamChunk(line);
+                if (!parsedChunk || parsedChunk.done) continue;
 
-                if (thinkingText.length > 0) {
-                  onChunk({ kind: 'thinking', content: thinkingText });
-                  streamedThinkingChunkCount += 1;
-                }
-
-                if (chunkText.length > 0) {
-                  responseText += chunkText;
-                  onChunk({ kind: 'response', content: chunkText });
+                if (parsedChunk.content.length > 0) {
+                  responseText += parsedChunk.content;
+                  onChunk({ kind: 'response', content: parsedChunk.content });
                   streamedChunkCount += 1;
                 }
               } catch (streamParseError) {
-                console.error('[Ollama] Failed to parse streaming chunk:', streamParseError);
+                console.error('[AI] Failed to parse streaming chunk:', streamParseError);
               }
             }
           }
 
           pending += decoder.decode();
-          const tailExtracted = extractJsonObjectsFromBuffer(pending);
-          for (const objectJson of tailExtracted.objects) {
+          for (const line of pending.split(/\r?\n/)) {
+            if (!line.trim()) continue;
             try {
-              const parsedTail = JSON.parse(objectJson);
-              const chunkText = typeof parsedTail.response === 'string' ? parsedTail.response : '';
-              const thinkingText = typeof parsedTail.thinking === 'string' ? parsedTail.thinking : '';
+              const parsedTail = this.parseOpenAiStreamChunk(line);
+              if (!parsedTail || parsedTail.done) continue;
 
-              if (thinkingText.length > 0) {
-                onChunk({ kind: 'thinking', content: thinkingText });
-                streamedThinkingChunkCount += 1;
-              }
-
-              if (chunkText.length > 0) {
-                responseText += chunkText;
-                onChunk({ kind: 'response', content: chunkText });
+              if (parsedTail.content.length > 0) {
+                responseText += parsedTail.content;
+                onChunk({ kind: 'response', content: parsedTail.content });
                 streamedChunkCount += 1;
               }
             } catch (tailParseError) {
-              console.error('[Ollama] Failed to parse streaming tail chunk:', tailParseError);
+              console.error('[AI] Failed to parse streaming tail chunk:', tailParseError);
             }
           }
 
-          if (tailExtracted.remaining.trim()) {
-            this.log('[Ollama] Unparsed streaming tail length:', tailExtracted.remaining.trim().length);
-          }
-
           this.log('[Ollama] Streamed chunk count:', streamedChunkCount);
-          this.log('[Ollama] Streamed thinking chunk count:', streamedThinkingChunkCount);
         } else {
           const data = await response.json();
-          responseText = data.response;
+          this.logResponseStats('analysis', activeBaseUrl, data, response.durationMs);
+          responseText = this.extractCompletionText(data);
         }
 
         this.log('[Ollama] Raw response content:', responseText);
