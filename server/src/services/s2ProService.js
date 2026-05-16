@@ -1,13 +1,13 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
 import { config } from '../config/index.js';
 import speechAlignmentService from './speechAlignmentService.js';
 
-class FishSpeechService {
+class S2ProService {
   constructor() {
-    this.baseUrl = config.fishSpeech.baseUrl;
-    this.apiKey = config.fishSpeech.apiKey;
-    this.referenceId = config.fishSpeech.referenceId;
-    this.format = config.fishSpeech.format;
-    this.timeout = config.fishSpeech.timeout;
+    this.baseUrl = config.s2Pro.baseUrl;
+    this.timeout = config.s2Pro.timeout;
   }
 
   filterTextForTTS(text) {
@@ -22,48 +22,40 @@ class FishSpeechService {
 
   async generateSpeech(text, options = {}) {
     const filteredText = this.filterTextForTTS(text);
-    const synthesisText = this.buildTaggedPrompt(filteredText, options.speechTags);
-    const referenceId = options.referenceId || this.referenceId || null;
-    const speed = Number(options.speed);
+    const synthesisText = config.s2Pro.enableSpeechTags
+      ? this.buildTaggedPrompt(filteredText, options.speechTags)
+      : filteredText;
 
-    console.log(`Generating Fish Speech audio for text: "${filteredText.substring(0, 50)}..."`);
-    console.log(`Using Fish Speech at: ${this.baseUrl}, includeTimings: ${Boolean(options.includeTimings)}`);
+    console.log(`Generating S2 Pro audio for text: "${filteredText.substring(0, 50)}..."`);
+    console.log(`Using S2 Pro at: ${this.baseUrl}, includeTimings: ${Boolean(options.includeTimings)}`);
 
-    const payload = {
-      text: synthesisText,
-      references: [],
-      reference_id: referenceId,
-      format: this.format,
-      normalize: true,
-      streaming: false,
-      max_new_tokens: config.fishSpeech.maxNewTokens,
-      chunk_length: config.fishSpeech.chunkLength,
-      top_p: config.fishSpeech.topP,
-      repetition_penalty: config.fishSpeech.repetitionPenalty,
-      temperature: config.fishSpeech.temperature,
-      ...(Number.isNaN(config.fishSpeech.seed) ? {} : { seed: config.fishSpeech.seed }),
-      ...(Number.isFinite(speed) ? { prosody: { speed } } : {}),
-      use_memory_cache: config.fishSpeech.useMemoryCache
-    };
+    const formData = new FormData();
+    formData.set('text', synthesisText);
+    formData.set('params', JSON.stringify({
+      max_new_tokens: config.s2Pro.maxNewTokens,
+      temperature: config.s2Pro.temperature,
+      top_p: config.s2Pro.topP,
+      top_k: config.s2Pro.topK,
+      min_tokens_before_end: config.s2Pro.minTokensBeforeEnd,
+      n_threads: config.s2Pro.threads,
+      verbose: false
+    }));
+
+    await this.addReferenceAudio(formData);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      const response = await fetch(`${this.baseUrl}/v1/tts`, {
+      const response = await fetch(`${this.baseUrl}/generate`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: this.contentTypeForFormat(this.format),
-          ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {})
-        },
-        body: JSON.stringify(payload),
+        body: formData,
         signal: controller.signal
       });
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
-        throw new Error(`Fish Speech TTS failed: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`);
+        throw new Error(`S2 Pro TTS failed: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`);
       }
 
       const audioBuffer = Buffer.from(await response.arrayBuffer());
@@ -80,39 +72,57 @@ class FishSpeechService {
           timings,
           alignmentProvider: alignment?.provider || 'estimated',
           phoneTimings: alignment?.phoneTimings || [],
-          audioFormat: this.format,
+          audioFormat: 'wav',
           sampleRate: wavInfo.sampleRate
         };
       }
 
       return audioBuffer;
     } catch (error) {
-      console.error('[Fish Speech] Text-to-speech error:', error);
+      console.error('[S2 Pro] Text-to-speech error:', error);
 
       let errorMessage = 'Speech generation failed';
       let statusCode = 500;
 
       if (error.name === 'AbortError') {
-        errorMessage = `Timed out connecting to Fish Speech server at ${this.baseUrl}`;
+        errorMessage = `Timed out connecting to S2 Pro server at ${this.baseUrl}`;
         statusCode = 503;
       } else if (
         error.message.includes('fetch failed') ||
         error.message.includes('ECONNREFUSED') ||
         error.message.includes('Unable to connect')
       ) {
-        errorMessage = `Cannot connect to Fish Speech server at ${this.baseUrl}`;
+        errorMessage = `Cannot connect to S2 Pro server at ${this.baseUrl}`;
         statusCode = 503;
-      } else if (error.message.includes('Fish Speech TTS failed')) {
+      } else if (error.message.includes('S2 Pro TTS failed')) {
         errorMessage = error.message;
         statusCode = 502;
       }
 
-      const fishSpeechError = new Error(errorMessage);
-      fishSpeechError.statusCode = statusCode;
-      throw fishSpeechError;
+      const s2ProError = new Error(errorMessage);
+      s2ProError.statusCode = statusCode;
+      throw s2ProError;
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  async addReferenceAudio(formData) {
+    const referenceAudioPath = config.s2Pro.referenceAudioPath.trim();
+    const referenceText = config.s2Pro.referenceText.trim();
+
+    if (!referenceAudioPath && !referenceText) {
+      return;
+    }
+
+    if (!referenceAudioPath || !referenceText) {
+      throw new Error('S2_PRO_REFERENCE_AUDIO_PATH and S2_PRO_REFERENCE_TEXT must both be configured for voice cloning');
+    }
+
+    const audioBuffer = await fs.readFile(referenceAudioPath);
+    const filename = path.basename(referenceAudioPath);
+    formData.set('reference', new Blob([audioBuffer]), filename);
+    formData.set('reference_text', referenceText);
   }
 
   buildTaggedPrompt(text, speechTags = []) {
@@ -133,17 +143,10 @@ class FishSpeechService {
     return tags.length > 0 ? `${tags.join(' ')} ${text}` : text;
   }
 
-  contentTypeForFormat(format) {
-    if (format === 'mp3') return 'audio/mpeg';
-    if (format === 'opus') return 'audio/ogg';
-    if (format === 'pcm') return 'application/octet-stream';
-    return 'audio/wav';
-  }
-
   readWavInfo(buffer) {
     const fallback = {
       duration: 3,
-      sampleRate: config.fishSpeech.sampleRate
+      sampleRate: config.s2Pro.sampleRate
     };
 
     if (buffer.length < 44 || buffer.toString('ascii', 0, 4) !== 'RIFF' || buffer.toString('ascii', 8, 12) !== 'WAVE') {
@@ -213,4 +216,4 @@ class FishSpeechService {
   }
 }
 
-export default new FishSpeechService();
+export default new S2ProService();

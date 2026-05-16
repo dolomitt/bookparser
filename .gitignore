@@ -23,6 +23,8 @@ yarn-error.log*
 # Dependency directories
 server/node_modules/
 client/node_modules/
+__pycache__/
+*.py[cod]
 
 # OS
 .DS_Store
@@ -35,6 +37,7 @@ Thumbs.db
 # App data
 server/books
 server/imports
+models/
 
 # Misc
 *.log

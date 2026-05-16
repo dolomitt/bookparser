@@ -1,15 +1,91 @@
 import express from 'express';
 import { config } from '../config/index.js';
 import fishSpeechService from '../services/fishSpeechService.js';
+import s2ProService from '../services/s2ProService.js';
 import voicevoxService from '../services/voicevoxService.js';
 
 const router = express.Router();
-const ttsService = ['fish-speech', 'fish'].includes(config.tts.provider)
-  ? fishSpeechService
-  : voicevoxService;
-const ttsProviderLabel = ['fish-speech', 'fish'].includes(config.tts.provider)
-  ? 'Fish Speech'
-  : 'VOICEVOX';
+const ttsCache = new Map();
+const ttsProviderMap = {
+  'fish-speech': { label: 'Fish Speech', service: fishSpeechService },
+  fish: { label: 'Fish Speech', service: fishSpeechService },
+  's2-pro': { label: 'S2 Pro', service: s2ProService },
+  s2cpp: { label: 'S2 Pro', service: s2ProService },
+  s2: { label: 'S2 Pro', service: s2ProService },
+  voicevox: { label: 'VOICEVOX', service: voicevoxService }
+};
+const selectedTtsProvider = ttsProviderMap[config.tts.provider] || ttsProviderMap.voicevox;
+const ttsService = selectedTtsProvider.service;
+const ttsProviderLabel = selectedTtsProvider.label;
+
+function normalizeSpeechTagsForCache(speechTags) {
+  return (Array.isArray(speechTags) ? speechTags : [speechTags])
+    .map((tag) => String(tag || '').trim())
+    .filter(Boolean);
+}
+
+function buildTtsCacheKey({ text, speaker, referenceId, speechTags, includeTimings, speed, volume }) {
+  return JSON.stringify({
+    provider: config.tts.provider,
+    alignmentProvider: config.tts.alignmentProvider,
+    text: String(text || ''),
+    speaker: String(speaker || ''),
+    referenceId: String(referenceId || ''),
+    speechTags: normalizeSpeechTagsForCache(speechTags),
+    includeTimings: Boolean(includeTimings),
+    speed: Number(speed) || 1,
+    volume: Number(volume) || 1,
+    fishReferenceId: config.fishSpeech.referenceId || '',
+    fishSeed: Number.isNaN(config.fishSpeech.seed) ? 'random' : config.fishSpeech.seed,
+    fishTemperature: config.fishSpeech.temperature,
+    fishTopP: config.fishSpeech.topP,
+    s2Temperature: config.s2Pro.temperature,
+    s2TopP: config.s2Pro.topP,
+    s2TopK: config.s2Pro.topK,
+    s2MaxNewTokens: config.s2Pro.maxNewTokens,
+    s2ReferenceAudioPath: config.s2Pro.referenceAudioPath || '',
+    s2ReferenceText: config.s2Pro.referenceText || ''
+  });
+}
+
+function cloneCachedResult(result) {
+  if (Buffer.isBuffer(result)) {
+    return Buffer.from(result);
+  }
+
+  if (result instanceof ArrayBuffer) {
+    return result.slice(0);
+  }
+
+  return JSON.parse(JSON.stringify(result));
+}
+
+function getCachedTtsResult(cacheKey) {
+  if (!config.tts.cacheEnabled || !ttsCache.has(cacheKey)) {
+    return null;
+  }
+
+  const cached = ttsCache.get(cacheKey);
+  ttsCache.delete(cacheKey);
+  ttsCache.set(cacheKey, cached);
+  return cloneCachedResult(cached.result);
+}
+
+function setCachedTtsResult(cacheKey, result) {
+  if (!config.tts.cacheEnabled || config.tts.cacheMaxEntries <= 0) {
+    return;
+  }
+
+  ttsCache.set(cacheKey, {
+    createdAt: Date.now(),
+    result: cloneCachedResult(result)
+  });
+
+  while (ttsCache.size > config.tts.cacheMaxEntries) {
+    const oldestKey = ttsCache.keys().next().value;
+    ttsCache.delete(oldestKey);
+  }
+}
 
 // Text-to-speech endpoint using the configured TTS provider with timing data
 router.post('/', async (req, res) => {
@@ -23,19 +99,29 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const result = await ttsService.generateSpeech(text, {
-      speaker,
-      referenceId,
-      speechTags,
-      includeTimings,
-      speed,
-      volume
-    });
+    const cacheKey = buildTtsCacheKey({ text, speaker, referenceId, speechTags, includeTimings, speed, volume });
+    let result = getCachedTtsResult(cacheKey);
+    const cacheHit = Boolean(result);
+
+    if (cacheHit) {
+      console.log(`[${ttsProviderLabel}] TTS cache hit`);
+    } else {
+      result = await ttsService.generateSpeech(text, {
+        speaker,
+        referenceId,
+        speechTags,
+        includeTimings,
+        speed,
+        volume
+      });
+      setCachedTtsResult(cacheKey, result);
+      console.log(`[${ttsProviderLabel}] TTS cache stored (${ttsCache.size} entries)`);
+    }
 
     if (includeTimings) {
       // Return JSON response with both audio and timing data
       res.json(result);
-      console.log(`[${ttsProviderLabel}] Audio and timing data sent to client (${result.timings.length} timing points)`);
+      console.log(`[${ttsProviderLabel}] Audio and timing data sent to client (${result.timings.length} timing points${cacheHit ? ', cached' : ''})`);
     } else {
       // Return audio data only
       res.set({

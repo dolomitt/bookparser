@@ -1,0 +1,85 @@
+services:
+  qwen-aligner:
+    build:
+      context: .
+      dockerfile: docker/qwen-aligner/Dockerfile
+    image: bookparser-qwen-aligner:cuda
+    container_name: bookparser-qwen-aligner
+    ports:
+      - "8050:8050"
+    volumes:
+      # Keep Hugging Face model downloads outside the image.
+      - ./models/qwen-aligner:/models
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      HF_HOME: /models/huggingface
+      TRANSFORMERS_CACHE: /models/huggingface
+      QWEN_ALIGNER_MODEL: Qwen/Qwen3-ForcedAligner-0.6B
+      QWEN_ALIGNER_LANGUAGE: Japanese
+      QWEN_ALIGNER_DTYPE: bfloat16
+      QWEN_ALIGNER_DEVICE: cuda:0
+      QWEN_ALIGNER_PORT: 8050
+    profiles:
+      - qwen-aligner
+    gpus: all
+    shm_size: 4gb
+    healthcheck:
+      test: ["CMD-SHELL", "python - <<'PY'\nimport urllib.request\nurllib.request.urlopen('http://127.0.0.1:8050/health', timeout=5).read()\nPY"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+
+  s2-pro:
+    image: ${S2_PRO_DOCKER_IMAGE:-fishaudio/s2-cpp-server:latest}
+    container_name: bookparser-s2-pro
+    ports:
+      - "3030:3030"
+    volumes:
+      # Keep the q8_0 GGUF and tokenizer outside the image so rebuilds reuse them.
+      - ./models/s2-pro:/models
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      S2_PORT: 3030
+      S2_CUDA_DEVICE: 0
+      S2_THREADS: 4
+      S2_MAX_TOKENS: 1024
+    profiles:
+      - prebuilt
+    gpus: all
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/3030'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+
+  s2-pro-build:
+    build:
+      context: .
+      dockerfile: docker/s2-pro/Dockerfile
+    image: bookparser-s2-pro:cuda
+    container_name: bookparser-s2-pro
+    ports:
+      - "3030:3030"
+    volumes:
+      # Keep the q8_0 GGUF and tokenizer outside the image so rebuilds reuse them.
+      - ./models/s2-pro:/models
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      S2_PORT: 3030
+      S2_CUDA_DEVICE: 0
+      S2_THREADS: 4
+      S2_MAX_TOKENS: 1024
+    profiles:
+      - build
+    gpus: all
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/3030'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s

@@ -50,6 +50,24 @@ function parseBoolean(value, defaultValue = false) {
   return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
 }
 
+function parseNumber(value, defaultValue) {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : defaultValue;
+}
+
+function parseInteger(value, defaultValue) {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue;
+  }
+
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : defaultValue;
+}
+
 const ollamaHost = process.env.BOOKPARSER_OLLAMA_HOST || '192.168.1.43';
 const ollamaPort = process.env.BOOKPARSER_OLLAMA_PORT || '11434';
 const openAiCompatibleEndpointRaw =
@@ -85,6 +103,14 @@ const fishSpeechBaseUrl = normalizeBaseUrl(
   process.env.FISH_SPEECH_BASE_URL ||
   `${process.env.FISH_SPEECH_HOST || '192.168.1.43'}:${process.env.FISH_SPEECH_PORT || '16580'}`
 ) || 'http://192.168.1.43:16580';
+const s2ProBaseUrl = normalizeBaseUrl(
+  process.env.S2_PRO_BASE_URL ||
+  `${process.env.S2_PRO_HOST || '127.0.0.1'}:${process.env.S2_PRO_PORT || '3030'}`
+) || 'http://127.0.0.1:3030';
+const qwenAlignerBaseUrl = normalizeBaseUrl(
+  process.env.QWEN_ALIGNER_BASE_URL ||
+  `${process.env.QWEN_ALIGNER_HOST || '127.0.0.1'}:${process.env.QWEN_ALIGNER_PORT || '8050'}`
+) || 'http://127.0.0.1:8050';
 
 export const config = {
   port: process.env.PORT || 5000,
@@ -104,12 +130,14 @@ export const config = {
   },
 
   tts: {
-    provider: ['fish-speech', 'fish', 'voicevox'].includes(ttsProvider) ? ttsProvider : 'voicevox',
+    provider: ['fish-speech', 'fish', 's2-pro', 's2cpp', 's2', 'voicevox'].includes(ttsProvider) ? ttsProvider : 'voicevox',
     alignmentProvider: (
       process.env.BOOKPARSER_TTS_ALIGNMENT_PROVIDER ||
       process.env.TTS_ALIGNMENT_PROVIDER ||
       'estimated'
-    ).trim().toLowerCase()
+    ).trim().toLowerCase(),
+    cacheEnabled: parseBoolean(process.env.BOOKPARSER_TTS_CACHE_ENABLED, true),
+    cacheMaxEntries: parseInt(process.env.BOOKPARSER_TTS_CACHE_MAX_ENTRIES) || 100
   },
 
   ollama: {
@@ -165,6 +193,21 @@ export const config = {
     useMemoryCache: process.env.FISH_SPEECH_USE_MEMORY_CACHE || 'off'
   },
 
+  s2Pro: {
+    baseUrl: s2ProBaseUrl,
+    timeout: parseInteger(process.env.S2_PRO_TIMEOUT, 180000),
+    sampleRate: parseInteger(process.env.S2_PRO_SAMPLE_RATE, 44100),
+    maxNewTokens: parseInteger(process.env.S2_PRO_MAX_NEW_TOKENS, 512),
+    topP: parseNumber(process.env.S2_PRO_TOP_P, 0.8),
+    topK: parseInteger(process.env.S2_PRO_TOP_K, 30),
+    temperature: parseNumber(process.env.S2_PRO_TEMPERATURE, 0.8),
+    minTokensBeforeEnd: parseInteger(process.env.S2_PRO_MIN_TOKENS_BEFORE_END, 0),
+    threads: parseInteger(process.env.S2_PRO_THREADS, 4),
+    enableSpeechTags: parseBoolean(process.env.S2_PRO_ENABLE_SPEECH_TAGS, true),
+    referenceAudioPath: process.env.S2_PRO_REFERENCE_AUDIO_PATH || '',
+    referenceText: process.env.S2_PRO_REFERENCE_TEXT || ''
+  },
+
   mfa: {
     runtime: (process.env.MFA_RUNTIME || 'local').trim().toLowerCase(),
     command: process.env.MFA_COMMAND || 'mfa',
@@ -173,6 +216,13 @@ export const config = {
     dictionary: process.env.MFA_DICTIONARY || 'japanese_mfa',
     acousticModel: process.env.MFA_ACOUSTIC_MODEL || 'japanese_mfa',
     timeout: parseInt(process.env.MFA_TIMEOUT) || 120000
+  },
+
+  qwenAligner: {
+    baseUrl: qwenAlignerBaseUrl,
+    timeout: parseInt(process.env.QWEN_ALIGNER_TIMEOUT) || 180000,
+    language: process.env.QWEN_ALIGNER_LANGUAGE || 'Japanese',
+    fallbackToMfa: parseBoolean(process.env.QWEN_ALIGNER_FALLBACK_TO_MFA, false)
   }
 };
 
@@ -208,6 +258,8 @@ export function logConfig() {
   }
   console.log('BOOKPARSER_TTS_PROVIDER:', config.tts.provider);
   console.log('BOOKPARSER_TTS_ALIGNMENT_PROVIDER:', config.tts.alignmentProvider);
+  console.log('BOOKPARSER_TTS_CACHE_ENABLED:', config.tts.cacheEnabled);
+  console.log('BOOKPARSER_TTS_CACHE_MAX_ENTRIES:', config.tts.cacheMaxEntries);
   console.log('VOICEVOX_HOST:', config.voicevox.host);
   console.log('VOICEVOX_PORT:', config.voicevox.port);
   console.log('VOICEVOX_DEFAULT_SPEAKER:', config.voicevox.defaultSpeaker);
@@ -215,9 +267,17 @@ export function logConfig() {
   console.log('FISH_SPEECH_API_KEY:', config.fishSpeech.apiKey ? '[configured]' : '[not configured]');
   console.log('FISH_SPEECH_REFERENCE_ID:', config.fishSpeech.referenceId || '[not configured]');
   console.log('FISH_SPEECH_SEED:', Number.isNaN(config.fishSpeech.seed) ? '[random]' : config.fishSpeech.seed);
+  console.log('S2_PRO_BASE_URL:', config.s2Pro.baseUrl);
+  console.log('S2_PRO_REFERENCE_AUDIO_PATH:', config.s2Pro.referenceAudioPath || '[not configured]');
+  console.log('S2_PRO_TEMPERATURE:', config.s2Pro.temperature);
+  console.log('S2_PRO_TOP_P:', config.s2Pro.topP);
+  console.log('S2_PRO_TOP_K:', config.s2Pro.topK);
   console.log('MFA_COMMAND:', config.mfa.command);
   console.log('MFA_RUNTIME:', config.mfa.runtime);
   console.log('MFA_DOCKER_CONTAINER:', config.mfa.dockerContainer || '[not configured]');
   console.log('MFA_DICTIONARY:', config.mfa.dictionary);
   console.log('MFA_ACOUSTIC_MODEL:', config.mfa.acousticModel);
+  console.log('QWEN_ALIGNER_BASE_URL:', config.qwenAligner.baseUrl);
+  console.log('QWEN_ALIGNER_LANGUAGE:', config.qwenAligner.language);
+  console.log('QWEN_ALIGNER_FALLBACK_TO_MFA:', config.qwenAligner.fallbackToMfa);
 }

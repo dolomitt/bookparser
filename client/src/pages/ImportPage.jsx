@@ -495,6 +495,8 @@ export default function ImportPage() {
   const [processedSentences, setProcessedSentences] = useState({});
   const [processingSentences, setProcessingSentences] = useState({});
   const [pageAiProcessing, setPageAiProcessing] = useState(false);
+  const [pageTtsGenerating, setPageTtsGenerating] = useState(false);
+  const [pageTtsPlaying, setPageTtsPlaying] = useState(false);
   const [ollamaStatus, setOllamaStatus] = useState({
     checking: true,
     available: false,
@@ -511,6 +513,8 @@ export default function ImportPage() {
   const [bookSummaryGeneratedAt, setBookSummaryGeneratedAt] = useState(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const pageAiRunRef = useRef(0);
+  const pageTtsRunRef = useRef(0);
+  const pageTtsPlayRunRef = useRef(0);
   const [ollamaStreamPopup, setOllamaStreamPopup] = useState({
     visible: false,
     sentenceIndex: null,
@@ -1040,9 +1044,10 @@ export default function ImportPage() {
     }
   };
 
-  const handleTextToSpeech = async (sentenceIndex, withTimings = false) => {
+  const handleTextToSpeech = async (sentenceIndex, withTimings = false, options = {}) => {
     const sentence = sentences[sentenceIndex];
-    if (!sentence || sentence.isLineBreak) return;
+    if (!sentence || sentence.isLineBreak) return false;
+    const waitForEnd = Boolean(options.waitForEnd);
 
     console.log('Text-to-speech button clicked for sentence index:', sentenceIndex);
     console.log('Sentence text:', sentence.text);
@@ -1072,14 +1077,17 @@ export default function ImportPage() {
         });
 
         console.log('Received audio and timing response from server');
-        const { audio, timings, audioFormat, sampleRate } = response.data;
+        const { audio, timings, audioFormat, sampleRate, alignmentProvider } = response.data;
+        const usesMeasuredTimings = ['mfa', 'qwen3', 'qwen', 'qwen-aligner'].includes(String(alignmentProvider || '').toLowerCase());
+        const effectiveTimingStretch = usesMeasuredTimings ? 1 : ttsOptions.timingStretch;
+        const effectiveCommaPauseDuration = usesMeasuredTimings ? 0 : ttsOptions.commaPauseDuration;
 
         // Log timing info for debugging
-        console.log(`[VOICEVOX] Using VoiceVox timing data`);
-        console.log(`[VOICEVOX] Timing points: ${timings.length} (mora-level)`);
+        console.log(`[TTS] Using ${alignmentProvider || 'provider'} timing data`);
+        console.log(`[TTS] Timing points: ${timings.length}`);
 
         // Log original VoiceVox timings in a readable format
-        console.log('=== ORIGINAL VOICEVOX TIMINGS ===');
+        console.log('=== ORIGINAL TTS TIMINGS ===');
         console.log('Mora | Text | Start-End | Duration');
         timings.forEach((timing, i) => {
           const text = timing.text || timing.mora || '';
@@ -1099,6 +1107,20 @@ export default function ImportPage() {
         const audioElement = new Audio(audioUrl);
         audioElement.volume = Math.max(0, Math.min(1, Number(ttsOptions.volume) || 1));
         audioElement.playbackRate = playbackRate;
+        const audioFinished = waitForEnd
+          ? new Promise((resolve) => {
+              let resolved = false;
+              const finish = () => {
+                if (resolved) return;
+                resolved = true;
+                resolve();
+              };
+              audioElement.addEventListener('ended', finish, { once: true });
+              audioElement.addEventListener('pause', finish, { once: true });
+              audioElement.addEventListener('abort', finish, { once: true });
+              audioElement.addEventListener('error', finish, { once: true });
+            })
+          : null;
 
         // Set up timing-based text highlighting
         let highlightTimeouts = [];
@@ -1166,32 +1188,34 @@ export default function ImportPage() {
               console.log('Local processing completed, proceeding with highlighting');
             } else {
               console.warn('Local processing failed, playing audio without highlighting');
-              audioElement.play();
               audioElement.addEventListener('ended', () => {
                 URL.revokeObjectURL(audioUrl);
               });
-              return;
+              await audioElement.play();
+              if (audioFinished) await audioFinished;
+              return true;
             }
           } catch (error) {
             console.error('Auto-processing error:', error);
             console.warn('Auto-processing failed, playing audio without highlighting');
-            audioElement.play();
             audioElement.addEventListener('ended', () => {
               URL.revokeObjectURL(audioUrl);
             });
-            return;
+            await audioElement.play();
+            if (audioFinished) await audioFinished;
+            return true;
           }
         }
 
         // Use VOICEVOX timing data to synchronize highlighting with actual audio
         const mapTimingsToTokens = (timings, tokens) => {
-          console.log('[TIMING] Starting VOICEVOX timing mapping');
+          console.log('[TIMING] Starting TTS timing mapping');
           console.log('[TIMING] Original text:', sentence.text);
           console.log('[TIMING] All tokens:', tokens.map((t, i) => `${i}:${t.surface}(${t.pos})`));
-          console.log('[TIMING] VOICEVOX timings:', timings.length, 'entries');
+          console.log('[TIMING] TTS timings:', timings.length, 'entries');
 
           // Show detailed VOICEVOX timing data
-          console.log('[TIMING] === VOICEVOX TIMING POINTS ===');
+          console.log('[TIMING] === TTS TIMING POINTS ===');
           timings.forEach((timing, index) => {
             console.log(`[TIMING] ${index}: ${timing.startTime.toFixed(3)}-${timing.endTime.toFixed(3)}s | text:"${timing.text || timing.mora || ''}" | textStart:${timing.textStart || 'N/A'} textEnd:${timing.textEnd || 'N/A'} | phraseIndex:${timing.phraseIndex || 'N/A'} moraIndex:${timing.moraIndex || 'N/A'}`);
           });
@@ -1213,7 +1237,7 @@ export default function ImportPage() {
           }
 
           if (!timings || timings.length === 0) {
-            console.log('[TIMING] No VOICEVOX timings available, using fallback');
+            console.log('[TIMING] No TTS timings available, using fallback');
             // Fallback to simple timing
             const totalDuration = 3.0;
             const tokenDuration = totalDuration / nonPunctuationTokens.length;
@@ -1232,18 +1256,18 @@ export default function ImportPage() {
             });
           }
 
-          // Use actual VOICEVOX timing data
+          // Use actual TTS timing data
           const audioStartTime = timings[0].startTime;
           const audioEndTime = timings[timings.length - 1].endTime;
           const totalDuration = audioEndTime - audioStartTime;
 
-          console.log(`[TIMING] VOICEVOX audio: ${audioStartTime.toFixed(3)}s - ${audioEndTime.toFixed(3)}s (${totalDuration.toFixed(3)}s total)`);
+          console.log(`[TIMING] TTS audio: ${audioStartTime.toFixed(3)}s - ${audioEndTime.toFixed(3)}s (${totalDuration.toFixed(3)}s total)`);
 
           // Create a mapping from text positions to timing data
           const textToTimingMap = new Map();
           let currentTextPos = 0;
 
-          // Build a map of text positions to VOICEVOX timings
+          // Build a map of text positions to TTS timings
           timings.forEach((timing, index) => {
             const timingText = timing.text || timing.mora || '';
             if (timingText) {
@@ -1280,12 +1304,12 @@ export default function ImportPage() {
             let startTime, endTime, rawDuration;
 
             if (overlappingTimings.length > 0) {
-              // Use actual VOICEVOX timing
+              // Use actual TTS timing
               startTime = Math.min(...overlappingTimings.map(t => t.startTime));
               endTime = Math.max(...overlappingTimings.map(t => t.endTime));
               rawDuration = endTime - startTime;
 
-              console.log(`[TIMING] Token "${token.surface}" raw VOICEVOX timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s (${rawDuration.toFixed(3)}s)`);
+              console.log(`[TIMING] Token "${token.surface}" raw TTS timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s (${rawDuration.toFixed(3)}s)`);
             } else {
               // Fallback: distribute remaining time evenly
               const avgTokenDuration = totalDuration / nonPunctuationTokens.length;
@@ -1303,38 +1327,46 @@ export default function ImportPage() {
               rawDuration,
               token: token.surface,
               sequenceIndex,
-              hasVoicevoxTiming: overlappingTimings.length > 0
+              hasTtsTiming: overlappingTimings.length > 0
             });
           });
 
-          // Second pass: ensure sequential non-overlapping timings
           const tokenTimings = [];
-          let currentTime = rawTokenTimings[0]?.startTime || 0;
 
-          rawTokenTimings.forEach((timing, index) => {
-            // Start time is the current time marker
-            const startTime = currentTime;
-
-            // Apply timing stretch factor to the raw duration
-            const stretchedDuration = timing.rawDuration * ttsOptions.timingStretch;
-
-            // End time is start time plus stretched duration
-            const endTime = startTime + stretchedDuration;
-
-            // Update current time marker for next token
-            currentTime = endTime;
-
-            console.log(`[TIMING] Token "${timing.token}" sequential timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s (stretched by ${ttsOptions.timingStretch}x)`);
-
-            tokenTimings.push({
-              tokenIndex: timing.tokenIndex,
-              startTime,
-              endTime,
-              token: timing.token,
-              sequenceIndex: timing.sequenceIndex,
-              hasVoicevoxTiming: timing.hasVoicevoxTiming
+          if (usesMeasuredTimings) {
+            rawTokenTimings.forEach((timing) => {
+              tokenTimings.push({
+                tokenIndex: timing.tokenIndex,
+                startTime: timing.startTime,
+                endTime: timing.endTime,
+                token: timing.token,
+                sequenceIndex: timing.sequenceIndex,
+                hasTtsTiming: timing.hasTtsTiming
+              });
             });
-          });
+          } else {
+            // Second pass: ensure sequential non-overlapping timings for estimated timings.
+            let currentTime = rawTokenTimings[0]?.startTime || 0;
+
+            rawTokenTimings.forEach((timing) => {
+              const startTime = currentTime;
+              const stretchedDuration = timing.rawDuration * effectiveTimingStretch;
+              const endTime = startTime + stretchedDuration;
+
+              currentTime = endTime;
+
+              console.log(`[TIMING] Token "${timing.token}" sequential timing: ${startTime.toFixed(3)}-${endTime.toFixed(3)}s (stretched by ${effectiveTimingStretch}x)`);
+
+              tokenTimings.push({
+                tokenIndex: timing.tokenIndex,
+                startTime,
+                endTime,
+                token: timing.token,
+                sequenceIndex: timing.sequenceIndex,
+                hasTtsTiming: timing.hasTtsTiming
+              });
+            });
+          }
 
           // Add pauses after commas
           // First, find all comma tokens
@@ -1358,12 +1390,12 @@ export default function ImportPage() {
               const nextTimingIndex = tokenTimings.findIndex(t => t.tokenIndex === nextTokenIndex);
 
               if (nextTimingIndex !== -1) {
-                console.log(`[TIMING] Adding ${ttsOptions.commaPauseDuration}s pause after comma before token "${tokens[nextTokenIndex].surface}"`);
+                console.log(`[TIMING] Adding ${effectiveCommaPauseDuration}s pause after comma before token "${tokens[nextTokenIndex].surface}"`);
 
                 // Shift all subsequent timings by the pause duration
                 for (let i = nextTimingIndex; i < tokenTimings.length; i++) {
-                  tokenTimings[i].startTime += ttsOptions.commaPauseDuration;
-                  tokenTimings[i].endTime += ttsOptions.commaPauseDuration;
+                  tokenTimings[i].startTime += effectiveCommaPauseDuration;
+                  tokenTimings[i].endTime += effectiveCommaPauseDuration;
                 }
               }
             }
@@ -1377,13 +1409,13 @@ export default function ImportPage() {
           console.log('Token | Text | Start-End | Duration | Stretch');
           tokenTimings.forEach(t => {
             const duration = t.endTime - t.startTime;
-            const originalDuration = duration / ttsOptions.timingStretch;
-            console.log(`${t.sequenceIndex.toString().padStart(2, '0')} | ${t.token.padEnd(4)} | ${t.startTime.toFixed(3)}-${t.endTime.toFixed(3)}s | ${duration.toFixed(3)}s | ${ttsOptions.timingStretch}x`);
+            const originalDuration = duration / effectiveTimingStretch;
+            console.log(`${t.sequenceIndex.toString().padStart(2, '0')} | ${t.token.padEnd(4)} | ${t.startTime.toFixed(3)}-${t.endTime.toFixed(3)}s | ${duration.toFixed(3)}s | ${effectiveTimingStretch}x`);
           });
 
           console.log('[TIMING] Final token timings (after comma pauses):');
           tokenTimings.forEach(t => {
-            console.log(`  ${t.sequenceIndex}: "${t.token}" ${t.startTime.toFixed(3)}-${t.endTime.toFixed(3)}s ${t.hasVoicevoxTiming ? '(VOICEVOX)' : '(fallback)'}`);
+            console.log(`  ${t.sequenceIndex}: "${t.token}" ${t.startTime.toFixed(3)}-${t.endTime.toFixed(3)}s ${t.hasTtsTiming ? '(TTS)' : '(fallback)'}`);
           });
 
           return tokenTimings;
@@ -1392,52 +1424,79 @@ export default function ImportPage() {
         const tokenTimings = mapTimingsToTokens(timings, processedSentence.tokens);
         console.log('Token timings:', tokenTimings);
 
-        // Schedule highlighting for each token
-        tokenTimings.forEach((tokenTiming) => {
-          const timeout = setTimeout(() => {
-            // Clear previous highlight
-            if (currentHighlight) {
-              currentHighlight.style.backgroundColor = 'transparent';
-              currentHighlight.style.color = '';
-            }
+        let highlightAnimationFrame = null;
 
-            // Find the specific token to highlight
-            const tokenElement = document.querySelector(`[data-token="${sentenceIndex}-${tokenTiming.tokenIndex}"]`);
-            if (tokenElement) {
-              tokenElement.style.backgroundColor = '#ffeb3b';
-              tokenElement.style.color = '#000';
-              tokenElement.style.transition = 'background-color 0.1s ease, color 0.1s ease';
-              tokenElement.style.borderRadius = '4px';
-              // Don't change padding to avoid text movement
-              currentHighlight = tokenElement;
-            }
-          }, playbackDelay(tokenTiming.startTime));
+        const applyHighlight = (tokenTiming) => {
+          if (currentHighlight) {
+            currentHighlight.style.backgroundColor = 'transparent';
+            currentHighlight.style.color = '';
+          }
 
-          highlightTimeouts.push(timeout);
+          if (!tokenTiming) {
+            currentHighlight = null;
+            return;
+          }
 
-          // Schedule clearing of this specific highlight
-          const clearTimeout = setTimeout(() => {
-            const tokenElement = document.querySelector(`[data-token="${sentenceIndex}-${tokenTiming.tokenIndex}"]`);
-            if (tokenElement) {
-              tokenElement.style.backgroundColor = 'transparent';
-              tokenElement.style.color = '';
-            }
-          }, playbackDelay(tokenTiming.endTime));
+          const tokenElement = document.querySelector(`[data-token="${sentenceIndex}-${tokenTiming.tokenIndex}"]`);
+          if (tokenElement) {
+            tokenElement.style.backgroundColor = '#ffeb3b';
+            tokenElement.style.color = '#000';
+            tokenElement.style.transition = 'background-color 0.1s ease, color 0.1s ease';
+            tokenElement.style.borderRadius = '4px';
+            currentHighlight = tokenElement;
+          }
+        };
 
-          highlightTimeouts.push(clearTimeout);
-        });
+        const stopHighlightLoop = () => {
+          if (highlightAnimationFrame !== null) {
+            cancelAnimationFrame(highlightAnimationFrame);
+            highlightAnimationFrame = null;
+          }
+        };
+
+        const updateHighlightFromAudioClock = () => {
+          const currentTime = audioElement.currentTime;
+          const activeTiming = tokenTimings.find((tokenTiming) => (
+            currentTime >= tokenTiming.startTime &&
+            currentTime < tokenTiming.endTime
+          ));
+
+          const currentTokenIndex = currentHighlight?.dataset?.token;
+          const nextTokenIndex = activeTiming ? `${sentenceIndex}-${activeTiming.tokenIndex}` : null;
+
+          if (currentTokenIndex !== nextTokenIndex) {
+            applyHighlight(activeTiming);
+          }
+
+          if (!audioElement.paused && !audioElement.ended) {
+            highlightAnimationFrame = requestAnimationFrame(updateHighlightFromAudioClock);
+          }
+        };
 
         // Clear highlights when audio ends
         audioElement.addEventListener('ended', () => {
+          stopHighlightLoop();
           clearHighlights();
           URL.revokeObjectURL(audioUrl);
         });
 
         // Clear highlights if audio is paused/stopped
-        audioElement.addEventListener('pause', clearHighlights);
-        audioElement.addEventListener('abort', clearHighlights);
+        audioElement.addEventListener('pause', () => {
+          stopHighlightLoop();
+          clearHighlights();
+        });
+        audioElement.addEventListener('abort', () => {
+          stopHighlightLoop();
+          clearHighlights();
+        });
 
-        audioElement.play();
+        audioElement.addEventListener('playing', () => {
+          stopHighlightLoop();
+          updateHighlightFromAudioClock();
+        });
+
+        await audioElement.play();
+        if (audioFinished) await audioFinished;
 
       } else {
         // Original behavior - audio only
@@ -1459,16 +1518,32 @@ export default function ImportPage() {
         const audio = new Audio(audioUrl);
         audio.volume = Math.max(0, Math.min(1, Number(ttsOptions.volume) || 1));
         audio.playbackRate = playbackRate;
-        audio.play();
+        const audioFinished = waitForEnd
+          ? new Promise((resolve) => {
+              let resolved = false;
+              const finish = () => {
+                if (resolved) return;
+                resolved = true;
+                resolve();
+              };
+              audio.addEventListener('ended', finish, { once: true });
+              audio.addEventListener('pause', finish, { once: true });
+              audio.addEventListener('abort', finish, { once: true });
+              audio.addEventListener('error', finish, { once: true });
+            })
+          : null;
+        await audio.play();
 
         // Clean up the object URL after playing
         audio.addEventListener('ended', () => {
           URL.revokeObjectURL(audioUrl);
         });
+        if (audioFinished) await audioFinished;
       }
 
       // Clear message after successful generation
       setSentenceMessages(prev => ({ ...prev, [sentenceIndex]: '' }));
+      return true;
 
     } catch (error) {
       console.error('Text-to-speech error:', error);
@@ -1495,6 +1570,7 @@ export default function ImportPage() {
       setTimeout(() => {
         setSentenceMessages(prev => ({ ...prev, [sentenceIndex]: '' }));
       }, 3000);
+      return false;
     } finally {
       setTtsGeneratingSentences(prev => {
         const updated = { ...prev };
@@ -2224,6 +2300,154 @@ export default function ImportPage() {
     }, 6000);
   };
 
+  const handleGenerateAudioForCurrentPage = async () => {
+    if (pageTtsGenerating || pageTtsPlaying) return;
+
+    const pageSentenceEntries = paginatedSentences.filter((entry) => !entry.isLineBreak);
+    const sentenceIndexesToGenerate = pageSentenceEntries
+      .map((entry) => entry.originalIndex)
+      .filter((sentenceIndex) => sentences[sentenceIndex]?.text?.trim());
+    const totalPageSentences = sentenceIndexesToGenerate.length;
+
+    if (totalPageSentences === 0) {
+      setMessage('No sentences on this page to generate audio for');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Generate and cache audio for all ${totalPageSentences} sentences on page ${currentPage}?`
+    );
+    if (!confirmed) return;
+
+    const runId = pageTtsRunRef.current + 1;
+    pageTtsRunRef.current = runId;
+    const isCurrentRun = () => pageTtsRunRef.current === runId;
+
+    setPageTtsGenerating(true);
+    setMessage(`Generating page audio ${currentPage}: 0/${totalPageSentences}`);
+
+    let generatedCount = 0;
+    let errorCount = 0;
+
+    const updateProgress = () => {
+      if (!isCurrentRun()) return;
+      setMessage(`Generating page audio ${currentPage}: ${generatedCount + errorCount}/${totalPageSentences}`);
+    };
+
+    for (const sentenceIndex of sentenceIndexesToGenerate) {
+      if (!isCurrentRun()) return;
+
+      const sentence = sentences[sentenceIndex];
+      const speechTags = Array.isArray(processedSentences[sentenceIndex]?.speechTags)
+        ? processedSentences[sentenceIndex].speechTags
+        : [];
+
+      setTtsGeneratingSentences((prev) => ({ ...prev, [sentenceIndex]: true }));
+
+      try {
+        await axios.post('/api/text-to-speech', {
+          text: sentence.text,
+          speaker: ttsOptions.speaker,
+          speechTags,
+          speed: ttsOptions.speed,
+          volume: ttsOptions.volume,
+          includeTimings: true
+        });
+
+        generatedCount++;
+      } catch (error) {
+        console.error(`Page audio generation failed for sentence ${sentenceIndex}:`, error);
+        errorCount++;
+        setSentenceMessages((prev) => ({
+          ...prev,
+          [sentenceIndex]: error.response?.data?.error || error.message || 'Audio generation failed'
+        }));
+      } finally {
+        setTtsGeneratingSentences((prev) => {
+          const updated = { ...prev };
+          delete updated[sentenceIndex];
+          return updated;
+        });
+        updateProgress();
+      }
+    }
+
+    if (!isCurrentRun()) return;
+
+    setMessage(
+      errorCount > 0
+        ? `Page audio done: ${generatedCount} generated, ${errorCount} errors`
+        : `Page audio cached: ${generatedCount} sentences`
+    );
+    setPageTtsGenerating(false);
+    setTimeout(() => {
+      setMessage('');
+    }, 6000);
+  };
+
+  const handleReadCurrentPage = async () => {
+    if (pageTtsPlaying || pageTtsGenerating) return;
+
+    const pageSentenceEntries = paginatedSentences.filter((entry) => !entry.isLineBreak);
+    const sentenceIndexesToRead = pageSentenceEntries
+      .map((entry) => entry.originalIndex)
+      .filter((sentenceIndex) => sentences[sentenceIndex]?.text?.trim());
+    const totalPageSentences = sentenceIndexesToRead.length;
+
+    if (totalPageSentences === 0) {
+      setMessage('No sentences on this page to read');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Read all ${totalPageSentences} sentences on page ${currentPage}?`
+    );
+    if (!confirmed) return;
+
+    const runId = pageTtsPlayRunRef.current + 1;
+    pageTtsPlayRunRef.current = runId;
+    const isCurrentRun = () => pageTtsPlayRunRef.current === runId;
+
+    setPageTtsPlaying(true);
+    setMessage(`Reading page ${currentPage}: 0/${totalPageSentences}`);
+
+    let playedCount = 0;
+    let errorCount = 0;
+
+    try {
+      for (const sentenceIndex of sentenceIndexesToRead) {
+        if (!isCurrentRun()) return;
+
+        const sentenceElement = document.querySelector(`[data-sentence="${sentenceIndex}"]`);
+        sentenceElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        setMessage(`Reading page ${currentPage}: ${playedCount + errorCount + 1}/${totalPageSentences}`);
+        const played = await handleTextToSpeech(sentenceIndex, true, { waitForEnd: true });
+
+        if (played) {
+          playedCount++;
+        } else {
+          errorCount++;
+        }
+      }
+
+      if (!isCurrentRun()) return;
+
+      setMessage(
+        errorCount > 0
+          ? `Page reading done: ${playedCount} played, ${errorCount} errors`
+          : `Page reading done: ${playedCount} sentences`
+      );
+      setTimeout(() => {
+        setMessage('');
+      }, 6000);
+    } finally {
+      if (isCurrentRun()) {
+        setPageTtsPlaying(false);
+      }
+    }
+  };
+
   const handleGenerateSummary = async () => {
     if (!filename || isGeneratingSummary) return;
 
@@ -2400,6 +2624,12 @@ export default function ImportPage() {
   const aiPageTitle = ollamaStatus.available
     ? 'Run remote AI processing for all sentences on this page'
     : `AI engine unavailable: ${ollamaStatus.message}`;
+  const pageTtsTitle = pageTtsGenerating
+    ? 'Generating audio for this page'
+    : 'Generate and cache TTS audio for every sentence on this page';
+  const pageReadTitle = pageTtsPlaying
+    ? 'Reading this page'
+    : 'Read every sentence on this page in order';
 
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= totalPages) {
@@ -2483,6 +2713,24 @@ export default function ImportPage() {
                 {pageAiProcessing ? 'AI Page Running...' : `AI This Page (${currentPage})`}
               </button>
             )}
+            <button
+              onClick={handleGenerateAudioForCurrentPage}
+              className="btn"
+              style={{ backgroundColor: pageTtsGenerating ? '#64748b' : '#0f766e' }}
+              disabled={pageTtsGenerating || pageTtsPlaying}
+              title={pageTtsTitle}
+            >
+              {pageTtsGenerating ? 'Audio Page Running...' : `Audio This Page (${currentPage})`}
+            </button>
+            <button
+              onClick={handleReadCurrentPage}
+              className="btn"
+              style={{ backgroundColor: pageTtsPlaying ? '#64748b' : '#b45309' }}
+              disabled={pageTtsPlaying || pageTtsGenerating}
+              title={pageReadTitle}
+            >
+              {pageTtsPlaying ? 'Reading Page...' : `Read This Page (${currentPage})`}
+            </button>
             {!isCompletedBookView && (
               <button
                 onClick={() => handleReprocessAll()}
