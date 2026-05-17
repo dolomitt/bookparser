@@ -113,6 +113,7 @@ app.get('/api/imports', (req, res) => {
     if (err) return res.status(500).json({ error: 'Cannot read imports directory' });
     const pendingImports = files.filter((file) => {
       if (file === '.gitkeep') return false;
+      if (file.endsWith('.meta.json')) return false;
       const completedBookPath = path.join(config.booksDir, `${file}.book`);
       return !fs.existsSync(completedBookPath) || !isCompletedBookFile(completedBookPath);
     });
@@ -184,21 +185,88 @@ function isCompletedBookFile(bookPath) {
   }
 }
 
+function getImportMetadataPath(filename) {
+  return path.join(config.uploadDir, `${filename}.meta.json`);
+}
+
+function normalizeLineStyle(style = {}) {
+  const block = style.block === 'heading' ? 'heading' : 'paragraph';
+  const headingLevel = Number.parseInt(style.headingLevel, 10);
+
+  return {
+    block,
+    headingLevel: block === 'heading' && Number.isInteger(headingLevel)
+      ? Math.min(6, Math.max(1, headingLevel))
+      : null,
+    bold: Boolean(style.bold || block === 'heading')
+  };
+}
+
+function normalizeLineMetadata(value, lineCount = 0) {
+  const source = Array.isArray(value) ? value : [];
+  const normalized = source.map((style) => normalizeLineStyle(style));
+  const targetLength = lineCount > 0 ? lineCount : normalized.length;
+
+  while (normalized.length < targetLength) {
+    normalized.push(normalizeLineStyle());
+  }
+
+  return normalized.slice(0, targetLength);
+}
+
+function readBookData(bookPath) {
+  if (!fs.existsSync(bookPath)) return null;
+
+  try {
+    return JSON.parse(fs.readFileSync(bookPath, 'utf-8'));
+  } catch (error) {
+    console.error('Error reading book file:', error);
+    return null;
+  }
+}
+
+function loadImportSidecarMetadata(filename) {
+  const metadataPath = getImportMetadataPath(filename);
+  if (!fs.existsSync(metadataPath)) return [];
+
+  try {
+    const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
+    return Array.isArray(metadata?.lineMetadata) ? metadata.lineMetadata : [];
+  } catch (error) {
+    console.error('Error reading import metadata:', error);
+    return [];
+  }
+}
+
+function loadLineMetadataForImportFilename(filename, lineCount = 0) {
+  const bookJsonPath = path.join(config.booksDir, `${filename}.book`);
+  const bookData = readBookData(bookJsonPath);
+  if (Array.isArray(bookData?.content?.lineMetadata)) {
+    return normalizeLineMetadata(bookData.content.lineMetadata, lineCount);
+  }
+
+  return normalizeLineMetadata(loadImportSidecarMetadata(filename), lineCount);
+}
+
 function loadLinesForImportFilename(filename) {
   const importTextPath = path.join(config.uploadDir, filename);
   const booksTextPath = path.join(config.booksDir, filename);
   const bookJsonPath = path.join(config.booksDir, `${filename}.book`);
 
   if (fs.existsSync(importTextPath)) {
+    const lines = fs.readFileSync(importTextPath, 'utf-8').split('\n');
     return {
-      lines: fs.readFileSync(importTextPath, 'utf-8').split('\n'),
+      lines,
+      lineMetadata: loadLineMetadataForImportFilename(filename, lines.length),
       sourceLocation: 'imports'
     };
   }
 
   if (fs.existsSync(booksTextPath)) {
+    const lines = fs.readFileSync(booksTextPath, 'utf-8').split('\n');
     return {
-      lines: fs.readFileSync(booksTextPath, 'utf-8').split('\n'),
+      lines,
+      lineMetadata: loadLineMetadataForImportFilename(filename, lines.length),
       sourceLocation: 'books'
     };
   }
@@ -209,6 +277,7 @@ function loadLinesForImportFilename(filename) {
       if (Array.isArray(bookData?.content?.originalLines)) {
         return {
           lines: bookData.content.originalLines,
+          lineMetadata: normalizeLineMetadata(bookData.content.lineMetadata, bookData.content.originalLines.length),
           sourceLocation: 'books'
         };
       }
@@ -280,6 +349,27 @@ function extractTagContent(html, tagName) {
   return match ? match[1] : '';
 }
 
+function stripHtmlToText(html) {
+  return decodeHtmlEntities(
+    String(html || '')
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, ' ')
+      .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+  ).replace(/\s+/g, ' ').trim();
+}
+
+function createLineEntry(text, style = {}) {
+  const normalizedText = String(text || '').replace(/[ \t]+/g, ' ').trim();
+  if (!normalizedText || /^https?:\/\//i.test(normalizedText)) return null;
+
+  return {
+    text: normalizedText,
+    style: normalizeLineStyle(style)
+  };
+}
+
 function htmlToPlainText(html) {
   const source = String(html || '');
   const structuredArticle = extractStructuredArticleText(source);
@@ -303,6 +393,99 @@ function htmlToPlainText(html) {
       .replace(/<\/(?:p|div|section|article|main|header|footer|h[1-6]|li)>/gi, '\n')
       .replace(/<[^>]+>/g, ' ')
   );
+}
+
+function extractStructuredArticleEntries(html) {
+  const scripts = String(html || '').matchAll(
+    /<script\b[^>]*type=["'][^"']*application\/ld\+json[^"']*["'][^>]*>([\s\S]*?)<\/script>/gi
+  );
+
+  for (const script of scripts) {
+    const jsonText = decodeHtmlEntities(script[1]).trim();
+    if (!jsonText) continue;
+
+    try {
+      const payload = JSON.parse(jsonText);
+      const article = collectStructuredNodes(payload).find((node) => {
+        const type = getArticleType(node['@type']);
+        return /\b(?:Article|NewsArticle|BlogPosting)\b/i.test(type) && node.articleBody;
+      });
+
+      if (article) {
+        const entries = [];
+        const headlineEntry = createLineEntry(article.headline, {
+          block: 'heading',
+          headingLevel: 1,
+          bold: true
+        });
+        if (headlineEntry) entries.push(headlineEntry);
+
+        String(article.articleBody || '')
+          .replace(/\r\n?/g, '\n')
+          .split(/\n{2,}|\n/)
+          .forEach((line) => {
+            const entry = createLineEntry(line);
+            if (entry) entries.push(entry);
+          });
+
+        return entries;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return [];
+}
+
+function htmlToLineEntries(html) {
+  const source = String(html || '');
+  const structuredArticle = extractStructuredArticleEntries(source);
+  if (structuredArticle.length > 0) {
+    return structuredArticle;
+  }
+
+  const mainHtml =
+    extractTagContent(source, 'article') ||
+    extractTagContent(source, 'main') ||
+    extractTagContent(source, 'body') ||
+    source;
+
+  const cleanedHtml = mainHtml
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, ' ');
+  const blockPattern = /<(h[1-6]|p|li|blockquote)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  const entries = [];
+  let match;
+
+  while ((match = blockPattern.exec(cleanedHtml)) !== null) {
+    const tagName = match[1].toLowerCase();
+    const blockHtml = match[2];
+    const entry = createLineEntry(stripHtmlToText(blockHtml), {
+      block: /^h[1-6]$/.test(tagName) ? 'heading' : 'paragraph',
+      headingLevel: /^h[1-6]$/.test(tagName) ? Number(tagName.slice(1)) : null,
+      bold: /^h[1-6]$/.test(tagName) || /<(?:strong|b)\b/i.test(blockHtml)
+    });
+
+    if (entry) entries.push(entry);
+  }
+
+  if (entries.length > 0) {
+    return entries;
+  }
+
+  return decodeHtmlEntities(
+    cleanedHtml
+      .replace(/<(?:p|div|section|article|main|header|footer|h[1-6]|li|br)\b[^>]*>/gi, '\n')
+      .replace(/<\/(?:p|div|section|article|main|header|footer|h[1-6]|li)>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+  )
+    .replace(/\r\n?/g, '\n')
+    .split(/\n{2,}|\n/)
+    .map((line) => createLineEntry(line))
+    .filter(Boolean);
 }
 
 function getArticleType(value) {
@@ -365,6 +548,48 @@ function markdownToPlainText(markdown) {
     .replace(/<[^>]+>/g, ' ');
 }
 
+function cleanMarkdownInline(markdown) {
+  return String(markdown || '')
+    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
+    .replace(/`{1,3}([^`]*)`{1,3}/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[*_~]{1,3}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function markdownToLineEntries(markdown) {
+  return String(markdown || '')
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((rawLine) => {
+      const trimmed = rawLine.trim();
+      if (!trimmed) return null;
+
+      const headingMatch = trimmed.match(/^\s{0,3}(#{1,6})\s+(.+)$/);
+      if (headingMatch) {
+        return createLineEntry(cleanMarkdownInline(headingMatch[2]), {
+          block: 'heading',
+          headingLevel: headingMatch[1].length,
+          bold: true
+        });
+      }
+
+      const withoutBlockMarkers = trimmed
+        .replace(/^\s{0,3}> ?/, '')
+        .replace(/^\s{0,3}(?:[-*+]|\d+[.)])\s+/, '')
+        .trim();
+      const bold = /^(?:\*\*|__)[\s\S]+(?:\*\*|__)$/.test(withoutBlockMarkers);
+
+      return createLineEntry(cleanMarkdownInline(withoutBlockMarkers), {
+        block: 'paragraph',
+        bold
+      });
+    })
+    .filter(Boolean);
+}
+
 function getMarkdownText(markdown) {
   if (!markdown) return '';
   if (typeof markdown === 'string') return markdown;
@@ -407,7 +632,20 @@ function trimArticleStart(lines, title = '') {
 }
 
 function cleanArticleLines(lines, title = '') {
+  return cleanArticleLineEntries(lines.map((line) => createLineEntry(line)).filter(Boolean), title)
+    .map((entry) => entry.text);
+}
+
+function trimArticleStartEntries(entries, title = '') {
+  const lines = entries.map((entry) => entry.text);
   const trimmedLines = trimArticleStart(lines, title);
+  if (trimmedLines.length === lines.length) return entries;
+
+  return entries.slice(lines.length - trimmedLines.length);
+}
+
+function cleanArticleLineEntries(entries, title = '') {
+  const trimmedEntries = trimArticleStartEntries(entries, title);
   const cleaned = [];
   let skipSidebarLines = 0;
 
@@ -439,7 +677,9 @@ function cleanArticleLines(lines, title = '') {
     /^雑誌『WIRED』日本版$/
   ];
 
-  for (const line of trimmedLines) {
+  for (const entry of trimmedEntries) {
+    const line = entry.text;
+
     if (stopPatterns.some((pattern) => pattern.test(line))) {
       break;
     }
@@ -458,21 +698,44 @@ function cleanArticleLines(lines, title = '') {
       continue;
     }
 
-    cleaned.push(line);
+    cleaned.push(entry);
   }
 
   return cleaned;
 }
 
-function normalizeArticleLines(text, article = {}) {
-  const rawLines = String(text || '')
+function textToLineEntries(text) {
+  return String(text || '')
     .replace(/\r\n?/g, '\n')
     .split(/\n{2,}|\n/)
-    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
-    .filter((line) => line.length > 0)
-    .filter((line) => !/^https?:\/\//i.test(line));
+    .map((line) => createLineEntry(line))
+    .filter(Boolean);
+}
 
-  return cleanArticleLines(rawLines, article.title).slice(0, 1200);
+function getArticleLineEntries(article = {}) {
+  if (Array.isArray(article.lineEntries) && article.lineEntries.length > 0) {
+    return article.lineEntries
+      .map((entry) => createLineEntry(entry.text, entry.style))
+      .filter(Boolean);
+  }
+
+  return textToLineEntries(article.text);
+}
+
+function normalizeArticleContent(article = {}) {
+  const entries = cleanArticleLineEntries(getArticleLineEntries(article), article.title).slice(0, 1200);
+
+  return {
+    lines: entries.map((entry) => entry.text),
+    lineMetadata: normalizeLineMetadata(entries.map((entry) => entry.style), entries.length)
+  };
+}
+
+function normalizeArticleLines(text, article = {}) {
+  return normalizeArticleContent({
+    ...article,
+    text
+  }).lines;
 }
 
 function getTitleFromHtml(html) {
@@ -550,13 +813,20 @@ async function scrapeArticleWithCrawl4AI(articleUrl) {
 
   const markdown = getMarkdownText(result?.markdown);
   const title = result?.metadata?.title || '';
-  const rawHtmlStructuredText = result?.html ? extractStructuredArticleText(result.html) : '';
-  const fallbackHtmlText = result?.cleaned_html ? htmlToPlainText(result.cleaned_html) : '';
+  const structuredEntries = result?.html ? extractStructuredArticleEntries(result.html) : [];
+  const markdownEntries = markdown ? markdownToLineEntries(markdown) : [];
+  const fallbackHtmlEntries = result?.cleaned_html ? htmlToLineEntries(result.cleaned_html) : [];
+  const lineEntries = structuredEntries.length > 0
+    ? structuredEntries
+    : (markdownEntries.length > 0 ? markdownEntries : fallbackHtmlEntries);
 
   return {
     provider: 'crawl4ai',
     title: String(title || '').trim(),
-    text: rawHtmlStructuredText || (markdown ? markdownToPlainText(markdown) : fallbackHtmlText)
+    text: lineEntries.length > 0
+      ? lineEntries.map((entry) => entry.text).join('\n')
+      : (markdown ? markdownToPlainText(markdown) : (result?.cleaned_html ? htmlToPlainText(result.cleaned_html) : '')),
+    lineEntries
   };
 }
 
@@ -585,11 +855,15 @@ async function scrapeArticleWithFirecrawl(articleUrl) {
   const markdown = data?.markdown || payload?.markdown || '';
   const metadata = data?.metadata || payload?.metadata || {};
   const title = metadata.title || metadata.ogTitle || metadata.pageTitle || '';
+  const lineEntries = markdownToLineEntries(markdown);
 
   return {
     provider: 'firecrawl',
     title: String(title || '').trim(),
-    text: markdownToPlainText(markdown)
+    text: lineEntries.length > 0
+      ? lineEntries.map((entry) => entry.text).join('\n')
+      : markdownToPlainText(markdown),
+    lineEntries
   };
 }
 
@@ -608,11 +882,15 @@ async function scrapeArticleDirectly(articleUrl) {
   const rawText = await response.text();
   const contentType = response.headers.get('content-type') || '';
   const isHtml = contentType.includes('html') || /<html[\s>]/i.test(rawText);
+  const lineEntries = isHtml ? htmlToLineEntries(rawText) : textToLineEntries(rawText);
 
   return {
     provider: 'direct',
     title: isHtml ? getTitleFromHtml(rawText) : '',
-    text: isHtml ? htmlToPlainText(rawText) : rawText
+    text: lineEntries.length > 0
+      ? lineEntries.map((entry) => entry.text).join('\n')
+      : (isHtml ? htmlToPlainText(rawText) : rawText),
+    lineEntries
   };
 }
 
@@ -620,7 +898,7 @@ async function scrapeArticle(articleUrl) {
   if (config.crawl4ai.baseUrl) {
     try {
       const article = await scrapeArticleWithCrawl4AI(articleUrl);
-      if (normalizeArticleLines(article.text, article).length > 0) {
+      if (normalizeArticleContent(article).lines.length > 0) {
         return article;
       }
       console.warn('[URL Import] Crawl4AI returned no readable article text, falling back');
@@ -632,7 +910,7 @@ async function scrapeArticle(articleUrl) {
   if (config.firecrawl.apiKey) {
     try {
       const article = await scrapeArticleWithFirecrawl(articleUrl);
-      if (normalizeArticleLines(article.text, article).length > 0) {
+      if (normalizeArticleContent(article).lines.length > 0) {
         return article;
       }
       console.warn('[URL Import] Firecrawl returned no readable article text, falling back');
@@ -805,6 +1083,7 @@ app.post('/api/import', uploadSingleTxt, async (req, res) => {
       },
       content: {
         originalLines: lines,
+        lineMetadata: normalizeLineMetadata([], lines.length),
         processedData: processedData
       }
     };
@@ -847,7 +1126,7 @@ app.post('/api/import/url', async (req, res) => {
   try {
     const articleUrl = parsedUrl.toString();
     const article = await scrapeArticle(articleUrl);
-    const lines = normalizeArticleLines(article.text, article);
+    const { lines, lineMetadata } = normalizeArticleContent(article);
 
     if (lines.length === 0) {
       return res.status(422).json({ error: 'No readable article text found at that URL' });
@@ -856,6 +1135,12 @@ app.post('/api/import/url', async (req, res) => {
     const filename = buildUrlImportFilename(articleUrl, article.title);
     const importPath = path.join(config.uploadDir, filename);
     fs.writeFileSync(importPath, `${lines.join('\n')}\n`, 'utf-8');
+    fs.writeFileSync(getImportMetadataPath(filename), JSON.stringify({
+      sourceUrl: articleUrl,
+      provider: article.provider,
+      title: article.title || '',
+      lineMetadata
+    }, null, 2), 'utf-8');
 
     const originalname = article.title || parsedUrl.hostname;
     console.log(`[URL Import] Imported ${lines.length} lines from ${articleUrl} via ${article.provider}: ${filename}`);
@@ -865,6 +1150,7 @@ app.post('/api/import/url', async (req, res) => {
       originalname,
       sourceUrl: articleUrl,
       provider: article.provider,
+      lineMetadata,
       totalLines: lines.length
     });
   } catch (error) {
@@ -880,7 +1166,7 @@ app.post('/api/import/url', async (req, res) => {
 app.get('/api/import/:filename', (req, res) => {
   const loadResult = loadLinesForImportFilename(req.params.filename);
   if (!loadResult) return res.status(404).json({ error: 'File not found' });
-  const { lines, sourceLocation } = loadResult;
+  const { lines, lineMetadata, sourceLocation } = loadResult;
 
   // Check if there's a corresponding .book file with processed data
   const bookFilePath = path.join(config.booksDir, `${req.params.filename}.book`);
@@ -914,6 +1200,7 @@ app.get('/api/import/:filename', (req, res) => {
 
   res.json({
     lines,
+    lineMetadata: normalizeLineMetadata(lineMetadata, lines.length),
     existingProcessedData: processedData,
     existingProcessedSentences: processedSentences,
     existingVerbMergeOptions: verbMergeOptions,
@@ -968,6 +1255,9 @@ app.post('/api/import/:filename/summarize', async (req, res) => {
     if (!bookData.content) bookData.content = {};
     if (!Array.isArray(bookData.content.originalLines)) {
       bookData.content.originalLines = lines;
+    }
+    if (!Array.isArray(bookData.content.lineMetadata)) {
+      bookData.content.lineMetadata = normalizeLineMetadata(loadResult.lineMetadata, lines.length);
     }
     if (!bookData.metadata) bookData.metadata = {};
     if (!bookData.settings) bookData.settings = {};
@@ -1061,6 +1351,7 @@ app.delete('/api/import/:filename/sentence/:sentenceIndex', (req, res) => {
 
   const {
     originalLines,
+    lineMetadata,
     processedSentences,
     verbMergeOptions,
     timestamp
@@ -1071,6 +1362,7 @@ app.delete('/api/import/:filename/sentence/:sentenceIndex', (req, res) => {
   }
 
   const normalizedLines = originalLines.map((line) => String(line ?? ''));
+  const normalizedLineMetadata = normalizeLineMetadata(lineMetadata, normalizedLines.length);
   const normalizedProcessedSentences =
     processedSentences && typeof processedSentences === 'object' && !Array.isArray(processedSentences)
       ? processedSentences
@@ -1080,6 +1372,11 @@ app.delete('/api/import/:filename/sentence/:sentenceIndex', (req, res) => {
   try {
     if (sourcePath) {
       fs.writeFileSync(sourcePath, normalizedLines.join('\n'), 'utf-8');
+      if (path.resolve(path.dirname(sourcePath)) === path.resolve(config.uploadDir)) {
+        fs.writeFileSync(getImportMetadataPath(req.params.filename), JSON.stringify({
+          lineMetadata: normalizedLineMetadata
+        }, null, 2), 'utf-8');
+      }
     }
 
     let bookData = {};
@@ -1102,6 +1399,7 @@ app.delete('/api/import/:filename/sentence/:sentenceIndex', (req, res) => {
       bookData.metadata.savedToBooks === true;
 
     bookData.content.originalLines = normalizedLines;
+    bookData.content.lineMetadata = normalizedLineMetadata;
     bookData.content.processedSentences = normalizedProcessedSentences;
     bookData.settings.verbMergeOptions = verbMergeOptions || bookData.settings.verbMergeOptions || {};
     bookData.metadata.originalFilename = req.params.filename;
@@ -1137,6 +1435,7 @@ app.delete('/api/import/:filename', (req, res) => {
 
   const targets = [
     path.join(config.uploadDir, filename),
+    getImportMetadataPath(filename),
     path.join(config.booksDir, `${filename}.book`)
   ];
 
@@ -1169,6 +1468,7 @@ app.post('/api/import/:filename/save', (req, res) => {
   const {
     bookname,
     originalLines,
+    lineMetadata,
     processedData,
     processedSentences,
     verbMergeOptions,
@@ -1219,6 +1519,7 @@ app.post('/api/import/:filename/save', (req, res) => {
     },
     content: {
       originalLines: originalLines || [],
+      lineMetadata: normalizeLineMetadata(lineMetadata, Array.isArray(originalLines) ? originalLines.length : 0),
       processedData: processedData || {},
       processedSentences: processedSentences || {},
       summary: {

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { config } from '../config/index.js';
+import dockerOnDemandService from './dockerOnDemandService.js';
 import speechAlignmentService from './speechAlignmentService.js';
 
 class S2ProService {
@@ -28,6 +29,7 @@ class S2ProService {
 
     console.log(`Generating S2 Pro audio for text: "${filteredText.substring(0, 50)}..."`);
     console.log(`Using S2 Pro at: ${this.baseUrl}, includeTimings: ${Boolean(options.includeTimings)}`);
+    await dockerOnDemandService.ensureS2Pro();
 
     const formData = new FormData();
     formData.set('text', synthesisText);
@@ -104,6 +106,7 @@ class S2ProService {
       throw s2ProError;
     } finally {
       clearTimeout(timeoutId);
+      dockerOnDemandService.scheduleS2ProIdleStop();
     }
   }
 

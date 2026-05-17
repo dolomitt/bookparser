@@ -6,6 +6,7 @@ import voicevoxService from '../services/voicevoxService.js';
 
 const router = express.Router();
 const ttsCache = new Map();
+const ttsInFlight = new Map();
 const ttsProviderMap = {
   'fish-speech': { label: 'Fish Speech', service: fishSpeechService },
   fish: { label: 'Fish Speech', service: fishSpeechService },
@@ -24,17 +25,28 @@ function normalizeSpeechTagsForCache(speechTags) {
     .filter(Boolean);
 }
 
+function normalizeTextForCache(text) {
+  return String(text || '')
+    .replace(/\u30FB/g, '')
+    .replace(/\u2026/g, '...')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function buildTtsCacheKey({ text, speaker, referenceId, speechTags, includeTimings, speed, volume }) {
+  const provider = config.tts.provider;
+  const isS2Provider = ['s2-pro', 's2cpp', 's2'].includes(provider);
+
   return JSON.stringify({
     provider: config.tts.provider,
     alignmentProvider: config.tts.alignmentProvider,
-    text: String(text || ''),
-    speaker: String(speaker || ''),
-    referenceId: String(referenceId || ''),
+    text: normalizeTextForCache(text),
+    speaker: isS2Provider ? '' : String(speaker || ''),
+    referenceId: isS2Provider ? '' : String(referenceId || ''),
     speechTags: normalizeSpeechTagsForCache(speechTags),
     includeTimings: Boolean(includeTimings),
-    speed: Number(speed) || 1,
-    volume: Number(volume) || 1,
+    speed: isS2Provider ? 1 : Number(speed) || 1,
+    volume: isS2Provider ? 1 : Number(volume) || 1,
     fishReferenceId: config.fishSpeech.referenceId || '',
     fishSeed: Number.isNaN(config.fishSpeech.seed) ? 'random' : config.fishSpeech.seed,
     fishTemperature: config.fishSpeech.temperature,
@@ -105,17 +117,27 @@ router.post('/', async (req, res) => {
 
     if (cacheHit) {
       console.log(`[${ttsProviderLabel}] TTS cache hit`);
+    } else if (ttsInFlight.has(cacheKey)) {
+      console.log(`[${ttsProviderLabel}] TTS in-flight cache join`);
+      result = await ttsInFlight.get(cacheKey);
     } else {
-      result = await ttsService.generateSpeech(text, {
+      const generationPromise = ttsService.generateSpeech(text, {
         speaker,
         referenceId,
         speechTags,
         includeTimings,
         speed,
         volume
+      }).then((generatedResult) => {
+        setCachedTtsResult(cacheKey, generatedResult);
+        console.log(`[${ttsProviderLabel}] TTS cache stored (${ttsCache.size} entries)`);
+        return generatedResult;
+      }).finally(() => {
+        ttsInFlight.delete(cacheKey);
       });
-      setCachedTtsResult(cacheKey, result);
-      console.log(`[${ttsProviderLabel}] TTS cache stored (${ttsCache.size} entries)`);
+
+      ttsInFlight.set(cacheKey, generationPromise);
+      result = await generationPromise;
     }
 
     if (includeTimings) {

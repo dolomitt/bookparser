@@ -484,6 +484,7 @@ export default function ImportPage() {
   const location = useLocation();
   const isBookViewHint = new URLSearchParams(location.search).get('view') === 'book';
   const [lines, setLines] = useState([]);
+  const [lineMetadata, setLineMetadata] = useState([]);
   const [sentences, setSentences] = useState([]);
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -658,6 +659,7 @@ export default function ImportPage() {
     setPageAiProcessing(false);
     setMessage('');
     setLines([]);
+    setLineMetadata([]);
     setSentences([]);
     setProcessedSentences({});
     setProcessingSentences({});
@@ -840,10 +842,18 @@ export default function ImportPage() {
     return sentences;
   };
 
-  const buildSentencesFromLines = (sourceLines) => {
+  const getLineSourceStyle = (sourceLineMetadata, lineIndex) => (
+    sourceLineMetadata?.[lineIndex] && typeof sourceLineMetadata[lineIndex] === 'object'
+      ? sourceLineMetadata[lineIndex]
+      : {}
+  );
+
+  const buildSentencesFromLines = (sourceLines, sourceLineMetadata = []) => {
     const allSentences = [];
 
     sourceLines.forEach((line, lineIndex) => {
+      const sourceStyle = getLineSourceStyle(sourceLineMetadata, lineIndex);
+
       if (line.trim()) {
         const lineSentences = splitIntoSentences(line);
         lineSentences.forEach((sentence, sentenceIndexInLine) => {
@@ -851,6 +861,7 @@ export default function ImportPage() {
             text: sentence,
             originalLineIndex: lineIndex,
             originalLine: line,
+            sourceStyle,
             sentenceIndexInLine
           });
         });
@@ -858,6 +869,7 @@ export default function ImportPage() {
           text: '',
           originalLineIndex: lineIndex,
           originalLine: line,
+          sourceStyle,
           isLineBreak: true
         });
       } else {
@@ -865,6 +877,7 @@ export default function ImportPage() {
           text: '',
           originalLineIndex: lineIndex,
           originalLine: line,
+          sourceStyle,
           isLineBreak: true
         });
       }
@@ -911,8 +924,10 @@ export default function ImportPage() {
         );
         setBookSummaryGeneratedAt(data.existingSummaryGeneratedAt || null);
         setLines(data.lines);
+        const loadedLineMetadata = Array.isArray(data.lineMetadata) ? data.lineMetadata : [];
+        setLineMetadata(loadedLineMetadata);
 
-        const allSentences = buildSentencesFromLines(data.lines);
+        const allSentences = buildSentencesFromLines(data.lines, loadedLineMetadata);
 
         setSentences(allSentences);
         console.log(`Split ${data.lines.length} lines into ${allSentences.length} sentences`);
@@ -1867,11 +1882,12 @@ export default function ImportPage() {
       updatedLines[lineIndex] = lineSentences.join('');
 
       const updatedProcessedSentences = reindexAfterSentenceDelete(processedSentences, sentenceIndex);
-      const updatedSentences = buildSentencesFromLines(updatedLines);
+      const updatedSentences = buildSentencesFromLines(updatedLines, lineMetadata);
 
       await axios.delete(`/api/import/${filename}/sentence/${sentenceIndex}`, {
         data: {
           originalLines: updatedLines,
+          lineMetadata,
           processedSentences: updatedProcessedSentences,
           verbMergeOptions,
           timestamp: new Date().toISOString()
@@ -2480,6 +2496,7 @@ export default function ImportPage() {
       const bookData = {
         bookname: filename,
         originalLines: lines,
+        lineMetadata,
         processedSentences: processedSentences,
         sentences: sentences,
         summaryTitle: bookSummaryTitle,
@@ -2500,6 +2517,25 @@ export default function ImportPage() {
       console.error('Save error:', error);
       setMessage('Save failed');
     }
+  };
+
+  const getSentenceSourceClassName = (sentence) => {
+    const style = sentence?.sourceStyle || {};
+    const classes = [];
+
+    if (style.block === 'heading') {
+      classes.push('source-heading');
+      const headingLevel = Number.parseInt(style.headingLevel, 10);
+      if (Number.isInteger(headingLevel)) {
+        classes.push(`source-heading-${Math.min(6, Math.max(1, headingLevel))}`);
+      }
+    }
+
+    if (style.bold) {
+      classes.push('source-bold');
+    }
+
+    return classes.join(' ');
   };
 
   const getSentenceNoteLines = (sentenceData) => {
@@ -3208,9 +3244,16 @@ export default function ImportPage() {
           const hasEditControls = !isCompletedBookView || hasSentenceNotes;
           const editControlsOpen = activeSentenceControls === sentenceIndex;
           const isGeneratingSpeech = Boolean(ttsGeneratingSentences[sentenceIndex]);
+          const sentenceSourceClassName = getSentenceSourceClassName(sentence);
+          const sentenceContainerClassName = ['sentence-container', sentenceSourceClassName]
+            .filter(Boolean)
+            .join(' ');
+          const sentenceTextClassName = ['sentence-text', sentenceSourceClassName]
+            .filter(Boolean)
+            .join(' ');
 
               return (
-                <span key={sentenceIndex} className="sentence-container">
+                <span key={sentenceIndex} className={sentenceContainerClassName}>
                   {showSentenceControls && (
                     <span className="sentence-leading-controls">
                       <button
@@ -3227,7 +3270,7 @@ export default function ImportPage() {
                   )}
 
                   {isProcessed ? (
-                    <span data-sentence={sentenceIndex}>
+                    <span data-sentence={sentenceIndex} className={sentenceSourceClassName || undefined}>
                       <TokenizedText
                         tokens={isProcessed.tokens}
                         sentenceIndex={sentenceIndex}
@@ -3240,7 +3283,7 @@ export default function ImportPage() {
                   ) : (
                     <span
                       data-sentence={sentenceIndex}
-                      className="sentence-text"
+                      className={sentenceTextClassName}
                     >
                       {renderSentenceTextWithBookmark(sentence.text, isCurrentReading)}
                     </span>

@@ -1,4 +1,5 @@
 import { config } from '../config/index.js';
+import dockerOnDemandService from './dockerOnDemandService.js';
 
 class QwenAlignmentService {
   constructor() {
@@ -15,6 +16,8 @@ class QwenAlignmentService {
     if (!this.enabled || !audioBuffer?.length || !text?.trim()) {
       return null;
     }
+
+    await dockerOnDemandService.ensureQwenAligner();
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -53,6 +56,7 @@ class QwenAlignmentService {
       return null;
     } finally {
       clearTimeout(timeoutId);
+      dockerOnDemandService.scheduleQwenAlignerIdleStop();
     }
   }
 

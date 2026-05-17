@@ -350,6 +350,37 @@
   line-height: inherit;
 }
 
+.sentence-container.source-bold [data-sentence],
+.sentence-container.source-bold .sentence-text,
+.sentence-container.source-bold .token,
+.source-bold.sentence-text {
+  font-weight: 700;
+}
+
+.sentence-container.source-heading [data-sentence],
+.sentence-container.source-heading .sentence-text,
+.source-heading.sentence-text {
+  font-weight: 700;
+  font-size: 1.12em;
+  line-height: 1.45;
+}
+
+.sentence-container.source-heading .token {
+  font-weight: 700;
+}
+
+.sentence-container.source-heading-1 [data-sentence],
+.sentence-container.source-heading-1 .sentence-text,
+.source-heading-1.sentence-text {
+  font-size: 1.25em;
+}
+
+.sentence-container.source-heading-2 [data-sentence],
+.sentence-container.source-heading-2 .sentence-text,
+.source-heading-2.sentence-text {
+  font-size: 1.18em;
+}
+
 /* Bookmark indicator without layout shift */
 .sentence-first-bookmark {
   background: rgba(156, 39, 176, 0.18);

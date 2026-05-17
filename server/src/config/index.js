@@ -111,6 +111,7 @@ const qwenAlignerBaseUrl = normalizeBaseUrl(
   process.env.QWEN_ALIGNER_BASE_URL ||
   `${process.env.QWEN_ALIGNER_HOST || '127.0.0.1'}:${process.env.QWEN_ALIGNER_PORT || '8050'}`
 ) || 'http://127.0.0.1:8050';
+const dockerComposeFile = process.env.BOOKPARSER_DOCKER_COMPOSE_FILE || '../docker-compose.s2-pro.yml';
 
 export const config = {
   port: process.env.PORT || 5000,
@@ -223,6 +224,18 @@ export const config = {
     timeout: parseInt(process.env.QWEN_ALIGNER_TIMEOUT) || 180000,
     language: process.env.QWEN_ALIGNER_LANGUAGE || 'Japanese',
     fallbackToMfa: parseBoolean(process.env.QWEN_ALIGNER_FALLBACK_TO_MFA, false)
+  },
+
+  dockerOnDemand: {
+    enabled: parseBoolean(process.env.BOOKPARSER_DOCKER_ON_DEMAND, false),
+    composeFile: dockerComposeFile,
+    command: process.env.BOOKPARSER_DOCKER_COMMAND || 'docker',
+    startTimeout: parseInteger(process.env.BOOKPARSER_DOCKER_START_TIMEOUT, 240000),
+    idleStopMs: parseInteger(process.env.BOOKPARSER_DOCKER_IDLE_STOP_MS, 300000),
+    s2ProService: process.env.S2_PRO_DOCKER_SERVICE || 's2-pro-build',
+    s2ProProfile: process.env.S2_PRO_DOCKER_PROFILE || 'build',
+    qwenAlignerService: process.env.QWEN_ALIGNER_DOCKER_SERVICE || 'qwen-aligner',
+    qwenAlignerProfile: process.env.QWEN_ALIGNER_DOCKER_PROFILE || 'qwen-aligner'
   }
 };
 
@@ -280,4 +293,9 @@ export function logConfig() {
   console.log('QWEN_ALIGNER_BASE_URL:', config.qwenAligner.baseUrl);
   console.log('QWEN_ALIGNER_LANGUAGE:', config.qwenAligner.language);
   console.log('QWEN_ALIGNER_FALLBACK_TO_MFA:', config.qwenAligner.fallbackToMfa);
+  console.log('BOOKPARSER_DOCKER_ON_DEMAND:', config.dockerOnDemand.enabled);
+  if (config.dockerOnDemand.enabled) {
+    console.log('BOOKPARSER_DOCKER_COMPOSE_FILE:', config.dockerOnDemand.composeFile);
+    console.log('BOOKPARSER_DOCKER_IDLE_STOP_MS:', config.dockerOnDemand.idleStopMs);
+  }
 }
