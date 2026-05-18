@@ -398,11 +398,11 @@ function TokenizedText({ tokens, sentenceIndex, isCurrentReading = false, onBook
                 position: 'fixed',
                 left: '12px',
                 right: '12px',
-                bottom: '12px',
+                bottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
                 transform: 'none',
                 maxWidth: 'none',
                 minWidth: '0',
-                maxHeight: '55vh',
+                maxHeight: 'min(52vh, calc(100dvh - 120px))',
                 overflowY: 'auto',
               } : {
                 position: 'fixed',
