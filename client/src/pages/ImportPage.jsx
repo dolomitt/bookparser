@@ -516,8 +516,11 @@ export default function ImportPage() {
   const pageAiRunRef = useRef(0);
   const pageTtsRunRef = useRef(0);
   const pageTtsPlayRunRef = useRef(0);
+  const aiPageTaskSourceRef = useRef(null);
+  const ttsPageTaskSourceRef = useRef(null);
   const [ollamaStreamPopup, setOllamaStreamPopup] = useState({
     visible: false,
+    title: 'AI Live',
     sentenceIndex: null,
     status: 'idle',
     content: ''
@@ -612,6 +615,261 @@ export default function ImportPage() {
   // Bookmark state for reading position
   const [currentReadingPosition, setCurrentReadingPosition] = useState(null);
 
+  function closeAiPageTaskStream() {
+    if (aiPageTaskSourceRef.current) {
+      aiPageTaskSourceRef.current.close();
+      aiPageTaskSourceRef.current = null;
+    }
+  }
+
+  function closeTtsPageTaskStream() {
+    if (ttsPageTaskSourceRef.current) {
+      ttsPageTaskSourceRef.current.close();
+      ttsPageTaskSourceRef.current = null;
+    }
+  }
+
+  function getAiPageTaskPopupContent(task = null) {
+    if (!task || !Array.isArray(task.logs) || task.logs.length === 0) {
+      return '';
+    }
+
+    return task.logs
+      .map((entry) => String(entry?.message || '').trim())
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  function getAiPageTaskStatusLabel(task = null) {
+    if (!task) return 'idle';
+    const completed = Number(task.completedCount || 0);
+    const total = Number(task.totalSentences || 0);
+
+    if (task.status === 'completed') {
+      return `page ${task.currentPage}: completed`;
+    }
+    if (task.status === 'failed') {
+      return `page ${task.currentPage}: failed`;
+    }
+    return `page ${task.currentPage}: ${completed}/${total}`;
+  }
+
+  function applyAiPageTaskSnapshot(task = null) {
+    if (!task) {
+      setPageAiProcessing(false);
+      setProcessingSentences({});
+      return;
+    }
+
+    const isRunning = task.status === 'running';
+    const completed = Number(task.completedCount || 0);
+    const total = Number(task.totalSentences || 0);
+    const processed = Number(task.processedCount || 0);
+    const skipped = Number(task.skippedCount || 0);
+    const errors = Number(task.errorCount || 0);
+
+    setPageAiProcessing(isRunning);
+    setProcessingSentences(
+      isRunning && Number.isInteger(task.activeSentenceIndex)
+        ? { [task.activeSentenceIndex]: true }
+        : {}
+    );
+
+    if (isRunning) {
+      setMessage(`AI processing page ${task.currentPage}: ${completed}/${total}`);
+    } else if (task.status === 'completed') {
+      setMessage(`AI page processing done: ${processed} processed, ${skipped} skipped, ${errors} errors`);
+    } else if (task.status === 'failed') {
+      setMessage(task.lastError ? `AI page processing failed: ${task.lastError}` : 'AI page processing failed');
+    }
+
+    setOllamaStreamPopup((prev) => ({
+      ...prev,
+      visible: true,
+      title: 'AI Live',
+      sentenceIndex: Number.isInteger(task.activeSentenceIndex) ? task.activeSentenceIndex : null,
+      status: getAiPageTaskStatusLabel(task),
+      content: getAiPageTaskPopupContent(task)
+    }));
+  }
+
+  function attachAiPageTaskStream(draftFilename) {
+    if (!draftFilename) return;
+    closeAiPageTaskStream();
+
+    const source = new EventSource(`/api/import/${encodeURIComponent(draftFilename)}/ai-page-task/stream`);
+    aiPageTaskSourceRef.current = source;
+
+    source.addEventListener('snapshot', (event) => {
+      try {
+        const task = JSON.parse(event.data);
+        applyAiPageTaskSnapshot(task);
+        if (task?.status !== 'running') {
+          closeAiPageTaskStream();
+        }
+      } catch (error) {
+        console.warn('Failed to parse AI page task snapshot:', error);
+      }
+    });
+
+    source.addEventListener('sentence-complete', (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload?.sentenceData && Number.isInteger(payload?.sentenceIndex)) {
+          setProcessedSentences((prev) => ({
+            ...prev,
+            [payload.sentenceIndex]: payload.sentenceData
+          }));
+        }
+      } catch (error) {
+        console.warn('Failed to parse AI page task sentence update:', error);
+      }
+    });
+
+    source.addEventListener('done', (event) => {
+      try {
+        const task = JSON.parse(event.data);
+        applyAiPageTaskSnapshot(task);
+      } catch (error) {
+        console.warn('Failed to parse AI page task completion:', error);
+      } finally {
+        closeAiPageTaskStream();
+      }
+    });
+
+    source.addEventListener('failed', (event) => {
+      try {
+        const task = JSON.parse(event.data);
+        applyAiPageTaskSnapshot(task);
+      } catch (error) {
+        console.warn('Failed to parse AI page task failure:', error);
+      } finally {
+        closeAiPageTaskStream();
+      }
+    });
+
+    source.onerror = () => {
+      if (!aiPageTaskSourceRef.current) {
+        return;
+      }
+    };
+  }
+
+  function getTtsPageTaskPopupContent(task = null) {
+    if (!task || !Array.isArray(task.logs) || task.logs.length === 0) {
+      return '';
+    }
+
+    return task.logs
+      .map((entry) => String(entry?.message || '').trim())
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  function getTtsPageTaskStatusLabel(task = null) {
+    if (!task) return 'idle';
+    const completed = Number(task.completedCount || 0);
+    const total = Number(task.totalSentences || 0);
+
+    if (task.status === 'completed') {
+      return `page ${task.currentPage}: completed`;
+    }
+    if (task.status === 'failed') {
+      return `page ${task.currentPage}: failed`;
+    }
+    return `page ${task.currentPage}: ${completed}/${total}`;
+  }
+
+  function applyTtsPageTaskSnapshot(task = null) {
+    if (!task) {
+      setPageTtsGenerating(false);
+      setTtsGeneratingSentences({});
+      return;
+    }
+
+    const isRunning = task.status === 'running';
+    const completed = Number(task.completedCount || 0);
+    const total = Number(task.totalSentences || 0);
+    const generated = Number(task.generatedCount || 0);
+    const errors = Number(task.errorCount || 0);
+
+    setPageTtsGenerating(isRunning);
+    setTtsGeneratingSentences(
+      isRunning && Number.isInteger(task.activeSentenceIndex)
+        ? { [task.activeSentenceIndex]: true }
+        : {}
+    );
+
+    if (isRunning) {
+      setMessage(`Generating page audio ${task.currentPage}: ${completed}/${total}`);
+    } else if (task.status === 'completed') {
+      setMessage(
+        errors > 0
+          ? `Page audio done: ${generated} generated, ${errors} errors`
+          : `Page audio cached: ${generated} sentences`
+      );
+    } else if (task.status === 'failed') {
+      setMessage(task.lastError ? `Page audio failed: ${task.lastError}` : 'Page audio failed');
+    }
+
+    setOllamaStreamPopup((prev) => ({
+      ...prev,
+      visible: true,
+      title: 'Audio Live',
+      sentenceIndex: Number.isInteger(task.activeSentenceIndex) ? task.activeSentenceIndex : null,
+      status: getTtsPageTaskStatusLabel(task),
+      content: getTtsPageTaskPopupContent(task)
+    }));
+  }
+
+  function attachTtsPageTaskStream(draftFilename) {
+    if (!draftFilename) return;
+    closeTtsPageTaskStream();
+
+    const source = new EventSource(`/api/text-to-speech/draft/${encodeURIComponent(draftFilename)}/page-task/stream`);
+    ttsPageTaskSourceRef.current = source;
+
+    source.addEventListener('snapshot', (event) => {
+      try {
+        const task = JSON.parse(event.data);
+        applyTtsPageTaskSnapshot(task);
+        if (task?.status !== 'running') {
+          closeTtsPageTaskStream();
+        }
+      } catch (error) {
+        console.warn('Failed to parse audio page task snapshot:', error);
+      }
+    });
+
+    source.addEventListener('done', (event) => {
+      try {
+        const task = JSON.parse(event.data);
+        applyTtsPageTaskSnapshot(task);
+      } catch (error) {
+        console.warn('Failed to parse audio page task completion:', error);
+      } finally {
+        closeTtsPageTaskStream();
+      }
+    });
+
+    source.addEventListener('failed', (event) => {
+      try {
+        const task = JSON.parse(event.data);
+        applyTtsPageTaskSnapshot(task);
+      } catch (error) {
+        console.warn('Failed to parse audio page task failure:', error);
+      } finally {
+        closeTtsPageTaskStream();
+      }
+    });
+
+    source.onerror = () => {
+      if (!ttsPageTaskSourceRef.current) {
+        return;
+      }
+    };
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -654,9 +912,12 @@ export default function ImportPage() {
 
   useEffect(() => {
     pageAiRunRef.current += 1;
+    closeAiPageTaskStream();
+    closeTtsPageTaskStream();
     setInitialLoadComplete(false);
     setIsCompletedBookView(isBookViewHint);
     setPageAiProcessing(false);
+    setPageTtsGenerating(false);
     setMessage('');
     setLines([]);
     setLineMetadata([]);
@@ -674,11 +935,19 @@ export default function ImportPage() {
     setActiveTranslationSentence(null);
     setOllamaStreamPopup({
       visible: false,
+      title: 'AI Live',
       sentenceIndex: null,
       status: 'idle',
       content: ''
     });
   }, [filename, isBookViewHint]);
+
+  useEffect(() => (
+    () => {
+      closeAiPageTaskStream();
+      closeTtsPageTaskStream();
+    }
+  ), []);
 
   useEffect(() => {
     const handleOutsideNotesClick = (event) => {
@@ -911,7 +1180,7 @@ export default function ImportPage() {
 
     if (!initialLoadComplete) {
       console.log('Initial load for:', filename);
-      const applyFileData = (data, { fromCache = false } = {}) => {
+      const applyFileData = (data, { fromCache = false, aiTask = null } = {}) => {
         console.log('File data loaded:', data);
         const isImportSource = data?.sourceLocation === 'imports';
         const shouldUseCompletedView = isBookViewHint || (!isImportSource && !!data.isCompletedBookView);
@@ -956,7 +1225,10 @@ export default function ImportPage() {
 
         // Only auto-process if there are unprocessed sentences
         const unprocessedCount = allSentences.filter((s, i) => !s.isLineBreak && !existingProcessedSentences[i]).length;
-        if (fromCache) {
+        if (aiTask?.status === 'running') {
+          applyAiPageTaskSnapshot(aiTask);
+          attachAiPageTaskStream(filename);
+        } else if (fromCache) {
           setMessage('Offline mode: loaded cached text from this device.');
         } else if (unprocessedCount > 0) {
           console.log(`Found ${unprocessedCount} unprocessed sentences, starting auto-processing...`);
@@ -975,9 +1247,18 @@ export default function ImportPage() {
       const loadFileData = async () => {
         try {
           const res = await axios.get(`/api/import/${filename}`);
+          let aiTask = null;
+          try {
+            const taskResponse = await axios.get(`/api/import/${filename}/ai-page-task`);
+            aiTask = taskResponse.data?.task || null;
+          } catch (taskError) {
+            if (taskError.response?.status !== 404) {
+              console.warn('Failed to load AI page task status during initial load:', taskError);
+            }
+          }
           await cacheImportPayload(filename, res.data);
           if (!cancelled) {
-            applyFileData(res.data);
+            applyFileData(res.data, { aiTask });
           }
         } catch (error) {
           const cachedData = await getCachedImportPayload(filename);
@@ -1008,6 +1289,98 @@ export default function ImportPage() {
       }
     };
   }, [filename, initialLoadComplete, isBookViewHint]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!filename || !initialLoadComplete) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const syncAiPageTask = async () => {
+      try {
+        const response = await axios.get(`/api/import/${filename}/ai-page-task`);
+        if (cancelled) return;
+
+        const task = response.data?.task || null;
+        if (task) {
+          applyAiPageTaskSnapshot(task);
+          if (task.status === 'running') {
+            attachAiPageTaskStream(filename);
+          } else {
+            closeAiPageTaskStream();
+          }
+          return;
+        }
+
+        closeAiPageTaskStream();
+        setPageAiProcessing(false);
+        setProcessingSentences({});
+      } catch (error) {
+        if (cancelled) return;
+        if (error.response?.status !== 404) {
+          console.warn('Failed to load AI page task status:', error);
+        }
+        closeAiPageTaskStream();
+        setPageAiProcessing(false);
+        setProcessingSentences({});
+      }
+    };
+
+    syncAiPageTask();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filename, initialLoadComplete]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!filename || !initialLoadComplete) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const syncTtsPageTask = async () => {
+      try {
+        const response = await axios.get(`/api/text-to-speech/draft/${filename}/page-task`);
+        if (cancelled) return;
+
+        const task = response.data?.task || null;
+        if (task) {
+          applyTtsPageTaskSnapshot(task);
+          if (task.status === 'running') {
+            attachTtsPageTaskStream(filename);
+          } else {
+            closeTtsPageTaskStream();
+          }
+          return;
+        }
+
+        closeTtsPageTaskStream();
+        setPageTtsGenerating(false);
+        setTtsGeneratingSentences({});
+      } catch (error) {
+        if (cancelled) return;
+        if (error.response?.status !== 404) {
+          console.warn('Failed to load audio page task status:', error);
+        }
+        closeTtsPageTaskStream();
+        setPageTtsGenerating(false);
+        setTtsGeneratingSentences({});
+      }
+    };
+
+    syncTtsPageTask();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filename, initialLoadComplete]);
 
   const handleFileChange = e => setFile(e.target.files[0]);
 
@@ -2168,152 +2541,35 @@ export default function ImportPage() {
     );
     if (!confirmed) return;
 
-    const runId = pageAiRunRef.current + 1;
-    pageAiRunRef.current = runId;
-    const isCurrentRun = () => pageAiRunRef.current === runId;
+    const sentenceRequests = pageSentenceEntries
+      .map((entry) => ({
+        sentenceIndex: entry.originalIndex,
+        text: sentences[entry.originalIndex]?.text || ''
+      }))
+      .filter((entry) => entry.text.trim());
 
-    setPageAiProcessing(true);
-    setMessage(`AI processing page ${currentPage}: 0/${totalPageSentences}`);
-    setOllamaStreamPopup({
-      visible: true,
-      sentenceIndex: null,
-      status: `page ${currentPage}: 0/${totalPageSentences}`,
-      content: `Starting AI processing for page ${currentPage}...\n`
-    });
-
-    let processedCount = 0;
-    let skippedCount = 0;
-    let errorCount = 0;
     const allSentenceTexts = sentences.map((s) => s.text);
-    const sentenceIndexesToProcess = [];
 
-    for (let i = 0; i < pageSentenceEntries.length; i++) {
-      const sentenceIndex = pageSentenceEntries[i].originalIndex;
-      const sentence = sentences[sentenceIndex];
-      const existingSentenceData = processedSentences[sentenceIndex];
+    try {
+      const response = await axios.post(`/api/import/${filename}/ai-page-task`, {
+        currentPage,
+        sentenceRequests,
+        allSentences: allSentenceTexts,
+        verbMergeOptions,
+        frequencySettings
+      });
 
-      if (!sentence || sentence.isLineBreak || !sentence.text?.trim()) {
-        skippedCount++;
-        continue;
+      const task = response.data?.task || null;
+      if (task) {
+        applyAiPageTaskSnapshot(task);
+        attachAiPageTaskStream(filename);
       }
-
-      // Skip already-remote results to save credits/time.
-      if (existingSentenceData?.processingType === 'remote') {
-        skippedCount++;
-        continue;
-      }
-
-      sentenceIndexesToProcess.push(sentenceIndex);
+    } catch (error) {
+      console.error('Failed to start AI page task:', error);
+      setPageAiProcessing(false);
+      setProcessingSentences({});
+      setMessage(error.response?.data?.error || error.message || 'Failed to start AI page processing');
     }
-
-    const updateProgress = () => {
-      if (!isCurrentRun()) return;
-      const completed = processedCount + skippedCount + errorCount;
-      setMessage(`AI processing page ${currentPage}: ${completed}/${totalPageSentences}`);
-      setOllamaStreamPopup((prev) => ({
-        ...prev,
-        visible: true,
-        status: `page ${currentPage}: ${completed}/${totalPageSentences}`,
-        content: `${prev.content}Progress: ${completed}/${totalPageSentences} (${processedCount} done, ${skippedCount} skipped, ${errorCount} errors)\n`
-      }));
-    };
-
-    updateProgress();
-
-    for (const sentenceIndex of sentenceIndexesToProcess) {
-      if (!isCurrentRun()) {
-        return;
-      }
-
-      const sentence = sentences[sentenceIndex];
-
-      setProcessingSentences((prev) => ({ ...prev, [sentenceIndex]: true }));
-      setOllamaStreamPopup((prev) => ({
-        ...prev,
-        visible: true,
-        status: `page ${currentPage}: ${processedCount + skippedCount + errorCount}/${totalPageSentences}`,
-        content: `${prev.content}Processing sentence ${sentenceIndex}...\n`
-      }));
-
-      try {
-        const requestData = {
-          text: sentence.text,
-          sentenceIndex: sentenceIndex,
-          verbMergeOptions: verbMergeOptions,
-          allSentences: allSentenceTexts,
-          useRemoteProcessing: true,
-          frequencySettings: frequencySettings
-        };
-
-        const response = await axios.post('/api/parse', requestData);
-
-        if (!isCurrentRun()) {
-          return;
-        }
-
-        if (response.data.analysis && response.data.analysis.tokens) {
-          const sentenceData = {
-            tokens: response.data.analysis.tokens,
-            fullSentenceTranslation: response.data.fullSentenceTranslation || 'N/A',
-            sentenceNotes: Array.isArray(response.data.sentenceNotes) ? response.data.sentenceNotes : [],
-            speechTags: getSpeechTagsFromResponse(response.data),
-            processingType: 'remote'
-          };
-
-          setProcessedSentences((prev) => ({ ...prev, [sentenceIndex]: sentenceData }));
-          await autoSave(sentenceIndex, sentenceData);
-          processedCount++;
-        } else {
-          errorCount++;
-        }
-      } catch (error) {
-        console.error(`AI page processing failed for sentence ${sentenceIndex}:`, error);
-        errorCount++;
-        if (isCurrentRun()) {
-          setOllamaStreamPopup((prev) => ({
-            ...prev,
-            visible: true,
-            status: `page ${currentPage}: error`,
-            content: `${prev.content}Error on sentence ${sentenceIndex}: ${error.message || 'unknown error'}\n`
-          }));
-        }
-      } finally {
-        if (isCurrentRun()) {
-          setProcessingSentences((prev) => {
-            const updated = { ...prev };
-            delete updated[sentenceIndex];
-            return updated;
-          });
-          updateProgress();
-        }
-      }
-    }
-
-    if (!isCurrentRun()) {
-      return;
-    }
-
-    if (errorCount > 0) {
-      setMessage(
-        `AI page processing done: ${processedCount} processed, ${skippedCount} skipped, ${errorCount} errors`
-      );
-    } else {
-      setMessage(
-        `AI page processing done: ${processedCount} processed, ${skippedCount} skipped`
-      );
-    }
-
-    setOllamaStreamPopup((prev) => ({
-      ...prev,
-      visible: true,
-      status: `page ${currentPage}: completed`,
-      content: `${prev.content}Completed page ${currentPage}: ${processedCount} processed, ${skippedCount} skipped, ${errorCount} errors\n`
-    }));
-
-    setPageAiProcessing(false);
-    setTimeout(() => {
-      setMessage('');
-    }, 6000);
   };
 
   const handleGenerateAudioForCurrentPage = async () => {
@@ -2335,70 +2591,36 @@ export default function ImportPage() {
     );
     if (!confirmed) return;
 
-    const runId = pageTtsRunRef.current + 1;
-    pageTtsRunRef.current = runId;
-    const isCurrentRun = () => pageTtsRunRef.current === runId;
-
-    setPageTtsGenerating(true);
-    setMessage(`Generating page audio ${currentPage}: 0/${totalPageSentences}`);
-
-    let generatedCount = 0;
-    let errorCount = 0;
-
-    const updateProgress = () => {
-      if (!isCurrentRun()) return;
-      setMessage(`Generating page audio ${currentPage}: ${generatedCount + errorCount}/${totalPageSentences}`);
-    };
-
-    for (const sentenceIndex of sentenceIndexesToGenerate) {
-      if (!isCurrentRun()) return;
-
-      const sentence = sentences[sentenceIndex];
-      const speechTags = Array.isArray(processedSentences[sentenceIndex]?.speechTags)
+    const sentenceRequests = sentenceIndexesToGenerate.map((sentenceIndex) => ({
+      sentenceIndex,
+      text: sentences[sentenceIndex]?.text || '',
+      speechTags: Array.isArray(processedSentences[sentenceIndex]?.speechTags)
         ? processedSentences[sentenceIndex].speechTags
-        : [];
+        : []
+    }));
 
-      setTtsGeneratingSentences((prev) => ({ ...prev, [sentenceIndex]: true }));
-
-      try {
-        await axios.post('/api/text-to-speech', {
-          text: sentence.text,
+    try {
+      const response = await axios.post(`/api/text-to-speech/draft/${filename}/page-task`, {
+        currentPage,
+        sentenceRequests,
+        ttsOptions: {
           speaker: ttsOptions.speaker,
-          speechTags,
           speed: ttsOptions.speed,
-          volume: ttsOptions.volume,
-          includeTimings: true
-        });
+          volume: ttsOptions.volume
+        }
+      });
 
-        generatedCount++;
-      } catch (error) {
-        console.error(`Page audio generation failed for sentence ${sentenceIndex}:`, error);
-        errorCount++;
-        setSentenceMessages((prev) => ({
-          ...prev,
-          [sentenceIndex]: error.response?.data?.error || error.message || 'Audio generation failed'
-        }));
-      } finally {
-        setTtsGeneratingSentences((prev) => {
-          const updated = { ...prev };
-          delete updated[sentenceIndex];
-          return updated;
-        });
-        updateProgress();
+      const task = response.data?.task || null;
+      if (task) {
+        applyTtsPageTaskSnapshot(task);
+        attachTtsPageTaskStream(filename);
       }
+    } catch (error) {
+      console.error('Failed to start audio page task:', error);
+      setPageTtsGenerating(false);
+      setTtsGeneratingSentences({});
+      setMessage(error.response?.data?.error || error.message || 'Failed to start page audio generation');
     }
-
-    if (!isCurrentRun()) return;
-
-    setMessage(
-      errorCount > 0
-        ? `Page audio done: ${generatedCount} generated, ${errorCount} errors`
-        : `Page audio cached: ${generatedCount} sentences`
-    );
-    setPageTtsGenerating(false);
-    setTimeout(() => {
-      setMessage('');
-    }, 6000);
   };
 
   const handleReadCurrentPage = async () => {
@@ -3441,7 +3663,7 @@ export default function ImportPage() {
                 }}
               >
                 <div>
-                  <strong>AI Live</strong>{' '}
+                  <strong>{ollamaStreamPopup.title || 'AI Live'}</strong>{' '}
                   {Number.isInteger(ollamaStreamPopup.sentenceIndex)
                     ? `(R: sentence ${ollamaStreamPopup.sentenceIndex})`
                     : '(R: page processing)'}

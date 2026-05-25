@@ -303,6 +303,218 @@ function resolveSourceTextPath(filename) {
   return null;
 }
 
+function saveProcessedSentenceForDraft(filename, sentenceIndex, sentenceData, verbMergeOptions = {}, timestamp = new Date().toISOString()) {
+  const bookFilePath = path.join(config.booksDir, `${filename}.book`);
+  let bookData = {};
+
+  if (fs.existsSync(bookFilePath)) {
+    try {
+      bookData = JSON.parse(fs.readFileSync(bookFilePath, 'utf-8'));
+    } catch (error) {
+      console.error('Error reading existing book file:', error);
+      bookData = {};
+    }
+  }
+
+  if (!bookData.content) bookData.content = {};
+  if (!bookData.content.processedSentences) bookData.content.processedSentences = {};
+  if (!bookData.settings) bookData.settings = {};
+  if (!bookData.metadata) bookData.metadata = {};
+
+  bookData.content.processedSentences[sentenceIndex] = sentenceData;
+  bookData.settings.verbMergeOptions = verbMergeOptions;
+  bookData.metadata.status = bookData.metadata.status === 'reading' ? 'reading' : 'draft';
+  bookData.metadata.completed = bookData.metadata.status === 'reading';
+  bookData.metadata.lastUpdated = timestamp;
+  bookData.metadata.processedSentences = Object.keys(bookData.content.processedSentences).length;
+  bookData.metadata.originalFilename = filename;
+
+  fs.writeFileSync(bookFilePath, JSON.stringify(bookData, null, 2), 'utf-8');
+  return {
+    bookFilePath,
+    savedAt: timestamp,
+    processedSentences: bookData.content.processedSentences
+  };
+}
+
+const aiPageTasks = new Map();
+const AI_PAGE_TASK_LOG_LIMIT = 250;
+
+function getAiPageTaskSnapshot(task) {
+  if (!task) return null;
+
+  return {
+    draftFilename: task.draftFilename,
+    currentPage: task.currentPage,
+    status: task.status,
+    totalSentences: task.totalSentences,
+    processedCount: task.processedCount,
+    skippedCount: task.skippedCount,
+    errorCount: task.errorCount,
+    completedCount: task.processedCount + task.skippedCount + task.errorCount,
+    activeSentenceIndex: Number.isInteger(task.activeSentenceIndex) ? task.activeSentenceIndex : null,
+    startedAt: task.startedAt,
+    updatedAt: task.updatedAt,
+    finishedAt: task.finishedAt || null,
+    logs: Array.isArray(task.logs) ? task.logs : [],
+    lastError: task.lastError || null
+  };
+}
+
+function writeSseEvent(res, event, data) {
+  if (res.writableEnded) return;
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+function broadcastAiPageTask(task, event, data) {
+  for (const client of task.clients) {
+    writeSseEvent(client, event, data);
+  }
+}
+
+function pushAiPageTaskLog(task, message, extras = {}) {
+  const entry = {
+    at: new Date().toISOString(),
+    message: String(message || ''),
+    ...extras
+  };
+  task.logs.push(entry);
+  if (task.logs.length > AI_PAGE_TASK_LOG_LIMIT) {
+    task.logs.splice(0, task.logs.length - AI_PAGE_TASK_LOG_LIMIT);
+  }
+  task.updatedAt = entry.at;
+  broadcastAiPageTask(task, 'log', entry);
+  broadcastAiPageTask(task, 'snapshot', getAiPageTaskSnapshot(task));
+}
+
+function createAiPageTask(params) {
+  const task = {
+    draftFilename: params.draftFilename,
+    currentPage: params.currentPage,
+    status: 'running',
+    sentenceRequests: params.sentenceRequests,
+    sentenceIndexSet: new Set(params.sentenceRequests.map((item) => item.sentenceIndex)),
+    allSentences: params.allSentences,
+    verbMergeOptions: params.verbMergeOptions || {},
+    frequencySettings: params.frequencySettings || {},
+    totalSentences: params.sentenceRequests.length,
+    processedCount: 0,
+    skippedCount: 0,
+    errorCount: 0,
+    activeSentenceIndex: null,
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    finishedAt: null,
+    lastError: null,
+    logs: [],
+    clients: new Set()
+  };
+  aiPageTasks.set(task.draftFilename, task);
+  return task;
+}
+
+async function runAiPageTask(task) {
+  pushAiPageTaskLog(task, `Starting AI page ${task.currentPage}: 0/${task.totalSentences}`);
+
+  try {
+    const existingBookPath = path.join(config.booksDir, `${task.draftFilename}.book`);
+    const existingBookData = readBookData(existingBookPath);
+    const existingProcessedSentences = existingBookData?.content?.processedSentences || {};
+
+    for (const sentenceRequest of task.sentenceRequests) {
+      const { sentenceIndex, text } = sentenceRequest;
+      task.activeSentenceIndex = sentenceIndex;
+      task.updatedAt = new Date().toISOString();
+      broadcastAiPageTask(task, 'snapshot', getAiPageTaskSnapshot(task));
+
+      const existingSentenceData = existingProcessedSentences[sentenceIndex];
+      if (existingSentenceData?.processingType === 'remote') {
+        task.skippedCount += 1;
+        pushAiPageTaskLog(task, `Skipped sentence ${sentenceIndex}: already has AI analysis`, {
+          kind: 'skip',
+          sentenceIndex
+        });
+        continue;
+      }
+
+      pushAiPageTaskLog(task, `Processing sentence ${sentenceIndex}...`, {
+        kind: 'status',
+        sentenceIndex
+      });
+
+      try {
+        const result = await processTextAnalysis({
+          text,
+          sentenceIndex,
+          verbMergeOptions: task.verbMergeOptions,
+          allSentences: task.allSentences,
+          useRemoteProcessing: true,
+          frequencySettings: task.frequencySettings
+        });
+
+        if (result?.analysis?.tokens) {
+          const sentenceData = {
+            tokens: result.analysis.tokens,
+            fullSentenceTranslation: result.fullSentenceTranslation || 'N/A',
+            sentenceNotes: Array.isArray(result.sentenceNotes) ? result.sentenceNotes : [],
+            speechTags: Array.isArray(result.speechTags) ? result.speechTags : [],
+            processingType: 'remote'
+          };
+
+          const savedAt = new Date().toISOString();
+          saveProcessedSentenceForDraft(
+            task.draftFilename,
+            sentenceIndex,
+            sentenceData,
+            task.verbMergeOptions,
+            savedAt
+          );
+          existingProcessedSentences[sentenceIndex] = sentenceData;
+          task.processedCount += 1;
+          task.updatedAt = savedAt;
+          broadcastAiPageTask(task, 'sentence-complete', {
+            sentenceIndex,
+            sentenceData,
+            metrics: getAiPageTaskSnapshot(task)
+          });
+          pushAiPageTaskLog(task, `Completed sentence ${sentenceIndex}`, {
+            kind: 'result',
+            sentenceIndex
+          });
+        } else {
+          task.errorCount += 1;
+          pushAiPageTaskLog(task, `Sentence ${sentenceIndex} returned no AI tokens`, {
+            kind: 'error',
+            sentenceIndex
+          });
+        }
+      } catch (error) {
+        task.errorCount += 1;
+        pushAiPageTaskLog(task, `Error on sentence ${sentenceIndex}: ${error.message || 'unknown error'}`, {
+          kind: 'error',
+          sentenceIndex
+        });
+      }
+    }
+
+    task.status = 'completed';
+    task.activeSentenceIndex = null;
+    task.finishedAt = new Date().toISOString();
+    task.updatedAt = task.finishedAt;
+    broadcastAiPageTask(task, 'snapshot', getAiPageTaskSnapshot(task));
+    broadcastAiPageTask(task, 'done', getAiPageTaskSnapshot(task));
+  } catch (error) {
+    task.status = 'failed';
+    task.activeSentenceIndex = null;
+    task.finishedAt = new Date().toISOString();
+    task.updatedAt = task.finishedAt;
+    task.lastError = error.message || 'Task failed';
+    pushAiPageTaskLog(task, `Task failed: ${task.lastError}`, { kind: 'error' });
+    broadcastAiPageTask(task, 'failed', getAiPageTaskSnapshot(task));
+  }
+}
+
 function validateImportUrl(value) {
   try {
     const parsed = new URL(String(value || '').trim());
@@ -1212,6 +1424,113 @@ app.get('/api/import/:filename', (req, res) => {
   });
 });
 
+app.get('/api/import/:filename/ai-page-task', (req, res) => {
+  const loadResult = loadLinesForImportFilename(req.params.filename);
+  const existingBookPath = path.join(config.booksDir, `${req.params.filename}.book`);
+  if (!loadResult && !fs.existsSync(existingBookPath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  res.json({
+    task: getAiPageTaskSnapshot(aiPageTasks.get(req.params.filename))
+  });
+});
+
+app.get('/api/import/:filename/ai-page-task/stream', (req, res) => {
+  const loadResult = loadLinesForImportFilename(req.params.filename);
+  const existingBookPath = path.join(config.booksDir, `${req.params.filename}.book`);
+  if (!loadResult && !fs.existsSync(existingBookPath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  const task = aiPageTasks.get(req.params.filename);
+  if (!task) {
+    return res.status(404).json({ error: 'No AI page task found for this draft' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+
+  if (req.socket && typeof req.socket.setNoDelay === 'function') {
+    req.socket.setNoDelay(true);
+  }
+
+  task.clients.add(res);
+  writeSseEvent(res, 'snapshot', getAiPageTaskSnapshot(task));
+
+  const keepAliveTimer = setInterval(() => {
+    if (!res.writableEnded) {
+      res.write(': keepalive\n\n');
+    }
+  }, 3000);
+
+  req.on('close', () => {
+    clearInterval(keepAliveTimer);
+    task.clients.delete(res);
+  });
+});
+
+app.post('/api/import/:filename/ai-page-task', async (req, res) => {
+  const loadResult = loadLinesForImportFilename(req.params.filename);
+  const existingBookPath = path.join(config.booksDir, `${req.params.filename}.book`);
+  if (!loadResult && !fs.existsSync(existingBookPath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  const currentPage = Number.parseInt(req.body?.currentPage, 10);
+  const sentenceRequests = Array.isArray(req.body?.sentenceRequests)
+    ? req.body.sentenceRequests
+      .map((item) => ({
+        sentenceIndex: Number.parseInt(item?.sentenceIndex, 10),
+        text: String(item?.text || '')
+      }))
+      .filter((item) => Number.isInteger(item.sentenceIndex) && item.sentenceIndex >= 0 && item.text.trim())
+    : [];
+  const allSentences = Array.isArray(req.body?.allSentences)
+    ? req.body.allSentences.map((sentence) => String(sentence || ''))
+    : [];
+
+  if (!Number.isInteger(currentPage) || currentPage < 1) {
+    return res.status(400).json({ error: 'Invalid currentPage' });
+  }
+
+  if (sentenceRequests.length === 0) {
+    return res.status(400).json({ error: 'No sentences provided for AI page task' });
+  }
+
+  const existingTask = aiPageTasks.get(req.params.filename);
+  if (existingTask?.status === 'running') {
+    return res.json({
+      task: getAiPageTaskSnapshot(existingTask),
+      alreadyRunning: true
+    });
+  }
+
+  const task = createAiPageTask({
+    draftFilename: req.params.filename,
+    currentPage,
+    sentenceRequests,
+    allSentences,
+    verbMergeOptions: req.body?.verbMergeOptions || {},
+    frequencySettings: req.body?.frequencySettings || {}
+  });
+
+  runAiPageTask(task).catch((error) => {
+    console.error('Unhandled AI page task error:', error);
+  });
+
+  res.status(202).json({
+    task: getAiPageTaskSnapshot(task),
+    alreadyRunning: false
+  });
+});
+
 app.post('/api/import/:filename/summarize', async (req, res) => {
   const loadResult = loadLinesForImportFilename(req.params.filename);
   if (!loadResult) {
@@ -1297,38 +1616,7 @@ app.post('/api/import/:filename/save-sentence', (req, res) => {
   const bookFileName = req.params.filename;
 
   try {
-    // Check if book file already exists
-    const bookFilePath = path.join(config.booksDir, `${bookFileName}.book`);
-    let bookData = {};
-
-    if (fs.existsSync(bookFilePath)) {
-      // Load existing book data
-      try {
-        bookData = JSON.parse(fs.readFileSync(bookFilePath, 'utf-8'));
-      } catch (error) {
-        console.error('Error reading existing book file:', error);
-        bookData = {};
-      }
-    }
-
-    // Initialize book data structure if it doesn't exist
-    if (!bookData.content) bookData.content = {};
-    if (!bookData.content.processedSentences) bookData.content.processedSentences = {};
-    if (!bookData.settings) bookData.settings = {};
-    if (!bookData.metadata) bookData.metadata = {};
-
-    // Update the specific sentence
-    bookData.content.processedSentences[sentenceIndex] = sentenceData;
-    bookData.settings.verbMergeOptions = verbMergeOptions;
-    bookData.metadata.status = bookData.metadata.status === 'reading' ? 'reading' : 'draft';
-    bookData.metadata.completed = bookData.metadata.status === 'reading';
-    bookData.metadata.lastUpdated = timestamp;
-    bookData.metadata.processedSentences = Object.keys(bookData.content.processedSentences).length;
-    bookData.metadata.originalFilename = req.params.filename;
-
-    // Save updated book data
-    fs.writeFileSync(bookFilePath, JSON.stringify(bookData, null, 2), 'utf-8');
-
+    saveProcessedSentenceForDraft(bookFileName, sentenceIndex, sentenceData, verbMergeOptions, timestamp);
     console.log(`Auto-saved sentence ${sentenceIndex} for ${bookFileName}`);
     res.json({ success: true, sentenceIndex, savedAt: timestamp });
   } catch (error) {

@@ -145,6 +145,10 @@ class OllamaService {
     this.responseFormat = config.ollama.responseFormat || 'text';
   }
 
+  isQwenModel() {
+    return /\bqwen/i.test(String(this.model || ''));
+  }
+
   log(...args) {
     if (this.verboseLogs) {
       console.log(...args);
@@ -378,6 +382,34 @@ Text:
 ${sourceText}`;
   }
 
+  buildSummaryResponseFormat(maxSentences) {
+    return {
+      type: 'json_schema',
+      json_schema: {
+        name: 'bookparser_summary',
+        strict: true,
+        schema: {
+          type: 'object',
+          properties: {
+            summaryTitle: {
+              type: 'string'
+            },
+            summarySentences: {
+              type: 'array',
+              minItems: 1,
+              maxItems: maxSentences,
+              items: {
+                type: 'string'
+              }
+            }
+          },
+          required: ['summaryTitle', 'summarySentences'],
+          additionalProperties: false
+        }
+      }
+    };
+  }
+
   extractSummaryResult(data, maxSentences) {
     const payload = this.extractJsonPayload(this.extractCompletionText(data) || '{}');
     const summaryTitle = this.normalizeSummaryTitle(payload);
@@ -486,7 +518,8 @@ ${sourceText}`;
           this.buildChatCompletionPayload(prompt, {
             stream: false,
             temperature: 0.2,
-            maxTokens: Math.max(this.maxTokens, config.ollama.summaryMaxTokens || this.maxTokens)
+            maxTokens: Math.max(this.maxTokens, config.ollama.summaryMaxTokens || this.maxTokens),
+            responseFormat: this.buildSummaryResponseFormat(maxSentences)
           }),
           'summary'
         );
@@ -658,16 +691,47 @@ ${sourceText}`;
     return '';
   }
 
+  extractReasoningText(data) {
+    const choice = Array.isArray(data?.choices) ? data.choices[0] : null;
+    const reasoningContent = choice?.message?.reasoning_content;
+    if (typeof reasoningContent === 'string') {
+      return reasoningContent;
+    }
+
+    if (Array.isArray(reasoningContent)) {
+      return reasoningContent
+        .map((part) => typeof part === 'string' ? part : (part?.text || part?.content || ''))
+        .join('');
+    }
+
+    return '';
+  }
+
+  getCompletionFinishReason(data) {
+    const choice = Array.isArray(data?.choices) ? data.choices[0] : null;
+    return typeof choice?.finish_reason === 'string' ? choice.finish_reason : '';
+  }
+
+  isReasoningOnlyResponse(data, responseText = '') {
+    if (String(responseText || '').trim()) {
+      return false;
+    }
+
+    return Boolean(this.extractReasoningText(data).trim());
+  }
+
   buildChatCompletionPayload(prompt, {
     stream = false,
     temperature = 0.3,
     maxTokens = this.maxTokens,
-    systemPrompt = ''
+    systemPrompt = '',
+    responseFormat = null
   } = {}) {
-    const systemContent = this.disableThinking && systemPrompt
+    const shouldInjectNoThink = this.disableThinking && !this.isQwenModel();
+    const systemContent = shouldInjectNoThink && systemPrompt
       ? `${systemPrompt}\n\n/no_think`
       : systemPrompt;
-    const userContent = this.disableThinking && !systemPrompt
+    const userContent = shouldInjectNoThink && !systemPrompt
       ? `${prompt}\n\n/no_think`
       : prompt;
     const messages = [];
@@ -693,11 +757,13 @@ ${sourceText}`;
       max_tokens: maxTokens
     };
 
-    if (this.responseFormat) {
+    if (responseFormat) {
+      payload.response_format = responseFormat;
+    } else if (this.responseFormat) {
       payload.response_format = { type: this.responseFormat };
     }
 
-    if (this.disableThinking) {
+    if (this.disableThinking && !this.isQwenModel()) {
       payload.reasoning_effort = 'none';
     }
 
@@ -707,6 +773,126 @@ ${sourceText}`;
   getAnalysisMaxTokens(promptTokenCount = 0) {
     const estimated = this.analysisBaseMaxTokens + (Math.max(1, promptTokenCount) * this.analysisMaxTokensPerToken);
     return Math.max(512, Math.min(this.maxTokens, estimated));
+  }
+
+  getRetryAnalysisMaxTokens(baseMaxTokens, attempt) {
+    const safeBase = Math.max(1, Number(baseMaxTokens) || 1);
+    if (attempt <= 1) {
+      return safeBase;
+    }
+
+    const increment = Math.max(512, Math.ceil(safeBase * 0.5));
+    return Math.min(this.maxTokens, safeBase + (increment * (attempt - 1)));
+  }
+
+  validateAnalysisResponse(parsedResponse, expectedTokenCount = 0) {
+    const fullLineTranslation = String(parsedResponse?.fullLineTranslation || '').trim();
+    const tokens = Array.isArray(parsedResponse?.tokens) ? parsedResponse.tokens : [];
+
+    if (!fullLineTranslation) {
+      throw new Error('AI response missing fullLineTranslation');
+    }
+
+    if (tokens.length === 0) {
+      throw new Error('AI response missing token analyses');
+    }
+
+    const translatedTokenCount = tokens.filter((token) => {
+      const translation = String(token?.translation || '').trim();
+      return translation && translation !== 'N/A';
+    }).length;
+
+    const minimumTranslatedTokens = Math.max(1, Math.min(3, Number(expectedTokenCount) || tokens.length || 1));
+    if (translatedTokenCount < minimumTranslatedTokens) {
+      throw new Error(`AI response has too few translated tokens (${translatedTokenCount}/${minimumTranslatedTokens})`);
+    }
+
+    return parsedResponse;
+  }
+
+  buildAnalysisResponseFormat() {
+    return {
+      type: 'json_schema',
+      json_schema: {
+        name: 'bookparser_analysis',
+        strict: true,
+        schema: {
+          type: 'object',
+          properties: {
+            fullLineTranslation: {
+              type: 'string'
+            },
+            speechTags: {
+              type: 'array',
+              items: {
+                type: 'string'
+              }
+            },
+            tokenCorrections: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  type: { type: 'string' },
+                  tokenIndexes: {
+                    type: 'array',
+                    items: { type: 'integer' }
+                  },
+                  surface: { type: 'string' },
+                  reading: { type: 'string' },
+                  translation: { type: 'string' },
+                  contextualMeaning: { type: 'string' },
+                  grammaticalRole: { type: 'string' }
+                },
+                required: ['type', 'tokenIndexes', 'surface', 'translation', 'contextualMeaning', 'grammaticalRole'],
+                additionalProperties: false
+              }
+            },
+            tokens: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  surface: { type: 'string' },
+                  translation: { type: 'string' },
+                  contextualMeaning: { type: 'string' },
+                  grammaticalRole: { type: 'string' }
+                },
+                required: ['surface', 'translation', 'contextualMeaning', 'grammaticalRole'],
+                additionalProperties: false
+              }
+            },
+            expressions: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  surface: { type: 'string' },
+                  meaning: { type: 'string' },
+                  note: { type: 'string' }
+                },
+                required: ['surface', 'meaning', 'note'],
+                additionalProperties: false
+              }
+            },
+            sentenceNotes: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  type: { type: 'string' },
+                  text: { type: 'string' }
+                },
+                required: ['type', 'text'],
+                additionalProperties: false
+              }
+            }
+          },
+          required: ['fullLineTranslation', 'speechTags', 'tokenCorrections', 'tokens', 'expressions', 'sentenceNotes'],
+          additionalProperties: false
+        }
+      }
+    };
   }
 
   buildAnalysisSystemPrompt() {
@@ -778,15 +964,17 @@ Return JSON only:
 
     const payload = trimmed.slice(5).trim();
     if (!payload || payload === '[DONE]') {
-      return payload === '[DONE]' ? { done: true, content: '' } : null;
+      return payload === '[DONE]' ? { done: true, content: '', reasoning: '' } : null;
     }
 
     const parsed = JSON.parse(payload);
     const choice = Array.isArray(parsed?.choices) ? parsed.choices[0] : null;
     const content = choice?.delta?.content ?? choice?.message?.content ?? '';
+    const reasoning = choice?.delta?.reasoning_content ?? choice?.message?.reasoning_content ?? '';
     return {
       done: choice?.finish_reason != null,
-      content: typeof content === 'string' ? content : ''
+      content: typeof content === 'string' ? content : '',
+      reasoning: typeof reasoning === 'string' ? reasoning : ''
     };
   }
 
@@ -947,8 +1135,9 @@ Return JSON only:
         this.log('[Ollama] Context text:', contextText);
 
         const fixedNumPredict = this.getAnalysisMaxTokens(promptTokens.length);
+        const attemptMaxTokens = this.getRetryAnalysisMaxTokens(fixedNumPredict, attempt);
 
-        this.log(`[Ollama] Using fixed response limit: ${fixedNumPredict} tokens for ${promptTokens.length} prompt tokens`);
+        this.log(`[Ollama] Using response limit: ${attemptMaxTokens} tokens for ${promptTokens.length} prompt tokens`);
 
         const analysisSystemPrompt = this.buildAnalysisSystemPrompt();
         const prompt = `${contextText}
@@ -967,8 +1156,9 @@ Indexed tokens: ${indexedTokenList}`;
         const requestPayload = this.buildChatCompletionPayload(prompt, {
           stream: shouldStream,
           temperature: 0.3,
-          maxTokens: fixedNumPredict,
-          systemPrompt: analysisSystemPrompt
+          maxTokens: attemptMaxTokens,
+          systemPrompt: analysisSystemPrompt,
+          responseFormat: this.buildAnalysisResponseFormat()
         });
 
         const response = await this.generateOnBaseUrl(
@@ -985,6 +1175,7 @@ Indexed tokens: ${indexedTokenList}`;
         this.log('[Ollama] Response time:', endTime - startTime, 'ms');
 
         let responseText = '';
+        let reasoningText = '';
         if (shouldStream) {
           if (!response.body) {
             throw new Error('OpenAI-compatible streaming response body is empty');
@@ -1014,6 +1205,9 @@ Indexed tokens: ${indexedTokenList}`;
                   onChunk({ kind: 'response', content: parsedChunk.content });
                   streamedChunkCount += 1;
                 }
+                if (parsedChunk.reasoning.length > 0) {
+                  reasoningText += parsedChunk.reasoning;
+                }
               } catch (streamParseError) {
                 console.error('[AI] Failed to parse streaming chunk:', streamParseError);
               }
@@ -1032,6 +1226,9 @@ Indexed tokens: ${indexedTokenList}`;
                 onChunk({ kind: 'response', content: parsedTail.content });
                 streamedChunkCount += 1;
               }
+              if (parsedTail.reasoning.length > 0) {
+                reasoningText += parsedTail.reasoning;
+              }
             } catch (tailParseError) {
               console.error('[AI] Failed to parse streaming tail chunk:', tailParseError);
             }
@@ -1042,14 +1239,31 @@ Indexed tokens: ${indexedTokenList}`;
           const data = await response.json();
           this.logResponseStats('analysis', activeBaseUrl, data, response.durationMs);
           responseText = this.extractCompletionText(data);
+          reasoningText = this.extractReasoningText(data);
+          if (this.isReasoningOnlyResponse(data, responseText)) {
+            const finishReason = this.getCompletionFinishReason(data) || 'unknown';
+            const guidance = this.isQwenModel()
+              ? ' For LM Studio Qwen models, disable "Enable Thinking" in the loaded model or switch to a non-MTP/non-thinking variant for structured parsing.'
+              : '';
+            throw new Error(`Model returned reasoning without visible content (finish_reason=${finishReason}, max_tokens=${attemptMaxTokens}).${guidance}`);
+          }
         }
 
         this.log('[Ollama] Raw response content:', responseText);
+        if (!responseText.trim() && reasoningText.trim()) {
+          const guidance = this.isQwenModel()
+            ? ' For LM Studio Qwen models, disable "Enable Thinking" in the loaded model or switch to a non-MTP/non-thinking variant for structured parsing.'
+            : '';
+          throw new Error(`Model returned reasoning without visible content (max_tokens=${attemptMaxTokens}).${guidance}`);
+        }
 
         // Try to parse JSON response - handle cases where there's text before the JSON
         try {
           // First try to parse the response directly
-          const parsedResponse = JSON.parse(responseText);
+          const parsedResponse = this.validateAnalysisResponse(
+            JSON.parse(responseText),
+            promptTokens.length
+          );
           this.log('[Ollama] ✅ Successfully parsed JSON response');
           //this.log('[Ollama] Full line translation:', parsedResponse.fullLineTranslation);
           this.log('[Ollama] Number of token analyses:', parsedResponse.tokens?.length || 0);
@@ -1063,7 +1277,10 @@ Indexed tokens: ${indexedTokenList}`;
             const jsonMatch = responseText.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
               const jsonString = jsonMatch[0];
-              const parsedResponse = JSON.parse(jsonString);
+              const parsedResponse = this.validateAnalysisResponse(
+                JSON.parse(jsonString),
+                promptTokens.length
+              );
               this.log('[Ollama] ✅ Successfully extracted and parsed JSON from response');
               //this.log('[Ollama] Full line translation:', parsedResponse.fullLineTranslation);
               this.log('[Ollama] Number of token analyses:', parsedResponse.tokens?.length || 0);
